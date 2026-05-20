@@ -1,4 +1,6 @@
 ﻿"""Точка входа: запускает aiogram polling и aiohttp-сервер Mini App вместе."""
+from ai_tutor import ask_ai
+from user_service import get_user, add_xp
 import asyncio
 import logging
 import sys
