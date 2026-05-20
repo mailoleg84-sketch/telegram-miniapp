@@ -45,8 +45,7 @@ async def main() -> None:
 
 if __name__ == "__main__":
     # Фикс WinError 121 на Windows + VPN: используем SelectorEventLoop
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    try:
+        try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
         print("\nОстановлено.")
