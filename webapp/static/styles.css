@@ -1,0 +1,163 @@
+/* ===== Telegram theme variables ===== */
+:root {
+  --bg:           var(--tg-theme-bg-color, #ffffff);
+  --text:         var(--tg-theme-text-color, #000000);
+  --hint:         var(--tg-theme-hint-color, #999999);
+  --link:         var(--tg-theme-link-color, #2481cc);
+  --button:       var(--tg-theme-button-color, #2481cc);
+  --button-text:  var(--tg-theme-button-text-color, #ffffff);
+  --secondary-bg: var(--tg-theme-secondary-bg-color, #f4f4f5);
+  --section-bg:   var(--tg-theme-section-bg-color, #ffffff);
+
+  --green: #34c759;
+  --red:   #ff3b30;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text",
+               "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+#app {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+}
+
+/* ===== Layout ===== */
+
+.screen {
+  animation: fadeIn 0.18s ease-out;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+h1 { font-size: 24px; margin: 0 0 16px; font-weight: 700; }
+h2 { font-size: 18px; margin: 0 0 12px; font-weight: 600; }
+
+.card {
+  background: var(--secondary-bg);
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 12px;
+}
+
+.center { text-align: center; }
+.hint   { color: var(--hint); font-size: 14px; line-height: 1.45; }
+.mt-8   { margin-top: 8px; }
+.mt-12  { margin-top: 12px; }
+.mt-24  { margin-top: 24px; }
+
+.big {
+  font-size: 32px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.2;
+}
+.big-sub {
+  font-size: 20px;
+  font-weight: 500;
+  text-align: center;
+  color: var(--hint);
+  margin-top: 8px;
+}
+
+/* ===== Buttons ===== */
+
+.btn {
+  display: block;
+  width: 100%;
+  padding: 14px 16px;
+  background: var(--button);
+  color: var(--button-text);
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  margin-bottom: 8px;
+  transition: opacity 0.12s, transform 0.12s;
+}
+.btn:active   { opacity: 0.75; transform: scale(0.99); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-secondary {
+  background: var(--secondary-bg);
+  color: var(--text);
+}
+
+.btn-correct { background: var(--green) !important; color: #fff !important; }
+.btn-wrong   { background: var(--red)   !important; color: #fff !important; }
+
+/* ===== Input ===== */
+
+input[type="text"] {
+  display: block;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1.5px solid var(--secondary-bg);
+  border-radius: 12px;
+  font-size: 17px;
+  font-family: inherit;
+  background: var(--bg);
+  color: var(--text);
+  margin-bottom: 8px;
+  outline: none;
+  transition: border-color 0.12s;
+}
+input[type="text"]:focus { border-color: var(--button); }
+
+/* ===== Misc ===== */
+
+.points-pill {
+  display: inline-block;
+  padding: 4px 12px;
+  background: var(--button);
+  color: var(--button-text);
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--bg);
+}
+.stat-row:last-child { border-bottom: none; }
+.stat-row b { font-weight: 700; }
+
+.result-card {
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 12px;
+  color: #fff;
+}
+.result-card.correct { background: var(--green); }
+.result-card.wrong   { background: var(--red); }
+
+code {
+  background: rgba(0, 0, 0, 0.18);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.error-box {
+  background: var(--red);
+  color: #fff;
+  padding: 16px;
+  border-radius: 14px;
+}
