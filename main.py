@@ -48,3 +48,12 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
+from ai_tutor import ask_ai
+
+@dp.message()
+async def handle_message(message: types.Message):
+    text = message.text
+
+    reply = ask_ai(text)
+
+    await message.answer(reply)
