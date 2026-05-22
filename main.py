@@ -59,3 +59,8 @@ async def handle_message(message: types.Message):
     reply = ask_ai(text)
 
     await message.answer(reply)
+from database import init_db
+
+@app.on_event("startup")
+async def startup():
+    await init_db()
