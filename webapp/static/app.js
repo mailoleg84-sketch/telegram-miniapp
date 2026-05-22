@@ -1,14 +1,13 @@
 // ============================================================
-// Mini App: однофайловое SPA на vanilla JS
+// Mini App: SPA на vanilla JS — слова, тренировка, профиль, ИИ-репетитор
 // ============================================================
 
 const tg = window.Telegram.WebApp;
 tg.ready();
 tg.expand();
-tg.enableClosingConfirmation();
 
 const app = document.getElementById("app");
-const state = { me: null, _back: null, _main: null };
+const state = { me: null, _back: null };
 
 // ---------- HTTP ----------
 
@@ -28,7 +27,7 @@ async function api(path, method = "POST", body = null) {
   return res.json();
 }
 
-// ---------- Telegram BackButton / MainButton ----------
+// ---------- BackButton ----------
 
 function setBack(handler) {
   if (state._back) tg.BackButton.offClick(state._back);
@@ -41,22 +40,6 @@ function setBack(handler) {
   }
 }
 
-function setMainButton(text, handler) {
-  if (state._main) tg.MainButton.offClick(state._main);
-  state._main = handler;
-  tg.MainButton.setText(text);
-  tg.MainButton.onClick(handler);
-  tg.MainButton.show();
-}
-function hideMainButton() {
-  if (state._main) {
-    tg.MainButton.offClick(state._main);
-    state._main = null;
-  }
-  tg.MainButton.hide();
-  tg.MainButton.hideProgress();
-}
-
 // ---------- Утилиты ----------
 
 function esc(s) {
@@ -67,7 +50,7 @@ function esc(s) {
 
 function haptic(type) {
   try {
-    if (type === "success" || type === "error" || type === "warning") {
+    if (["success", "error", "warning"].includes(type)) {
       tg.HapticFeedback?.notificationOccurred(type);
     } else {
       tg.HapticFeedback?.impactOccurred(type || "light");
@@ -84,24 +67,19 @@ function showLoading() {
 // ============================================================
 
 function renderError(msg) {
-  hideMainButton();
   setBack(null);
   app.innerHTML = `
     <div class="screen">
-      <div class="error-box">
-        <b>😕 Что-то пошло не так</b>
-        <div class="mt-8">${esc(msg)}</div>
-      </div>
+      <div class="error-box"><b>😕 Что-то пошло не так</b><div class="mt-8">${esc(msg)}</div></div>
       <button class="btn mt-12" onclick="location.reload()">Перезагрузить</button>
-    </div>
-  `;
+    </div>`;
 }
 
 // ---------- Регистрация ----------
 
 function renderRegistration() {
-  hideMainButton();
   setBack(null);
+  tg.MainButton.hide();
 
   const firstName = state.me.tg_user.first_name || "";
   const ageOpts = state.me.age_groups.map(g => `
@@ -111,56 +89,52 @@ function renderRegistration() {
   app.innerHTML = `
     <div class="screen">
       <h1>👋 Привет!</h1>
-      <p class="hint">Я помогу учить английские слова. Давай знакомиться.</p>
-
+      <p class="hint">Я помогу учить английский. Давай знакомиться.</p>
       <div class="card mt-24">
         <h2>Как тебя зовут?</h2>
-        <input id="name" type="text" placeholder="Имя"
-               value="${esc(firstName)}" maxlength="30" autocomplete="off">
+        <input id="name" type="text" placeholder="Имя" value="${esc(firstName)}" maxlength="30" autocomplete="off">
       </div>
-
       <div class="card">
         <h2>Возрастная группа</h2>
         <div id="ages">${ageOpts}</div>
       </div>
-    </div>
-  `;
+    </div>`;
 
   let selectedAge = null;
 
-  function refreshMainButton() {
+  function refreshMain() {
     const name = document.getElementById("name").value.trim();
     if (name.length >= 2 && selectedAge) {
-      setMainButton("Завершить регистрацию", submit);
+      tg.MainButton.setText("Завершить регистрацию");
+      tg.MainButton.onClick(submit);
+      tg.MainButton.show();
     } else {
-      hideMainButton();
+      tg.MainButton.hide();
+      tg.MainButton.offClick(submit);
     }
   }
 
-  document.getElementById("name").addEventListener("input", refreshMainButton);
-
+  document.getElementById("name").addEventListener("input", refreshMain);
   document.querySelectorAll(".age").forEach(btn => {
     btn.addEventListener("click", () => {
       selectedAge = btn.dataset.age;
-      document.querySelectorAll(".age").forEach(b => {
-        if (b !== btn) b.classList.add("btn-secondary");
-      });
+      document.querySelectorAll(".age").forEach(b => { if (b !== btn) b.classList.add("btn-secondary"); });
       btn.classList.remove("btn-secondary");
       haptic("light");
-      refreshMainButton();
+      refreshMain();
     });
   });
 
   async function submit() {
     const name = document.getElementById("name").value.trim();
     if (name.length < 2) return tg.showAlert("Имя слишком короткое");
-    if (!selectedAge)    return tg.showAlert("Выбери возрастную группу");
-
+    if (!selectedAge) return tg.showAlert("Выбери возрастную группу");
     tg.MainButton.showProgress();
     try {
       await api("/api/register", "POST", { name, age_group: selectedAge });
       state.me = await api("/api/me", "GET");
-      hideMainButton();
+      tg.MainButton.offClick(submit);
+      tg.MainButton.hide();
       haptic("success");
       renderMenu();
     } catch (e) {
@@ -173,37 +147,127 @@ function renderRegistration() {
 // ---------- Главное меню ----------
 
 function renderMenu() {
-  hideMainButton();
   setBack(null);
+  tg.MainButton.hide();
 
   const u = state.me.user;
   app.innerHTML = `
     <div class="screen">
       <h1>📚 Главное меню</h1>
-
       <div class="card">
         <div>Привет, <b>${esc(u.name)}</b>!</div>
         <div class="mt-12">Баллы: <span class="points-pill">${u.points} 💎</span></div>
       </div>
-
+      <button class="btn" id="chat">💬 Поговорить с репетитором</button>
       <button class="btn" id="learn">📖 Учить слова</button>
       <button class="btn" id="train">🎯 Тренировка</button>
       <button class="btn btn-secondary" id="profile">📊 Профиль</button>
-    </div>
-  `;
+    </div>`;
 
+  document.getElementById("chat").onclick    = () => { haptic(); renderChat(); };
   document.getElementById("learn").onclick   = () => { haptic(); renderLearn(); };
   document.getElementById("train").onclick   = () => { haptic(); renderTrainingMenu(); };
   document.getElementById("profile").onclick = () => { haptic(); renderProfile(); };
 }
 
+// ---------- ИИ-репетитор (чат) ----------
+
+async function renderChat() {
+  setBack(renderMenu);
+  tg.MainButton.hide();
+  showLoading();
+
+  let history = [];
+  try {
+    const data = await api("/api/chat/history", "GET");
+    history = data.messages || [];
+  } catch (e) {
+    return renderError(e.message);
+  }
+
+  app.innerHTML = `
+    <div class="screen chat-wrap">
+      <div class="chat-topbar">
+        <h2 style="margin:0">💬 Репетитор</h2>
+        <button class="chat-reset" id="reset">Очистить</button>
+      </div>
+      <div class="chat-messages" id="messages"></div>
+      <div class="chat-input-row">
+        <input id="msg" type="text" placeholder="Напиши на английском…" autocomplete="off">
+        <button class="chat-send" id="send">➤</button>
+      </div>
+    </div>`;
+
+  const box = document.getElementById("messages");
+  const input = document.getElementById("msg");
+  const sendBtn = document.getElementById("send");
+
+  function addBubble(role, text) {
+    const div = document.createElement("div");
+    div.className = "bubble " + (role === "user" ? "user" : "bot");
+    div.textContent = text;
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+    return div;
+  }
+
+  if (history.length === 0) {
+    box.innerHTML = `<div class="chat-empty">Напиши первое сообщение по-английски —<br>репетитор ответит и поможет.</div>`;
+  } else {
+    history.forEach(m => addBubble(m.role, m.content));
+  }
+
+  async function send() {
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = "";
+    if (box.querySelector(".chat-empty")) box.innerHTML = "";
+
+    addBubble("user", text);
+    sendBtn.disabled = true;
+    input.disabled = true;
+
+    const typing = document.createElement("div");
+    typing.className = "typing";
+    typing.textContent = "репетитор печатает…";
+    box.appendChild(typing);
+    box.scrollTop = box.scrollHeight;
+
+    try {
+      const data = await api("/api/chat/send", "POST", { message: text });
+      typing.remove();
+      addBubble("assistant", data.reply);
+      haptic("light");
+    } catch (e) {
+      typing.remove();
+      addBubble("assistant", "⚠️ " + e.message);
+    } finally {
+      sendBtn.disabled = false;
+      input.disabled = false;
+      input.focus();
+    }
+  }
+
+  sendBtn.onclick = send;
+  input.addEventListener("keypress", e => { if (e.key === "Enter") send(); });
+
+  document.getElementById("reset").onclick = async () => {
+    tg.showConfirm("Очистить историю разговора?", async (ok) => {
+      if (!ok) return;
+      try {
+        await api("/api/chat/reset", "POST");
+        box.innerHTML = `<div class="chat-empty">История очищена. Начни заново!</div>`;
+      } catch (e) { tg.showAlert(e.message); }
+    });
+  };
+}
+
 // ---------- Изучение слов ----------
 
 async function renderLearn(currentId = null) {
-  hideMainButton();
   setBack(renderMenu);
+  tg.MainButton.hide();
   showLoading();
-
   try {
     const w = await api("/api/learn/next", "POST", { current_id: currentId });
     app.innerHTML = `
@@ -215,94 +279,65 @@ async function renderLearn(currentId = null) {
           ${w.example ? `<p class="hint mt-24"><i>${esc(w.example)}</i></p>` : ""}
         </div>
         <button class="btn" id="next">➡️ Следующее слово</button>
-      </div>
-    `;
+      </div>`;
     document.getElementById("next").onclick = () => { haptic(); renderLearn(w.id); };
-  } catch (e) {
-    renderError(e.message);
-  }
+  } catch (e) { renderError(e.message); }
 }
 
-// ---------- Меню тренировки ----------
+// ---------- Тренировка ----------
 
 function renderTrainingMenu() {
-  hideMainButton();
   setBack(renderMenu);
-
+  tg.MainButton.hide();
   app.innerHTML = `
     <div class="screen">
       <h1>🎯 Тренировка</h1>
       <p class="hint">Выбери режим:</p>
       <button class="btn" id="choice">✅ Выбор перевода</button>
       <button class="btn" id="input">⌨️ Ввод слова</button>
-    </div>
-  `;
+    </div>`;
   document.getElementById("choice").onclick = () => { haptic(); renderChoice(); };
   document.getElementById("input").onclick  = () => { haptic(); renderInput(); };
 }
 
-// ---------- Тренировка: выбор ----------
-
 async function renderChoice() {
-  hideMainButton();
   setBack(renderTrainingMenu);
   showLoading();
-
   try {
     const q = await api("/api/training/choice/next", "POST");
     const optsHtml = q.options.map(o => `
       <button class="btn btn-secondary opt" data-id="${o.id}">${esc(o.translation)}</button>
     `).join("");
-
     app.innerHTML = `
       <div class="screen">
         <h1>Выбери перевод</h1>
-        <div class="card center">
-          <div class="big">${esc(q.word)}</div>
-        </div>
+        <div class="card center"><div class="big">${esc(q.word)}</div></div>
         <div id="opts">${optsHtml}</div>
-      </div>
-    `;
-
+      </div>`;
     document.querySelectorAll(".opt").forEach(btn => {
       btn.addEventListener("click", async () => {
         document.querySelectorAll(".opt").forEach(b => b.disabled = true);
         const selectedId = parseInt(btn.dataset.id, 10);
-
         try {
-          const r = await api("/api/training/choice/answer", "POST", {
-            word_id: q.word_id, selected_id: selectedId,
-          });
+          const r = await api("/api/training/choice/answer", "POST", { word_id: q.word_id, selected_id: selectedId });
           state.me.user.points = r.points;
-
           btn.classList.remove("btn-secondary");
           btn.classList.add(r.correct ? "btn-correct" : "btn-wrong");
           if (!r.correct) {
-            const correctBtn = document.querySelector(`.opt[data-id="${q.word_id}"]`);
-            if (correctBtn) {
-              correctBtn.classList.remove("btn-secondary");
-              correctBtn.classList.add("btn-correct");
-            }
+            const cb = document.querySelector(`.opt[data-id="${q.word_id}"]`);
+            if (cb) { cb.classList.remove("btn-secondary"); cb.classList.add("btn-correct"); }
           }
           haptic(r.correct ? "success" : "error");
           setTimeout(renderChoice, 1100);
-        } catch (e) {
-          renderError(e.message);
-        }
+        } catch (e) { renderError(e.message); }
       });
     });
-  } catch (e) {
-    renderError(e.message);
-  }
+  } catch (e) { renderError(e.message); }
 }
 
-// ---------- Тренировка: ввод ----------
-
 async function renderInput() {
-  hideMainButton();
   setBack(renderTrainingMenu);
   showLoading();
-
   try {
     const q = await api("/api/training/input/next", "POST");
     app.innerHTML = `
@@ -312,71 +347,54 @@ async function renderInput() {
           <div class="big">${esc(q.translation)}</div>
           <p class="hint mt-8">по-английски</p>
         </div>
-        <input id="answer" type="text" placeholder="Ваш ответ…"
-               autocomplete="off" autocapitalize="none" spellcheck="false">
+        <input id="answer" type="text" placeholder="Ваш ответ…" autocomplete="off" autocapitalize="none" spellcheck="false">
         <button class="btn" id="submit">Проверить</button>
-      </div>
-    `;
+      </div>`;
     const inp = document.getElementById("answer");
     inp.focus();
-
     const submit = async () => {
       const ans = inp.value.trim();
       if (!ans) return;
       try {
-        const r = await api("/api/training/input/answer", "POST", {
-          word_id: q.word_id, answer: ans,
-        });
+        const r = await api("/api/training/input/answer", "POST", { word_id: q.word_id, answer: ans });
         state.me.user.points = r.points;
         haptic(r.correct ? "success" : "error");
         renderInputResult(r, ans);
-      } catch (e) {
-        renderError(e.message);
-      }
+      } catch (e) { renderError(e.message); }
     };
-
     document.getElementById("submit").onclick = submit;
     inp.addEventListener("keypress", e => { if (e.key === "Enter") submit(); });
-  } catch (e) {
-    renderError(e.message);
-  }
+  } catch (e) { renderError(e.message); }
 }
 
 function renderInputResult(r, userAnswer) {
-  const resultHtml = r.correct
+  const html = r.correct
     ? `<div class="result-card correct center">
          <div class="big" style="color:#fff">✅ Правильно!</div>
          <p>${esc(r.word)} — ${esc(r.translation)}</p>
-         <p><b>+${r.delta} 💎</b> · всего: ${r.points}</p>
-       </div>`
+         <p><b>+${r.delta} 💎</b> · всего: ${r.points}</p></div>`
     : `<div class="result-card wrong center">
          <div class="big" style="color:#fff">❌ Неверно</div>
          <p>Твой ответ: <code>${esc(userAnswer)}</code></p>
          <p>Правильно: <b>${esc(r.word)}</b> — ${esc(r.translation)}</p>
-         <p><b>${r.delta} 💎</b> · всего: ${r.points}</p>
-       </div>`;
-
+         <p><b>${r.delta} 💎</b> · всего: ${r.points}</p></div>`;
   app.innerHTML = `
     <div class="screen">
       <h1>Введи слово</h1>
-      ${resultHtml}
+      ${html}
       <button class="btn" id="next">➡️ Следующее</button>
-    </div>
-  `;
+    </div>`;
   document.getElementById("next").onclick = () => { haptic(); renderInput(); };
 }
 
 // ---------- Профиль ----------
 
 async function renderProfile() {
-  hideMainButton();
   setBack(renderMenu);
   showLoading();
-
   try {
     state.me = await api("/api/me", "GET");
-    const u = state.me.user;
-    const s = state.me.stats;
+    const u = state.me.user, s = state.me.stats;
     app.innerHTML = `
       <div class="screen">
         <h1>📊 Профиль</h1>
@@ -390,11 +408,8 @@ async function renderProfile() {
           <div class="stat-row"><span>✅ Правильных ответов</span><b>${s.total_correct}</b></div>
           <div class="stat-row"><span>❌ Ошибок</span><b>${s.total_wrong}</b></div>
         </div>
-      </div>
-    `;
-  } catch (e) {
-    renderError(e.message);
-  }
+      </div>`;
+  } catch (e) { renderError(e.message); }
 }
 
 // ============================================================
@@ -409,10 +424,8 @@ async function start() {
   try {
     state.me = await api("/api/me", "GET");
     if (state.me.registered) renderMenu();
-    else                     renderRegistration();
-  } catch (e) {
-    renderError(e.message);
-  }
+    else renderRegistration();
+  } catch (e) { renderError(e.message); }
 }
 
 start();

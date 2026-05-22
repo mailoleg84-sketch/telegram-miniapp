@@ -1,0 +1,17 @@
+# Конфигурация для Render (Docker web service).
+# ВАЖНО: для уже созданного вручную сервиса источник правды — вкладка
+# Environment в дашборде Render. Здесь файл для документации.
+services:
+  - type: web
+    name: telegram-miniapp
+    runtime: docker
+    plan: free
+    envVars:
+      - key: BOT_TOKEN
+        sync: false        # токен от @BotFather
+      - key: WEBAPP_URL
+        sync: false        # https://<твой-сервис>.onrender.com
+      - key: ANTHROPIC_API_KEY
+        sync: false        # ключ sk-ant-... из console.anthropic.com
+      - key: DATABASE_URL
+        sync: false        # строка подключения Neon (postgresql://...?sslmode=require)

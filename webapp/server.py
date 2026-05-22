@@ -6,8 +6,16 @@ from pathlib import Path
 from aiohttp import web
 
 import database
-from config import AGE_GROUPS, POINTS_CORRECT, POINTS_WRONG, WEBAPP_HOST, WEBAPP_PORT
+from config import (
+    AGE_GROUPS,
+    CHAT_HISTORY_LIMIT,
+    POINTS_CORRECT,
+    POINTS_WRONG,
+    WEBAPP_HOST,
+    WEBAPP_PORT,
+)
 from webapp.auth import verify_init_data
+from webapp.claude_service import chat_reply
 
 log = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
@@ -52,7 +60,7 @@ async def _safe_json(request: web.Request) -> dict:
     return {}
 
 
-# ---------- API ----------
+# ---------- API: профиль и регистрация ----------
 
 async def api_me(request: web.Request):
     tg_user = request["tg_user"]
@@ -102,6 +110,8 @@ async def api_register(request: web.Request):
     await database.add_user(tg_user["id"], name, age_group)
     return web.json_response({"ok": True})
 
+
+# ---------- API: обучение ----------
 
 async def api_learn_next(request: web.Request):
     body = await _safe_json(request)
@@ -194,6 +204,46 @@ async def api_input_answer(request: web.Request):
     })
 
 
+# ---------- API: ИИ-репетитор ----------
+
+async def api_chat_history(request: web.Request):
+    user_id = request["tg_user"]["id"]
+    rows = await database.get_recent_messages(user_id, limit=CHAT_HISTORY_LIMIT * 2)
+    messages = [{"role": r["role"], "content": r["content"]} for r in rows]
+    return web.json_response({"messages": messages})
+
+
+async def api_chat_send(request: web.Request):
+    user_id = request["tg_user"]["id"]
+    body = await _safe_json(request)
+    text = (body.get("message") or "").strip()
+    if not text:
+        return web.json_response({"error": "empty message"}, status=400)
+    if len(text) > 1000:
+        text = text[:1000]
+
+    user = await database.get_user(user_id)
+    user_name = user["name"] if user else "друг"
+
+    # Сохраняем сообщение пользователя
+    await database.add_message(user_id, "user", text)
+
+    # Берём последние сообщения как контекст для модели
+    rows = await database.get_recent_messages(user_id, limit=CHAT_HISTORY_LIMIT)
+    history = [{"role": r["role"], "content": r["content"]} for r in rows]
+
+    reply = await chat_reply(history, user_name)
+
+    await database.add_message(user_id, "assistant", reply)
+    return web.json_response({"reply": reply})
+
+
+async def api_chat_reset(request: web.Request):
+    user_id = request["tg_user"]["id"]
+    await database.clear_conversation(user_id)
+    return web.json_response({"ok": True})
+
+
 # ---------- Static ----------
 
 async def index_handler(request: web.Request):
@@ -205,14 +255,17 @@ async def index_handler(request: web.Request):
 def create_app() -> web.Application:
     app = web.Application(middlewares=[auth_middleware])
 
-    app.router.add_get("/",       index_handler)
-    app.router.add_get("/api/me", api_me)
-    app.router.add_post("/api/register",              api_register)
-    app.router.add_post("/api/learn/next",            api_learn_next)
-    app.router.add_post("/api/training/choice/next",  api_choice_next)
+    app.router.add_get("/",        index_handler)
+    app.router.add_get("/api/me",  api_me)
+    app.router.add_post("/api/register",               api_register)
+    app.router.add_post("/api/learn/next",             api_learn_next)
+    app.router.add_post("/api/training/choice/next",   api_choice_next)
     app.router.add_post("/api/training/choice/answer", api_choice_answer)
-    app.router.add_post("/api/training/input/next",   api_input_next)
-    app.router.add_post("/api/training/input/answer", api_input_answer)
+    app.router.add_post("/api/training/input/next",    api_input_next)
+    app.router.add_post("/api/training/input/answer",  api_input_answer)
+    app.router.add_get("/api/chat/history",            api_chat_history)
+    app.router.add_post("/api/chat/send",              api_chat_send)
+    app.router.add_post("/api/chat/reset",             api_chat_reset)
     app.router.add_static("/static", STATIC_DIR)
 
     return app
