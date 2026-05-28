@@ -16,7 +16,7 @@ services:
       - key: OPENAI_MODEL
         value: gpt-5-nano  # можно заменить на gpt-5-mini для качества выше
       - key: AI_DAILY_MESSAGE_LIMIT
-        value: "20"
+        value: "0"         # 0 = без дневного лимита сообщений
       - key: OPENAI_INPUT_COST_PER_1M
         value: "0.05"      # USD за 1M input tokens для gpt-5-nano
       - key: OPENAI_OUTPUT_COST_PER_1M

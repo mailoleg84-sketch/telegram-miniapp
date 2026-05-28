@@ -8,7 +8,6 @@ from aiohttp import web
 import database
 from config import (
     AGE_GROUPS,
-    AI_DAILY_MESSAGE_LIMIT,
     APP_VERSION,
     CHAT_HISTORY_LIMIT,
     DAILY_LESSON_REWARD_POINTS,
@@ -71,12 +70,11 @@ async def _safe_json(request: web.Request) -> dict:
 
 def _chat_usage_payload(stats) -> dict:
     used = int(stats["requests"] if stats else 0)
-    limit = AI_DAILY_MESSAGE_LIMIT if AI_DAILY_MESSAGE_LIMIT > 0 else None
-    remaining = None if limit is None else max(0, limit - used)
     return {
         "used_today": used,
-        "daily_limit": limit,
-        "remaining_today": remaining,
+        "daily_limit": None,
+        "remaining_today": None,
+        "unlimited": True,
         "input_tokens_today": int(stats["input_tokens"] if stats else 0),
         "output_tokens_today": int(stats["output_tokens"] if stats else 0),
         "total_tokens_today": int(stats["total_tokens"] if stats else 0),
@@ -505,14 +503,6 @@ async def api_chat_send(request: web.Request):
         text = text[:1000]
 
     stats = await database.get_ai_usage_today(user_id)
-    if (
-        AI_DAILY_MESSAGE_LIMIT > 0
-        and int(stats["requests"] if stats else 0) >= AI_DAILY_MESSAGE_LIMIT
-    ):
-        return web.json_response({
-            "error": "Лимит сообщений репетитору на сегодня исчерпан. Попробуй завтра.",
-            "usage": _chat_usage_payload(stats),
-        }, status=429)
 
     user = await database.get_user(user_id)
     user_name = user["name"] if user else "друг"

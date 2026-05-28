@@ -342,7 +342,7 @@ async function renderChat() {
           <h2 style="margin:0">AI-репетитор</h2>
           <button class="chat-reset" id="reset">Очистить</button>
         </div>
-        <div class="chat-meta">Осталось сообщений сегодня: ${data.usage?.remaining_today ?? "∞"}</div>
+        <div class="chat-meta">Сообщений сегодня: ${data.usage?.used_today ?? 0} · без лимита</div>
         <div class="tutor-stage">
           <div class="tutor-face idle" id="tutorFace" aria-hidden="true">
             <div class="face-hair"></div>
