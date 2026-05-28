@@ -352,6 +352,13 @@ async function renderChat() {
             <div class="face-cheek right"></div>
             <div class="face-mouth"></div>
           </div>
+          <div class="voice-mode-panel">
+            <button class="voice-mode-toggle" id="voiceMode" type="button">
+              <span class="voice-mode-dot"></span>
+              <span id="voiceModeText">Говорить</span>
+            </button>
+            <div class="voice-mode-status" id="voiceStatus">Обычный режим</div>
+          </div>
         </div>
         <div class="chat-messages" id="messages"></div>
         <div class="chat-input-row">
@@ -365,6 +372,9 @@ async function renderChat() {
     const face = document.getElementById("tutorFace");
     const mic = document.getElementById("mic");
     const sendButton = document.getElementById("send");
+    const voiceModeButton = document.getElementById("voiceMode");
+    const voiceModeText = document.getElementById("voiceModeText");
+    const voiceStatus = document.getElementById("voiceStatus");
     let recorder = null;
     let audioChunks = [];
     let recordingStream = null;
@@ -372,6 +382,17 @@ async function renderChat() {
     let discardRecording = false;
     let tutorAudio = null;
     let tutorAudioUrl = "";
+    let voiceModeActive = false;
+    let autoRecording = false;
+    let skipUploadOnStop = false;
+    let voiceModeTimer = null;
+    let silenceFrame = 0;
+    let silenceTimeout = null;
+    let audioContext = null;
+    let analyser = null;
+    let heardVoice = false;
+    let recordingStartedAt = 0;
+    let lastVoiceAt = 0;
 
     function bubble(role, text) {
       const div = document.createElement("div");
@@ -394,6 +415,20 @@ async function renderChat() {
       return div;
     }
 
+    function updateVoiceModeUi(status = "") {
+      voiceModeButton.classList.toggle("active", voiceModeActive);
+      voiceModeText.textContent = voiceModeActive ? "Стоп" : "Говорить";
+      voiceStatus.textContent = status || (voiceModeActive ? "Слушаю..." : "Обычный режим");
+      if (!sending) mic.disabled = voiceModeActive;
+    }
+
+    function clearVoiceModeTimer() {
+      if (voiceModeTimer) {
+        clearTimeout(voiceModeTimer);
+        voiceModeTimer = null;
+      }
+    }
+
     function stopTutorSpeech() {
       window.speechSynthesis?.cancel?.();
       if (tutorAudio) {
@@ -408,14 +443,19 @@ async function renderChat() {
       }
     }
 
-    function speakTutorFallback(text) {
+    function finishTutorSpeech(onDone) {
+      setFace("idle");
+      if (typeof onDone === "function") onDone();
+    }
+
+    function speakTutorFallback(text, onDone = null) {
       if (!text || text.startsWith("Ошибка:")) {
-        setFace("idle");
+        finishTutorSpeech(onDone);
         return;
       }
       if (!("speechSynthesis" in window)) {
         setFace("speaking");
-        setTimeout(() => setFace("idle"), 1400);
+        setTimeout(() => finishTutorSpeech(onDone), 1400);
         return;
       }
       try {
@@ -426,17 +466,17 @@ async function renderChat() {
         utterance.rate = isRussian ? 0.95 : 0.86;
         utterance.pitch = 1.08;
         utterance.onstart = () => setFace("speaking");
-        utterance.onend = () => setFace("idle");
-        utterance.onerror = () => setFace("idle");
+        utterance.onend = () => finishTutorSpeech(onDone);
+        utterance.onerror = () => finishTutorSpeech(onDone);
         window.speechSynthesis.speak(utterance);
       } catch (_) {
-        setFace("idle");
+        finishTutorSpeech(onDone);
       }
     }
 
-    async function speakTutor(text) {
+    async function speakTutor(text, onDone = null) {
       if (!text || text.startsWith("Ошибка:")) {
-        setFace("idle");
+        finishTutorSpeech(onDone);
         return;
       }
       stopTutorSpeech();
@@ -448,16 +488,16 @@ async function renderChat() {
         tutorAudio.onplaying = () => setFace("speaking");
         tutorAudio.onended = () => {
           stopTutorSpeech();
-          setFace("idle");
+          finishTutorSpeech(onDone);
         };
         tutorAudio.onerror = () => {
           stopTutorSpeech();
-          speakTutorFallback(text);
+          speakTutorFallback(text, onDone);
         };
         await tutorAudio.play();
       } catch (_) {
         stopTutorSpeech();
-        speakTutorFallback(text);
+        speakTutorFallback(text, onDone);
       }
     }
 
@@ -466,13 +506,86 @@ async function renderChat() {
       return ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find(type => MediaRecorder.isTypeSupported(type)) || "";
     }
 
+    function stopSilenceMonitor() {
+      if (silenceFrame) {
+        cancelAnimationFrame(silenceFrame);
+        silenceFrame = 0;
+      }
+      if (silenceTimeout) {
+        clearTimeout(silenceTimeout);
+        silenceTimeout = null;
+      }
+      if (audioContext) {
+        audioContext.close().catch(() => {});
+        audioContext = null;
+      }
+      analyser = null;
+    }
+
+    function startSilenceMonitor(stream) {
+      stopSilenceMonitor();
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) {
+        recordingStartedAt = Date.now();
+        silenceTimeout = setTimeout(() => stopRecording(), 7000);
+        return;
+      }
+      audioContext = new AudioContextClass();
+      const source = audioContext.createMediaStreamSource(stream);
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 1024;
+      source.connect(analyser);
+      const samples = new Uint8Array(analyser.fftSize);
+      heardVoice = false;
+      recordingStartedAt = Date.now();
+      lastVoiceAt = 0;
+
+      function tick() {
+        if (!autoRecording || !recorder || recorder.state !== "recording" || !analyser) return;
+        analyser.getByteTimeDomainData(samples);
+        let sum = 0;
+        for (const sample of samples) {
+          const value = (sample - 128) / 128;
+          sum += value * value;
+        }
+        const volume = Math.sqrt(sum / samples.length);
+        const now = Date.now();
+        if (volume > 0.035) {
+          heardVoice = true;
+          lastVoiceAt = now;
+          updateVoiceModeUi("Говори...");
+        }
+        if (heardVoice && now - lastVoiceAt > 1300 && now - recordingStartedAt > 1800) {
+          stopRecording();
+          return;
+        }
+        if (!heardVoice && now - recordingStartedAt > 9000) {
+          skipUploadOnStop = true;
+          stopRecording();
+          scheduleVoiceListen(500);
+          return;
+        }
+        if (now - recordingStartedAt > 16000) {
+          stopRecording();
+          return;
+        }
+        silenceFrame = requestAnimationFrame(tick);
+      }
+
+      silenceFrame = requestAnimationFrame(tick);
+    }
+
     function stopTracks() {
       recordingStream?.getTracks().forEach(track => track.stop());
       recordingStream = null;
     }
 
     function cleanupChat() {
+      clearVoiceModeTimer();
+      voiceModeActive = false;
+      autoRecording = false;
       stopTutorSpeech();
+      stopSilenceMonitor();
       discardRecording = true;
       if (recorder && recorder.state !== "inactive") {
         recorder.onstop = null;
@@ -481,6 +594,7 @@ async function renderChat() {
       audioChunks = [];
       stopTracks();
       mic.classList.remove("recording");
+      voiceModeButton.classList.remove("active");
       setFace("idle");
     }
 
@@ -490,7 +604,7 @@ async function renderChat() {
       data.messages.forEach(m => bubble(m.role, m.content));
     }
 
-    async function send(textOverride) {
+    async function send(textOverride, options = {}) {
       const text = typeof textOverride === "string" ? textOverride.trim() : input.value.trim();
       if (!text) return;
       if (sending) return;
@@ -506,15 +620,16 @@ async function renderChat() {
         const reply = await api("/api/chat/send", "POST", { message: text });
         typing.remove();
         bubble("assistant", reply.reply);
-        speakTutor(reply.reply);
+        speakTutor(reply.reply, options.autoContinue ? () => scheduleVoiceListen(650) : null);
       } catch (e) {
         typing.remove();
         bubble("assistant", `Ошибка: ${e.message}`);
         setFace("idle");
+        if (options.autoContinue) scheduleVoiceListen(1500);
       } finally {
         sending = false;
         sendButton.disabled = false;
-        mic.disabled = false;
+        mic.disabled = voiceModeActive;
         input.focus();
       }
     }
@@ -527,43 +642,70 @@ async function renderChat() {
       return (result.text || "").trim();
     }
 
-    async function handleRecordingStop(mimeType) {
+    function scheduleVoiceListen(delay = 500) {
+      clearVoiceModeTimer();
+      if (!voiceModeActive) return;
+      updateVoiceModeUi("Слушаю...");
+      voiceModeTimer = setTimeout(() => {
+        if (!voiceModeActive || sending) return;
+        if (recorder && recorder.state === "recording") return;
+        startRecording(true);
+      }, delay);
+    }
+
+    async function handleRecordingStop(mimeType, wasAuto = false) {
+      stopSilenceMonitor();
+      autoRecording = false;
       stopTracks();
       mic.classList.remove("recording");
       mic.disabled = true;
       sendButton.disabled = true;
+      updateVoiceModeUi(wasAuto ? "Распознаю..." : "");
       setFace("thinking");
       try {
         const blob = new Blob(audioChunks, { type: mimeType || "audio/webm" });
         audioChunks = [];
         if (blob.size < 600) {
-          tg.showAlert("Голосовое сообщение слишком короткое");
+          if (!wasAuto) tg.showAlert("Голосовое сообщение слишком короткое");
           setFace("idle");
+          if (wasAuto) scheduleVoiceListen(700);
           return;
         }
         const text = await uploadVoice(blob);
         if (!text) {
-          tg.showAlert("Не удалось разобрать речь. Попробуй еще раз.");
+          if (!wasAuto) tg.showAlert("Не удалось разобрать речь. Попробуй еще раз.");
+          updateVoiceModeUi("Не расслышал");
           setFace("idle");
+          if (wasAuto) scheduleVoiceListen(900);
           return;
         }
-        await send(text);
+        updateVoiceModeUi("Отвечаю...");
+        await send(text, { autoContinue: wasAuto });
       } catch (e) {
-        tg.showAlert(e.message);
+        if (!wasAuto) tg.showAlert(e.message);
+        else updateVoiceModeUi("Ошибка голоса");
         setFace("idle");
+        if (wasAuto) scheduleVoiceListen(1500);
       } finally {
-        mic.disabled = false;
+        mic.disabled = voiceModeActive;
         if (!sending) sendButton.disabled = false;
       }
     }
 
-    async function startRecording() {
+    async function startRecording(auto = false) {
       if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
         tg.showAlert("Голосовой ввод не поддерживается на этом устройстве");
+        if (auto) {
+          voiceModeActive = false;
+          updateVoiceModeUi();
+        }
         return;
       }
+      if (recorder && recorder.state === "recording") return;
       try {
         audioChunks = [];
+        skipUploadOnStop = false;
+        autoRecording = auto;
         recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const mimeType = preferredMimeType();
         recorder = mimeType
@@ -579,34 +721,85 @@ async function renderChat() {
             stopTracks();
             return;
           }
-          handleRecordingStop(recorder?.mimeType || mimeType);
+          if (skipUploadOnStop) {
+            skipUploadOnStop = false;
+            autoRecording = false;
+            audioChunks = [];
+            stopSilenceMonitor();
+            stopTracks();
+            mic.classList.remove("recording");
+            setFace("idle");
+            return;
+          }
+          handleRecordingStop(recorder?.mimeType || mimeType, auto);
         };
-        recorder.start();
+        recorder.start(250);
         mic.classList.add("recording");
         sendButton.disabled = true;
         setFace("listening");
+        if (auto) {
+          updateVoiceModeUi("Слушаю...");
+          startSilenceMonitor(recordingStream);
+        }
         haptic();
       } catch (e) {
         stopTracks();
         tg.showAlert(`Не удалось включить микрофон: ${e.message}`);
+        if (auto) {
+          voiceModeActive = false;
+          updateVoiceModeUi();
+        }
         setFace("idle");
       }
     }
 
     function stopRecording() {
       if (!recorder || recorder.state === "inactive") return;
+      stopSilenceMonitor();
       recorder.stop();
       sendButton.disabled = false;
       haptic("success");
     }
 
     function toggleRecording() {
-      if (sending) return;
+      if (sending || voiceModeActive) return;
       if (recorder && recorder.state === "recording") stopRecording();
       else startRecording();
     }
 
+    async function startVoiceMode() {
+      if (voiceModeActive || sending) return;
+      stopTutorSpeech();
+      clearVoiceModeTimer();
+      voiceModeActive = true;
+      updateVoiceModeUi("Слушаю...");
+      haptic();
+      await startRecording(true);
+    }
+
+    function stopVoiceMode() {
+      clearVoiceModeTimer();
+      voiceModeActive = false;
+      autoRecording = false;
+      skipUploadOnStop = true;
+      updateVoiceModeUi("Обычный режим");
+      if (recorder && recorder.state === "recording") {
+        stopRecording();
+      } else {
+        stopSilenceMonitor();
+        stopTracks();
+        setFace("idle");
+      }
+      haptic("success");
+    }
+
+    function toggleVoiceMode() {
+      if (voiceModeActive) stopVoiceMode();
+      else startVoiceMode();
+    }
+
     mic.onclick = toggleRecording;
+    voiceModeButton.onclick = toggleVoiceMode;
     sendButton.onclick = send;
     input.addEventListener("keypress", e => { if (e.key === "Enter") send(); });
     setBack(() => {

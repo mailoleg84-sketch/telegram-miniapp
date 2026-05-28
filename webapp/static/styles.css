@@ -334,7 +334,56 @@ code {
   min-height: 86px;
   display: grid;
   place-items: center;
+  gap: 8px;
   padding: 2px 0 10px;
+}
+
+.voice-mode-panel {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+
+.voice-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 7px 13px;
+  border: 1px solid var(--secondary-bg);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.voice-mode-toggle.active {
+  border-color: var(--red);
+  background: var(--red);
+  color: #fff;
+}
+
+.voice-mode-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--button);
+  box-shadow: 0 0 0 4px rgba(36, 129, 204, 0.12);
+}
+
+.voice-mode-toggle.active .voice-mode-dot {
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.22);
+  animation: voicePulse 1s ease-in-out infinite;
+}
+
+.voice-mode-status {
+  min-height: 16px;
+  color: var(--hint);
+  font-size: 12px;
 }
 
 .tutor-face {
@@ -438,6 +487,10 @@ code {
 @keyframes talk {
   from { transform: translateX(-50%) scaleY(0.55); }
   to { transform: translateX(-50%) scaleY(1.1); }
+}
+@keyframes voicePulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.3); }
 }
 
 .chat-mic,
