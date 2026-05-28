@@ -7,15 +7,18 @@ from aiogram.types import KeyboardButton, Message, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 
 from config import APP_VERSION, WEBAPP_URL
+from webapp.auth import make_fallback_auth_params
 from webapp.openai_service import openai_config_status, test_openai_connection
 
 router = Router()
 
 
-def _webapp_url() -> str:
+def _webapp_url(user=None) -> str:
     parts = urlsplit(WEBAPP_URL)
     query = dict(parse_qsl(parts.query, keep_blank_values=True))
     query["v"] = APP_VERSION
+    if user:
+        query.update(make_fallback_auth_params(user.id, user.first_name or ""))
     return urlunsplit((
         parts.scheme,
         parts.netloc,
@@ -25,18 +28,18 @@ def _webapp_url() -> str:
     ))
 
 
-def _webapp_reply_kb():
+def _webapp_reply_kb(user=None):
     builder = ReplyKeyboardBuilder()
     builder.add(KeyboardButton(
         text="📱 Открыть приложение",
-        web_app=WebAppInfo(url=_webapp_url()),
+        web_app=WebAppInfo(url=_webapp_url(user)),
     ))
     return builder.as_markup(resize_keyboard=True)
 
 
-def _webapp_inline_kb():
+def _webapp_inline_kb(user=None):
     builder = InlineKeyboardBuilder()
-    builder.button(text="📱 Открыть приложение", web_app=WebAppInfo(url=_webapp_url()))
+    builder.button(text="📱 Открыть приложение", web_app=WebAppInfo(url=_webapp_url(user)))
     return builder.as_markup()
 
 
@@ -45,17 +48,17 @@ async def start_handler(message: Message) -> None:
     await message.answer(
         "👋 Привет! Я бот для изучения английского языка.\n\n"
         "Нажми кнопку ниже, чтобы открыть приложение 👇",
-        reply_markup=_webapp_reply_kb(),
+        reply_markup=_webapp_reply_kb(message.from_user),
     )
     await message.answer(
         "Или открой прямо отсюда:",
-        reply_markup=_webapp_inline_kb(),
+        reply_markup=_webapp_inline_kb(message.from_user),
     )
 
 
 @router.message(Command("app"))
 async def app_handler(message: Message) -> None:
-    await message.answer("Открой приложение:", reply_markup=_webapp_inline_kb())
+    await message.answer("Открой приложение:", reply_markup=_webapp_inline_kb(message.from_user))
 
 
 @router.message(Command("version"))
@@ -64,7 +67,7 @@ async def version_handler(message: Message) -> None:
         "Версия Mini App:\n"
         f"{APP_VERSION}\n\n"
         "URL кнопки:\n"
-        f"{_webapp_url()}"
+        f"{_webapp_url(message.from_user)}"
     )
 
 
@@ -74,7 +77,7 @@ async def diag_handler(message: Message) -> None:
     await message.answer(
         "Диагностика:\n"
         f"APP_VERSION: {APP_VERSION}\n"
-        f"WEBAPP_URL: {_webapp_url()}\n"
+        f"WEBAPP_URL: {_webapp_url(message.from_user)}\n"
         f"OPENAI configured: {openai['configured']}\n"
         f"OPENAI key length: {openai['length']}\n"
         f"OPENAI key prefix: {openai['prefix']}\n"

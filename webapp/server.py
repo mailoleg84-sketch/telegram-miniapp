@@ -20,7 +20,7 @@ from config import (
     WEBAPP_HOST,
     WEBAPP_PORT,
 )
-from webapp.auth import verify_init_data
+from webapp.auth import verify_fallback_auth, verify_init_data
 from webapp.openai_service import chat_reply, synthesize_speech, transcribe_audio
 
 log = logging.getLogger(__name__)
@@ -38,6 +38,8 @@ async def auth_middleware(request: web.Request, handler):
 
     init_data = request.headers.get("X-Telegram-Init-Data", "")
     parsed = verify_init_data(init_data)
+    if not parsed:
+        parsed = verify_fallback_auth(request.headers.get("X-App-Fallback-Auth", ""))
     if not parsed or "user" not in parsed:
         return web.json_response({"error": "unauthorized"}, status=401)
 

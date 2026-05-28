@@ -16,14 +16,21 @@ tg.expand();
 
 const app = document.getElementById("app");
 const state = { me: null, back: null, vocab: null, quiz: null, answers: [] };
+const fallbackAuth = window.location.search || "";
+
+function authHeaders(contentType = "application/json") {
+  const headers = {
+    "X-Telegram-Init-Data": tg.initData || "",
+    "X-App-Fallback-Auth": fallbackAuth,
+  };
+  if (contentType) headers["Content-Type"] = contentType;
+  return headers;
+}
 
 async function api(path, method = "POST", body = null) {
   const res = await fetch(path, {
     method,
-    headers: {
-      "Content-Type": "application/json",
-      "X-Telegram-Init-Data": tg.initData || "",
-    },
+    headers: authHeaders(),
     body: method === "GET" ? undefined : JSON.stringify(body || {}),
   });
   if (!res.ok) {
@@ -36,9 +43,7 @@ async function api(path, method = "POST", body = null) {
 async function apiForm(path, formData) {
   const res = await fetch(path, {
     method: "POST",
-    headers: {
-      "X-Telegram-Init-Data": tg.initData || "",
-    },
+    headers: authHeaders(null),
     body: formData,
   });
   if (!res.ok) {
@@ -51,10 +56,7 @@ async function apiForm(path, formData) {
 async function apiBlob(path, body) {
   const res = await fetch(path, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Telegram-Init-Data": tg.initData || "",
-    },
+    headers: authHeaders(),
     body: JSON.stringify(body || {}),
   });
   if (!res.ok) {
@@ -872,12 +874,13 @@ async function renderProfile() {
 }
 
 async function start() {
-  if (!tg.initData) {
+  const hasFallbackAuth = /[?&]fa_hash=/.test(fallbackAuth);
+  if (!tg.initData && !hasFallbackAuth) {
     app.innerHTML = `
       <div class="screen">
         <h1>AI English Tutor Kids</h1>
         <div class="card">
-          <p class="hint">Откройте Mini App через Telegram-бота. В браузере доступен только просмотр интерфейса.</p>
+          <p class="hint">Откройте приложение через новую кнопку в Telegram-боте. Если эта страница открылась из старой кнопки, отправьте боту /start и нажмите новую кнопку.</p>
         </div>
       </div>`;
     return;
