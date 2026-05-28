@@ -1,5 +1,24 @@
 """Конфигурация бота и Mini App."""
 import os
+from pathlib import Path
+
+
+def _load_local_env() -> None:
+    env_path = Path(__file__).with_name(".env")
+    if not env_path.exists():
+        return
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+_load_local_env()
 
 # --- Telegram бот ---
 BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
@@ -10,26 +29,47 @@ DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 # --- Mini App (Telegram WebApp) ---
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://your-domain.example.com")
+APP_VERSION = os.getenv("APP_VERSION", "20260528-kids-v1")
 
 WEBAPP_HOST = os.getenv("WEBAPP_HOST", "0.0.0.0")
 # Render задаёт порт через переменную PORT — читаем её, иначе 8080.
 WEBAPP_PORT = int(os.getenv("PORT", os.getenv("WEBAPP_PORT", "8080")))
 
-# --- Claude (Anthropic API) ---
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
-CHAT_HISTORY_LIMIT = 12
-CHAT_MAX_TOKENS = 500
+# --- OpenAI API ---
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5-nano")
+OPENAI_REASONING_EFFORT = os.getenv("OPENAI_REASONING_EFFORT", "low")
+CHAT_HISTORY_LIMIT = int(os.getenv("CHAT_HISTORY_LIMIT", "8"))
+CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "300"))
+AI_DAILY_MESSAGE_LIMIT = int(os.getenv("AI_DAILY_MESSAGE_LIMIT", "20"))
+OPENAI_INPUT_COST_PER_1M = float(os.getenv("OPENAI_INPUT_COST_PER_1M", "0.05"))
+OPENAI_OUTPUT_COST_PER_1M = float(os.getenv("OPENAI_OUTPUT_COST_PER_1M", "0.40"))
 
 # --- Геймификация ---
 POINTS_CORRECT = 10
 POINTS_WRONG = -3
+DAILY_LESSON_REWARD_POINTS = int(os.getenv("DAILY_LESSON_REWARD_POINTS", "25"))
+DAILY_LESSON_STEPS = 4
 
-# --- Возрастные группы при регистрации ---
+# --- Возрастные группы детей ---
 AGE_GROUPS = [
-    ("👶 До 12",  "under_12"),
-    ("🧒 13–17",  "13_17"),
-    ("🧑 18–25",  "18_25"),
-    ("👨 26–40",  "26_40"),
-    ("👴 40+",    "over_40"),
+    ("5-7 лет", "5_7"),
+    ("8-10 лет", "8_10"),
+    ("11-13 лет", "11_13"),
+    ("14-18 лет", "14_18"),
 ]
+
+LEARNING_GOALS = [
+    ("Первый английский", "first_steps"),
+    ("Школьная программа", "school"),
+    ("Разговорная практика", "speaking"),
+    ("Путешествия", "travel"),
+    ("Экзамены", "exams"),
+]
+
+WORDS_PER_AGE_GROUP = {
+    "5_7": 4,
+    "8_10": 6,
+    "11_13": 8,
+    "14_18": 10,
+}

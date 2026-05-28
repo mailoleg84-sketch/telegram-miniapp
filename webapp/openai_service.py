@@ -1,0 +1,131 @@
+"""Обёртка над OpenAI API: ИИ-репетитор английского."""
+from dataclasses import dataclass
+import logging
+
+from openai import AsyncOpenAI, RateLimitError
+
+from config import (
+    CHAT_MAX_TOKENS,
+    OPENAI_INPUT_COST_PER_1M,
+    OPENAI_API_KEY,
+    OPENAI_MODEL,
+    OPENAI_OUTPUT_COST_PER_1M,
+    OPENAI_REASONING_EFFORT,
+)
+
+log = logging.getLogger(__name__)
+
+_client: AsyncOpenAI | None = None
+if OPENAI_API_KEY:
+    _client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+else:
+    log.warning("OPENAI_API_KEY не задан — режим репетитора работать не будет.")
+
+
+SYSTEM_PROMPT = """Ты — дружелюбный и терпеливый AI-репетитор английского языка для русскоязычного ребенка по имени {name}.
+
+Возрастная группа ученика: {age_label}.
+
+Правила:
+- Веди живой разговор на английском.
+- Отвечай коротко: 2–4 предложения.
+- Подстраивай сложность, тон и темы под возраст.
+- Для детей 5–10 лет используй очень простые слова, игровые примеры и мягкий тон.
+- Для подростков 14–18 лет можно говорить чуть взрослее, но без неподходящих тем.
+- Если есть заметная ошибка, мягко исправь и кратко объясни по-русски.
+- Если ученик пишет по-русски, помоги сказать это по-английски.
+- Иногда задавай простой вопрос, чтобы продолжить разговор.
+- Не обсуждай взрослые, опасные или неподходящие для детей темы.
+
+Отвечай обычным текстом, без markdown-разметки и без списков."""
+
+
+@dataclass(frozen=True)
+class ChatReply:
+    text: str
+    model: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    cost_usd: float = 0.0
+
+
+def _supports_reasoning(model: str) -> bool:
+    return model.startswith(("gpt-5", "o1", "o3", "o4"))
+
+
+def _usage_int(usage, field: str) -> int:
+    if usage is None:
+        return 0
+    value = getattr(usage, field, None)
+    if value is None and isinstance(usage, dict):
+        value = usage.get(field)
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _estimate_cost(input_tokens: int, output_tokens: int) -> float:
+    input_cost = input_tokens * OPENAI_INPUT_COST_PER_1M / 1_000_000
+    output_cost = output_tokens * OPENAI_OUTPUT_COST_PER_1M / 1_000_000
+    return round(input_cost + output_cost, 6)
+
+
+async def chat_reply(history: list[dict], user_name: str, age_label: str = "") -> ChatReply:
+    """
+    history: список сообщений вида [{"role": "user"/"assistant", "content": "..."}].
+    Возвращает текст ответа репетитора.
+    """
+    if _client is None:
+        return ChatReply(
+            text=("⚠️ Репетитор пока не настроен: не задан ключ OPENAI_API_KEY. "
+                  "Добавь его в переменные окружения на Render."),
+            model=OPENAI_MODEL,
+        )
+
+    try:
+        request = {
+            "model": OPENAI_MODEL,
+            "instructions": SYSTEM_PROMPT.format(
+                name=user_name or "друг",
+                age_label=age_label or "не указана",
+            ),
+            "input": history,
+            "max_output_tokens": CHAT_MAX_TOKENS,
+        }
+        if OPENAI_REASONING_EFFORT and _supports_reasoning(OPENAI_MODEL):
+            request["reasoning"] = {"effort": OPENAI_REASONING_EFFORT}
+
+        response = await _client.responses.create(**request)
+        usage = getattr(response, "usage", None)
+        input_tokens = _usage_int(usage, "input_tokens")
+        output_tokens = _usage_int(usage, "output_tokens")
+        total_tokens = _usage_int(usage, "total_tokens") or input_tokens + output_tokens
+
+        return ChatReply(
+            text=(response.output_text or "").strip() or "…",
+            model=OPENAI_MODEL,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=total_tokens,
+            cost_usd=_estimate_cost(input_tokens, output_tokens),
+        )
+    except RateLimitError as e:
+        log.warning("OpenAI rate/quota limit: %s", e)
+        message = str(e)
+        if "insufficient_quota" in message:
+            text = ("⚠️ У OpenAI закончилась квота или не включена оплата. "
+                    "Проверь billing и limits в кабинете OpenAI.")
+        else:
+            text = "⚠️ OpenAI временно ограничил запросы. Попробуй позже."
+        return ChatReply(
+            text=text,
+            model=OPENAI_MODEL,
+        )
+    except Exception as e:
+        log.exception("Ошибка обращения к OpenAI")
+        return ChatReply(
+            text=f"⚠️ Не удалось получить ответ от репетитора: {e}",
+            model=OPENAI_MODEL,
+        )

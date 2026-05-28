@@ -11,7 +11,17 @@ services:
         sync: false        # токен от @BotFather
       - key: WEBAPP_URL
         sync: false        # https://<твой-сервис>.onrender.com
-      - key: ANTHROPIC_API_KEY
-        sync: false        # ключ sk-ant-... из console.anthropic.com
+      - key: OPENAI_API_KEY
+        sync: false        # ключ OpenAI API из platform.openai.com
+      - key: OPENAI_MODEL
+        value: gpt-5-nano  # можно заменить на gpt-5-mini для качества выше
+      - key: AI_DAILY_MESSAGE_LIMIT
+        value: "20"
+      - key: OPENAI_INPUT_COST_PER_1M
+        value: "0.05"      # USD за 1M input tokens для gpt-5-nano
+      - key: OPENAI_OUTPUT_COST_PER_1M
+        value: "0.40"      # USD за 1M output tokens для gpt-5-nano
+      - key: DAILY_LESSON_REWARD_POINTS
+        value: "25"
       - key: DATABASE_URL
         sync: false        # строка подключения Neon (postgresql://...?sslmode=require)
