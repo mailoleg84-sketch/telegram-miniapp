@@ -144,3 +144,27 @@ async def chat_reply(history: list[dict], user_name: str, age_label: str = "") -
             text=f"⚠️ Не удалось получить ответ от репетитора: {e}",
             model=OPENAI_MODEL,
         )
+
+
+async def test_openai_connection() -> dict:
+    """Checks the key from the running environment without exposing it."""
+    if _client is None:
+        return {
+            "ok": False,
+            "error": "OPENAI_API_KEY is not configured",
+            "model": OPENAI_MODEL,
+        }
+    try:
+        models = await _client.models.list()
+        first_ids = [item.id for item in list(models.data)[:3]]
+        return {
+            "ok": True,
+            "model": OPENAI_MODEL,
+            "sample_models": first_ids,
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "model": OPENAI_MODEL,
+            "error": str(e)[:500],
+        }

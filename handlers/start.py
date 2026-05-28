@@ -7,7 +7,7 @@ from aiogram.types import KeyboardButton, Message, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 
 from config import APP_VERSION, WEBAPP_URL
-from webapp.openai_service import openai_config_status
+from webapp.openai_service import openai_config_status, test_openai_connection
 
 router = Router()
 
@@ -79,6 +79,24 @@ async def diag_handler(message: Message) -> None:
         f"OPENAI key length: {openai['length']}\n"
         f"OPENAI key prefix: {openai['prefix']}\n"
         f"OPENAI model: {openai['model']}"
+    )
+
+
+@router.message(Command("openai_test"))
+async def openai_test_handler(message: Message) -> None:
+    result = await test_openai_connection()
+    if result["ok"]:
+        await message.answer(
+            "OpenAI test: OK\n"
+            f"Model setting: {result['model']}\n"
+            "Sample models:\n"
+            + "\n".join(result["sample_models"])
+        )
+        return
+    await message.answer(
+        "OpenAI test: FAILED\n"
+        f"Model setting: {result['model']}\n"
+        f"Error: {result['error']}"
     )
 
 
