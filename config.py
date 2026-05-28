@@ -27,6 +27,9 @@ def _env(name: str, default: str = "") -> str:
 
 # --- Telegram бот ---
 BOT_TOKEN = _env("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+BOT_RUN_MODE = _env("BOT_RUN_MODE", "webhook" if (os.getenv("RENDER") or os.getenv("PORT")) else "polling")
+WEBHOOK_PATH = _env("WEBHOOK_PATH", "/telegram/webhook")
+TELEGRAM_WEBHOOK_SECRET = _env("TELEGRAM_WEBHOOK_SECRET", "")
 
 # --- База данных (PostgreSQL / Neon) ---
 # Строка подключения вида: postgresql://user:pass@host/dbname?sslmode=require
@@ -34,7 +37,7 @@ DATABASE_URL = _env("DATABASE_URL", "")
 
 # --- Mini App (Telegram WebApp) ---
 WEBAPP_URL = _env("WEBAPP_URL", "https://telegram-miniapp-1-r0sj.onrender.com")
-APP_VERSION = _env("APP_VERSION", "20260528-kids-v5")
+APP_VERSION = _env("APP_VERSION", "20260528-kids-v6")
 
 WEBAPP_HOST = os.getenv("WEBAPP_HOST", "0.0.0.0")
 # Render задаёт порт через переменную PORT — читаем её, иначе 8080.

@@ -4,6 +4,7 @@ import random
 from pathlib import Path
 
 from aiohttp import web
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
 import database
 from config import (
@@ -619,7 +620,12 @@ async def index_handler(request: web.Request):
 
 # ---------- App factory ----------
 
-def create_app() -> web.Application:
+def create_app(
+    bot=None,
+    dispatcher=None,
+    webhook_path: str | None = None,
+    webhook_secret: str | None = None,
+) -> web.Application:
     app = web.Application(middlewares=[auth_middleware], client_max_size=MAX_AUDIO_BYTES + 1024 * 1024)
 
     app.router.add_get("/",        index_handler)
@@ -642,14 +648,33 @@ def create_app() -> web.Application:
     app.router.add_post("/api/audio/transcribe",       api_audio_transcribe)
     app.router.add_post("/api/audio/speech",           api_audio_speech)
     app.router.add_post("/api/chat/reset",             api_chat_reset)
+
+    if bot is not None and dispatcher is not None and webhook_path:
+        SimpleRequestHandler(
+            dispatcher=dispatcher,
+            bot=bot,
+            secret_token=webhook_secret or None,
+        ).register(app, path=webhook_path)
+        setup_application(app, dispatcher, bot=bot)
+
     app.router.add_static("/static", STATIC_DIR)
 
     return app
 
 
-async def run_webapp() -> web.AppRunner:
+async def run_webapp(
+    bot=None,
+    dispatcher=None,
+    webhook_path: str | None = None,
+    webhook_secret: str | None = None,
+) -> web.AppRunner:
     """Запускает aiohttp в текущем event loop. Возвращает runner для cleanup."""
-    app = create_app()
+    app = create_app(
+        bot=bot,
+        dispatcher=dispatcher,
+        webhook_path=webhook_path,
+        webhook_secret=webhook_secret,
+    )
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, WEBAPP_HOST, WEBAPP_PORT)

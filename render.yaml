@@ -11,6 +11,8 @@ services:
         sync: false        # токен от @BotFather
       - key: WEBAPP_URL
         sync: false        # https://<твой-сервис>.onrender.com
+      - key: BOT_RUN_MODE
+        value: webhook     # на Render команды /start приходят через webhook
       - key: OPENAI_API_KEY
         sync: false        # ключ OpenAI API из platform.openai.com
       - key: OPENAI_MODEL
