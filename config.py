@@ -29,7 +29,7 @@ DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 # --- Mini App (Telegram WebApp) ---
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://your-domain.example.com")
-APP_VERSION = os.getenv("APP_VERSION", "20260528-kids-v1")
+APP_VERSION = os.getenv("APP_VERSION", "20260528-kids-v2")
 
 WEBAPP_HOST = os.getenv("WEBAPP_HOST", "0.0.0.0")
 # Render задаёт порт через переменную PORT — читаем её, иначе 8080.

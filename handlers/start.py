@@ -1,26 +1,41 @@
 """Бот сводится к одному действию — открыть Mini App."""
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
 from aiogram import Router
 from aiogram.filters import Command, CommandStart
 from aiogram.types import KeyboardButton, Message, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 
-from config import WEBAPP_URL
+from config import APP_VERSION, WEBAPP_URL
 
 router = Router()
+
+
+def _webapp_url() -> str:
+    parts = urlsplit(WEBAPP_URL)
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    query["v"] = APP_VERSION
+    return urlunsplit((
+        parts.scheme,
+        parts.netloc,
+        parts.path,
+        urlencode(query),
+        parts.fragment,
+    ))
 
 
 def _webapp_reply_kb():
     builder = ReplyKeyboardBuilder()
     builder.add(KeyboardButton(
         text="📱 Открыть приложение",
-        web_app=WebAppInfo(url=WEBAPP_URL),
+        web_app=WebAppInfo(url=_webapp_url()),
     ))
     return builder.as_markup(resize_keyboard=True)
 
 
 def _webapp_inline_kb():
     builder = InlineKeyboardBuilder()
-    builder.button(text="📱 Открыть приложение", web_app=WebAppInfo(url=WEBAPP_URL))
+    builder.button(text="📱 Открыть приложение", web_app=WebAppInfo(url=_webapp_url()))
     return builder.as_markup()
 
 
