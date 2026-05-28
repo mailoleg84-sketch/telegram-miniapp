@@ -27,6 +27,16 @@ else:
     log.warning("OPENAI_API_KEY не задан — режим репетитора работать не будет.")
 
 
+def openai_config_status() -> dict:
+    """Safe diagnostics without exposing the secret."""
+    return {
+        "configured": bool(OPENAI_API_KEY),
+        "length": len(OPENAI_API_KEY),
+        "prefix": OPENAI_API_KEY[:8] if OPENAI_API_KEY else "",
+        "model": OPENAI_MODEL,
+    }
+
+
 SYSTEM_PROMPT = """Ты — дружелюбный и терпеливый AI-репетитор английского языка для русскоязычного ребенка по имени {name}.
 
 Возрастная группа ученика: {age_label}.

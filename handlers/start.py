@@ -7,6 +7,7 @@ from aiogram.types import KeyboardButton, Message, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 
 from config import APP_VERSION, WEBAPP_URL
+from webapp.openai_service import openai_config_status
 
 router = Router()
 
@@ -64,6 +65,20 @@ async def version_handler(message: Message) -> None:
         f"{APP_VERSION}\n\n"
         "URL кнопки:\n"
         f"{_webapp_url()}"
+    )
+
+
+@router.message(Command("diag"))
+async def diag_handler(message: Message) -> None:
+    openai = openai_config_status()
+    await message.answer(
+        "Диагностика:\n"
+        f"APP_VERSION: {APP_VERSION}\n"
+        f"WEBAPP_URL: {_webapp_url()}\n"
+        f"OPENAI configured: {openai['configured']}\n"
+        f"OPENAI key length: {openai['length']}\n"
+        f"OPENAI key prefix: {openai['prefix']}\n"
+        f"OPENAI model: {openai['model']}"
     )
 
 
