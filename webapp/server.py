@@ -301,11 +301,14 @@ async def api_vocab_start(request: web.Request):
     count = WORDS_PER_AGE_GROUP.get(age_group, 6)
     words = await database.get_words_for_age(age_group, count=count, topic=topic)
     if not words:
-        return web.json_response({"error": "Нет слов для этой возрастной группы"}, status=500)
+        log.error("No vocabulary words available for user=%s age_group=%s", user_id, age_group)
+        return web.json_response({
+            "error": "Пока не удалось загрузить слова. Попробуй открыть профиль и проверить возраст ребенка.",
+        }, status=500)
 
     session = await database.create_vocabulary_session(
         user_id=user_id,
-        age_group=age_group,
+        age_group=age_group if age_group in WORDS_PER_AGE_GROUP else "8_10",
         topic=topic,
         word_ids=[w["id"] for w in words],
     )

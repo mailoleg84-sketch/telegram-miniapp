@@ -307,6 +307,14 @@ async function finishVocabQuiz() {
   }
 }
 
+async function updateDailyProgress(completedSteps) {
+  const status = await api("/api/daily/progress", "POST", { completed_steps: completedSteps });
+  if (state.me?.user && typeof status.points === "number") {
+    state.me.user.points = status.points;
+  }
+  return status;
+}
+
 async function renderDailyLesson() {
   setBack(renderMenu);
   loading();
@@ -328,7 +336,167 @@ async function renderDailyLesson() {
         </div>
         <button class="btn" id="dailyStart">${status.completed ? "Потренироваться еще" : "Начать с новых слов"}</button>
       </div>`;
-    document.getElementById("dailyStart").onclick = () => renderVocabStart();
+    document.getElementById("dailyStart").onclick = () => { haptic(); renderDailyWords(); };
+  } catch (e) {
+    renderError(e.message);
+  }
+}
+
+async function renderDailyWords() {
+  setBack(renderDailyLesson);
+  loading();
+  try {
+    const data = await api("/api/vocab/start", "POST", {});
+    state.dailyVocab = data;
+    state.dailyQuiz = null;
+    state.dailyAnswers = [];
+    const words = data.words.slice(0, Math.min(4, data.words.length));
+    app.innerHTML = `
+      <div class="screen">
+        <h1>Урок: новые слова</h1>
+        <div class="card">
+          <div class="daily-badge">Шаг 1 из 4</div>
+          <p class="hint mt-12">Посмотри слова. Потом будет короткий тест и одна фраза для практики.</p>
+        </div>
+        ${words.map((w, index) => `
+          <div class="card word-card">
+            <div class="daily-badge">Слово ${index + 1}</div>
+            <div class="big mt-12">${esc(w.word)}</div>
+            <div class="big-sub">${esc(w.translation)}</div>
+            <p class="hint mt-12">${esc(w.example)}</p>
+          </div>
+        `).join("")}
+        <button class="btn" id="dailyWordsDone">Я запомнил слова</button>
+      </div>`;
+    document.getElementById("dailyWordsDone").onclick = async () => {
+      haptic("success");
+      loading();
+      try {
+        await updateDailyProgress(1);
+        renderDailyQuiz();
+      } catch (e) {
+        renderError(e.message);
+      }
+    };
+  } catch (e) {
+    renderError(e.message);
+  }
+}
+
+async function renderDailyQuiz() {
+  setBack(renderDailyWords);
+  loading();
+  try {
+    state.dailyQuiz = await api("/api/vocab/quiz", "POST", { session_id: state.dailyVocab.session_id });
+    state.dailyQuiz.questions = state.dailyQuiz.questions.slice(0, Math.min(3, state.dailyQuiz.questions.length));
+    state.dailyAnswers = [];
+    renderDailyQuizQuestion(0);
+  } catch (e) {
+    renderError(e.message);
+  }
+}
+
+function renderDailyQuizQuestion(index) {
+  const q = state.dailyQuiz.questions[index];
+  if (!q) return finishDailyQuiz();
+  app.innerHTML = `
+    <div class="screen">
+      <h1>Урок: мини-тест</h1>
+      <div class="card center">
+        <div class="daily-badge">Шаг 2 из 4 · ${index + 1}/${state.dailyQuiz.questions.length}</div>
+        <div class="big mt-12">${esc(q.word)}</div>
+        <p class="hint mt-12">Выбери перевод</p>
+      </div>
+      ${q.options.map(o => `
+        <button class="btn btn-secondary daily-answer" data-id="${o.id}">${esc(o.translation)}</button>
+      `).join("")}
+    </div>`;
+
+  document.querySelectorAll(".daily-answer").forEach(btn => {
+    btn.onclick = () => {
+      const selectedId = Number(btn.dataset.id);
+      state.dailyAnswers.push({ word_id: q.word_id, selected_id: selectedId });
+      document.querySelectorAll(".daily-answer").forEach(item => item.disabled = true);
+      btn.classList.remove("btn-secondary");
+      btn.classList.add(selectedId === q.word_id ? "btn-correct" : "btn-wrong");
+      haptic(selectedId === q.word_id ? "success" : "error");
+      setTimeout(() => renderDailyQuizQuestion(index + 1), 650);
+    };
+  });
+}
+
+async function finishDailyQuiz() {
+  loading();
+  try {
+    state.dailyResult = await api("/api/vocab/finish", "POST", {
+      session_id: state.dailyVocab.session_id,
+      answers: state.dailyAnswers,
+    });
+    if (state.me?.user) state.me.user.points = state.dailyResult.points;
+    await updateDailyProgress(2);
+    renderDailyPhrase();
+  } catch (e) {
+    renderError(e.message);
+  }
+}
+
+function normalizePhrase(value) {
+  return String(value || "").trim().toLowerCase().replace(/[.!?]+$/g, "");
+}
+
+function renderDailyPhrase() {
+  setBack(renderDailyLesson);
+  const firstWord = state.dailyVocab?.words?.[0]?.word || "English";
+  const phrase = `I like ${firstWord}.`;
+  app.innerHTML = `
+    <div class="screen">
+      <h1>Урок: фраза</h1>
+      <div class="card">
+        <div class="daily-badge">Шаг 3 из 4</div>
+        <p class="hint mt-12">Напиши эту фразу по-английски. Можно без точки.</p>
+        <div class="big-sub mt-12">${esc(phrase)}</div>
+      </div>
+      <input id="dailyPhraseInput" type="text" placeholder="${esc(phrase)}" autocomplete="off">
+      <button class="btn" id="dailyPhraseDone">Проверить</button>
+    </div>`;
+  document.getElementById("dailyPhraseDone").onclick = async () => {
+    const answer = document.getElementById("dailyPhraseInput").value;
+    if (!answer.trim()) return tg.showAlert("Напиши фразу");
+    loading();
+    try {
+      const isClose = normalizePhrase(answer) === normalizePhrase(phrase);
+      haptic(isClose ? "success" : "warning");
+      await updateDailyProgress(3);
+      renderDailyFinish(isClose, phrase);
+    } catch (e) {
+      renderError(e.message);
+    }
+  };
+}
+
+async function renderDailyFinish(phraseWasCorrect = true, phrase = "") {
+  setBack(renderDailyLesson);
+  loading();
+  try {
+    const status = await updateDailyProgress(4);
+    const result = state.dailyResult || {};
+    const reward = status.reward_points || 0;
+    app.innerHTML = `
+      <div class="screen">
+        <h1>Урок завершен</h1>
+        <div class="card center">
+          <div class="daily-badge">Шаг 4 из 4</div>
+          <div class="big mt-12">${result.score ?? 0}%</div>
+          <p class="hint">Мини-тест: ${result.correct_count ?? 0} правильно из ${result.total ?? 0}</p>
+          ${phraseWasCorrect ? `<p>Фраза написана правильно.</p>` : `<p>Фраза для повторения: <b>${esc(phrase)}</b></p>`}
+          <p><b>${reward ? `+${reward} баллов за урок` : "Урок уже был засчитан сегодня"}</b></p>
+          <p class="hint">Всего баллов: ${status.points ?? state.me?.user?.points ?? 0}</p>
+        </div>
+        <button class="btn" id="dailyHome">В меню</button>
+        <button class="btn btn-secondary" id="dailyChat">Поговорить с репетитором</button>
+      </div>`;
+    document.getElementById("dailyHome").onclick = () => { haptic(); renderMenu(); };
+    document.getElementById("dailyChat").onclick = () => { haptic(); renderChat(); };
   } catch (e) {
     renderError(e.message);
   }
@@ -552,7 +720,7 @@ async function renderChat() {
         }
         const volume = Math.sqrt(sum / samples.length);
         const now = Date.now();
-        if (volume > 0.035) {
+        if (volume > 0.018) {
           heardVoice = true;
           lastVoiceAt = now;
           updateVoiceModeUi("Говори...");
@@ -685,7 +853,10 @@ async function renderChat() {
         await send(text, { autoContinue: wasAuto });
       } catch (e) {
         if (!wasAuto) tg.showAlert(e.message);
-        else updateVoiceModeUi("Ошибка голоса");
+        else {
+          updateVoiceModeUi("Ошибка голоса");
+          bubble("assistant", `Ошибка голоса: ${e.message}`);
+        }
         setFace("idle");
         if (wasAuto) scheduleVoiceListen(1500);
       } finally {
@@ -696,7 +867,9 @@ async function renderChat() {
 
     async function startRecording(auto = false) {
       if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-        tg.showAlert("Голосовой ввод не поддерживается на этом устройстве");
+        const message = "Голосовой ввод не поддерживается на этом устройстве";
+        if (auto) bubble("assistant", message);
+        else tg.showAlert(message);
         if (auto) {
           voiceModeActive = false;
           updateVoiceModeUi();
@@ -746,7 +919,9 @@ async function renderChat() {
         haptic();
       } catch (e) {
         stopTracks();
-        tg.showAlert(`Не удалось включить микрофон: ${e.message}`);
+        const message = `Не удалось включить микрофон: ${e.message}`;
+        if (auto) bubble("assistant", message);
+        else tg.showAlert(message);
         if (auto) {
           voiceModeActive = false;
           updateVoiceModeUi();

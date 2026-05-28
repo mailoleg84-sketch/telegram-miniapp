@@ -245,6 +245,7 @@ async def get_random_words(count: int, exclude_id: int | None = None):
 
 async def get_words_for_age(age_group: str, count: int, topic: str | None = None):
     pool = await _get_pool()
+    rows = []
     if topic:
         rows = await pool.fetch("""
             SELECT * FROM words
@@ -254,23 +255,52 @@ async def get_words_for_age(age_group: str, count: int, topic: str | None = None
         """, age_group, topic, count)
         if len(rows) >= count:
             return rows
-    return await pool.fetch("""
+    rows = list(rows)
+    seen_ids = {row["id"] for row in rows}
+    age_rows = await pool.fetch("""
         SELECT * FROM words
         WHERE age_group = $1
         ORDER BY RANDOM()
         LIMIT $2
     """, age_group, count)
+    for row in age_rows:
+        if row["id"] not in seen_ids:
+            rows.append(row)
+            seen_ids.add(row["id"])
+        if len(rows) >= count:
+            return rows
+
+    fallback_rows = await pool.fetch("""
+        SELECT * FROM words
+        WHERE id != ALL($1::INTEGER[])
+        ORDER BY RANDOM()
+        LIMIT $2
+    """, list(seen_ids), count - len(rows))
+    rows.extend(fallback_rows)
+    return rows
 
 
 async def get_word_options(word_id: int, age_group: str, count: int = 3):
     pool = await _get_pool()
-    return await pool.fetch("""
+    rows = list(await pool.fetch("""
         SELECT id, translation FROM words
         WHERE id != $1
           AND age_group = $2
         ORDER BY RANDOM()
         LIMIT $3
-    """, word_id, age_group, count)
+    """, word_id, age_group, count))
+    if len(rows) >= count:
+        return rows
+
+    excluded_ids = [word_id] + [row["id"] for row in rows]
+    fallback_rows = await pool.fetch("""
+        SELECT id, translation FROM words
+        WHERE id != ALL($1::INTEGER[])
+        ORDER BY RANDOM()
+        LIMIT $2
+    """, excluded_ids, count - len(rows))
+    rows.extend(fallback_rows)
+    return rows
 
 
 async def get_practice_word(user_id: int, exclude_id: int | None = None):
