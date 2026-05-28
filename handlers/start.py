@@ -57,6 +57,16 @@ async def app_handler(message: Message) -> None:
     await message.answer("Открой приложение:", reply_markup=_webapp_inline_kb())
 
 
+@router.message(Command("version"))
+async def version_handler(message: Message) -> None:
+    await message.answer(
+        "Версия Mini App:\n"
+        f"{APP_VERSION}\n\n"
+        "URL кнопки:\n"
+        f"{_webapp_url()}"
+    )
+
+
 @router.message(Command("help"))
 async def help_handler(message: Message) -> None:
     await message.answer(
