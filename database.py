@@ -4,6 +4,7 @@
 Используется единый пул соединений на всё приложение.
 """
 import ssl
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import asyncpg
 
@@ -22,17 +23,26 @@ async def _get_pool() -> asyncpg.Pool:
                 "DATABASE_URL не задан. Добавь строку подключения Neon "
                 "в переменные окружения."
             )
-        # Neon требует SSL. asyncpg не понимает ?sslmode=... в URL,
-        # поэтому SSL-режим определяем сами, а параметр из URL вырезаем.
+        # Neon требует SSL. asyncpg не понимает часть libpq-параметров
+        # (?sslmode=require&channel_binding=require), поэтому SSL-режим
+        # определяем сами, а несовместимые query-параметры вырезаем.
         dsn = DATABASE_URL
-        need_ssl = ("sslmode=require" in dsn or "sslmode=verify" in dsn
-                    or "sslmode=prefer" in dsn)
-        for marker in ("?sslmode=", "&sslmode="):
-            if marker in dsn:
-                head, tail = dsn.split(marker, 1)
-                rest = tail.split("&", 1)
-                dsn = head + ("&" + rest[1] if len(rest) > 1 else "")
-                dsn = dsn.rstrip("?&")
+        parts = urlsplit(dsn)
+        query = parse_qsl(parts.query, keep_blank_values=True)
+        sslmode = next((value for key, value in query if key == "sslmode"), "")
+        need_ssl = sslmode in {"require", "verify-ca", "verify-full", "prefer"}
+        safe_query = [
+            (key, value)
+            for key, value in query
+            if key not in {"sslmode", "channel_binding"}
+        ]
+        dsn = urlunsplit((
+            parts.scheme,
+            parts.netloc,
+            parts.path,
+            urlencode(safe_query),
+            parts.fragment,
+        ))
         ssl_arg = ssl.create_default_context() if need_ssl else None
         _pool = await asyncpg.create_pool(dsn=dsn, ssl=ssl_arg,
                                           min_size=1, max_size=5)
