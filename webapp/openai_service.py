@@ -18,6 +18,11 @@ log = logging.getLogger(__name__)
 _client: AsyncOpenAI | None = None
 if OPENAI_API_KEY:
     _client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+    log.info(
+        "OpenAI API key configured: length=%s prefix=%s",
+        len(OPENAI_API_KEY),
+        OPENAI_API_KEY[:7],
+    )
 else:
     log.warning("OPENAI_API_KEY не задан — режим репетитора работать не будет.")
 

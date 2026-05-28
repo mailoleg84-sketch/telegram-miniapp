@@ -20,25 +20,30 @@ def _load_local_env() -> None:
 
 _load_local_env()
 
+
+def _env(name: str, default: str = "") -> str:
+    value = os.getenv(name, default)
+    return value.strip().strip('"').strip("'")
+
 # --- Telegram бот ---
-BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+BOT_TOKEN = _env("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 
 # --- База данных (PostgreSQL / Neon) ---
 # Строка подключения вида: postgresql://user:pass@host/dbname?sslmode=require
-DATABASE_URL = os.getenv("DATABASE_URL", "")
+DATABASE_URL = _env("DATABASE_URL", "")
 
 # --- Mini App (Telegram WebApp) ---
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://telegram-miniapp-1-r0sj.onrender.com")
-APP_VERSION = os.getenv("APP_VERSION", "20260528-kids-v2")
+WEBAPP_URL = _env("WEBAPP_URL", "https://telegram-miniapp-1-r0sj.onrender.com")
+APP_VERSION = _env("APP_VERSION", "20260528-kids-v2")
 
 WEBAPP_HOST = os.getenv("WEBAPP_HOST", "0.0.0.0")
 # Render задаёт порт через переменную PORT — читаем её, иначе 8080.
 WEBAPP_PORT = int(os.getenv("PORT", os.getenv("WEBAPP_PORT", "8080")))
 
 # --- OpenAI API ---
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5-nano")
-OPENAI_REASONING_EFFORT = os.getenv("OPENAI_REASONING_EFFORT", "low")
+OPENAI_API_KEY = _env("OPENAI_API_KEY", "")
+OPENAI_MODEL = _env("OPENAI_MODEL", "gpt-5-nano")
+OPENAI_REASONING_EFFORT = _env("OPENAI_REASONING_EFFORT", "low")
 CHAT_HISTORY_LIMIT = int(os.getenv("CHAT_HISTORY_LIMIT", "8"))
 CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "300"))
 AI_DAILY_MESSAGE_LIMIT = int(os.getenv("AI_DAILY_MESSAGE_LIMIT", "20"))
