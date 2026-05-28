@@ -28,7 +28,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 # --- Mini App (Telegram WebApp) ---
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://your-domain.example.com")
+WEBAPP_URL = os.getenv("WEBAPP_URL", "https://telegram-miniapp-1-r0sj.onrender.com")
 APP_VERSION = os.getenv("APP_VERSION", "20260528-kids-v2")
 
 WEBAPP_HOST = os.getenv("WEBAPP_HOST", "0.0.0.0")
