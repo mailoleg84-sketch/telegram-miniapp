@@ -9,5 +9,16 @@ __pycache__/
 # Локальная база (на Render всё равно эфемерная)
 *.db
 
+# Локальные секреты
+.env
+.env.*
+
+# Локальный запуск и логи
+run.log
+run.err.log
+run.full.log
+run.pid
+run_app.ps1
+
 # Системное
 .DS_Store

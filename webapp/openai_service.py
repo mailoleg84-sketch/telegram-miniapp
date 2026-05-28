@@ -1,5 +1,6 @@
 """Обёртка над OpenAI API: ИИ-репетитор английского."""
 from dataclasses import dataclass
+from io import BytesIO
 import logging
 
 from openai import AsyncOpenAI, RateLimitError
@@ -11,6 +12,7 @@ from config import (
     OPENAI_MODEL,
     OPENAI_OUTPUT_COST_PER_1M,
     OPENAI_REASONING_EFFORT,
+    OPENAI_TRANSCRIBE_MODEL,
 )
 
 log = logging.getLogger(__name__)
@@ -49,6 +51,8 @@ SYSTEM_PROMPT = """Ты — дружелюбный и терпеливый AI-р
 - Для подростков 14–18 лет можно говорить чуть взрослее, но без неподходящих тем.
 - Если есть заметная ошибка, мягко исправь и кратко объясни по-русски.
 - Если ученик пишет по-русски, помоги сказать это по-английски.
+- Если ученик пишет по-русски, говорит что не понимает, просит перевод, присылает только знак вопроса или явно путается, сразу переключайся на русский язык. Не спрашивай, нужно ли объяснить по-русски.
+- В режиме русского объяснения: сначала просто объясни смысл по-русски, затем дай 1–2 очень простые английские фразы для повторения. После этого можно мягко вернуться к английскому.
 - Иногда задавай простой вопрос, чтобы продолжить разговор.
 - Не обсуждай взрослые, опасные или неподходящие для детей темы.
 
@@ -85,6 +89,23 @@ def _estimate_cost(input_tokens: int, output_tokens: int) -> float:
     input_cost = input_tokens * OPENAI_INPUT_COST_PER_1M / 1_000_000
     output_cost = output_tokens * OPENAI_OUTPUT_COST_PER_1M / 1_000_000
     return round(input_cost + output_cost, 6)
+
+
+async def transcribe_audio(file_bytes: bytes, filename: str = "voice.webm", content_type: str = "audio/webm") -> str:
+    """Transcribes a short voice message for the chat input."""
+    if _client is None:
+        raise RuntimeError("OPENAI_API_KEY is not configured")
+
+    safe_name = filename or "voice.webm"
+    audio_file = BytesIO(file_bytes)
+    audio_file.name = safe_name
+    result = await _client.audio.transcriptions.create(
+        model=OPENAI_TRANSCRIBE_MODEL,
+        file=(safe_name, audio_file, content_type or "audio/webm"),
+        prompt="Child learning English. Speech may be in Russian or English.",
+    )
+    text = getattr(result, "text", result)
+    return str(text or "").strip()
 
 
 async def chat_reply(history: list[dict], user_name: str, age_label: str = "") -> ChatReply:

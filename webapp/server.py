@@ -21,10 +21,11 @@ from config import (
     WEBAPP_PORT,
 )
 from webapp.auth import verify_init_data
-from webapp.openai_service import chat_reply
+from webapp.openai_service import chat_reply, transcribe_audio
 
 log = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
+MAX_AUDIO_BYTES = 8 * 1024 * 1024
 
 
 # ---------- Middleware ----------
@@ -544,6 +545,44 @@ async def api_chat_send(request: web.Request):
     })
 
 
+async def api_audio_transcribe(request: web.Request):
+    try:
+        reader = await request.multipart()
+        field = await reader.next()
+    except Exception:
+        return web.json_response({"error": "Нужно отправить аудиофайл"}, status=400)
+
+    if not field or field.name != "audio":
+        return web.json_response({"error": "Поле audio не найдено"}, status=400)
+
+    chunks = []
+    total = 0
+    while True:
+        chunk = await field.read_chunk(size=64 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > MAX_AUDIO_BYTES:
+            return web.json_response({"error": "Голосовое сообщение слишком большое"}, status=413)
+        chunks.append(chunk)
+
+    audio = b"".join(chunks)
+    if not audio:
+        return web.json_response({"error": "Пустое голосовое сообщение"}, status=400)
+
+    try:
+        text = await transcribe_audio(
+            audio,
+            filename=field.filename or "voice.webm",
+            content_type=field.headers.get("Content-Type", "audio/webm"),
+        )
+    except Exception as e:
+        log.exception("Audio transcription failed")
+        return web.json_response({"error": f"Не удалось распознать голос: {e}"}, status=502)
+
+    return web.json_response({"text": text})
+
+
 async def api_chat_reset(request: web.Request):
     user_id = request["tg_user"]["id"]
     await database.clear_conversation(user_id)
@@ -568,7 +607,7 @@ async def index_handler(request: web.Request):
 # ---------- App factory ----------
 
 def create_app() -> web.Application:
-    app = web.Application(middlewares=[auth_middleware])
+    app = web.Application(middlewares=[auth_middleware], client_max_size=MAX_AUDIO_BYTES + 1024 * 1024)
 
     app.router.add_get("/",        index_handler)
     app.router.add_get("/api/me",  api_me)
@@ -587,6 +626,7 @@ def create_app() -> web.Application:
     app.router.add_post("/api/training/input/answer",  api_input_answer)
     app.router.add_get("/api/chat/history",            api_chat_history)
     app.router.add_post("/api/chat/send",              api_chat_send)
+    app.router.add_post("/api/audio/transcribe",       api_audio_transcribe)
     app.router.add_post("/api/chat/reset",             api_chat_reset)
     app.router.add_static("/static", STATIC_DIR)
 

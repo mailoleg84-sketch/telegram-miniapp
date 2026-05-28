@@ -33,6 +33,21 @@ async function api(path, method = "POST", body = null) {
   return res.json();
 }
 
+async function apiForm(path, formData) {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: {
+      "X-Telegram-Init-Data": tg.initData || "",
+    },
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
 function esc(value) {
   return String(value ?? "").replace(/[&<>"']/g, c => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -313,14 +328,32 @@ async function renderChat() {
           <button class="chat-reset" id="reset">Очистить</button>
         </div>
         <div class="chat-meta">Осталось сообщений сегодня: ${data.usage?.remaining_today ?? "∞"}</div>
+        <div class="tutor-stage">
+          <div class="tutor-face idle" id="tutorFace" aria-hidden="true">
+            <div class="face-hair"></div>
+            <div class="face-eye left"></div>
+            <div class="face-eye right"></div>
+            <div class="face-cheek left"></div>
+            <div class="face-cheek right"></div>
+            <div class="face-mouth"></div>
+          </div>
+        </div>
         <div class="chat-messages" id="messages"></div>
         <div class="chat-input-row">
+          <button class="chat-mic" id="mic" type="button" aria-label="Голосовое сообщение" title="Голосовое сообщение"><span class="mic-icon"></span></button>
           <input id="msg" type="text" placeholder="Напиши по-английски..." autocomplete="off">
-          <button class="chat-send" id="send">➤</button>
+          <button class="chat-send" id="send" type="button">➤</button>
         </div>
       </div>`;
     const box = document.getElementById("messages");
     const input = document.getElementById("msg");
+    const face = document.getElementById("tutorFace");
+    const mic = document.getElementById("mic");
+    const sendButton = document.getElementById("send");
+    let recorder = null;
+    let audioChunks = [];
+    let recordingStream = null;
+    let sending = false;
 
     function bubble(role, text) {
       const div = document.createElement("div");
@@ -330,29 +363,174 @@ async function renderChat() {
       box.scrollTop = box.scrollHeight;
     }
 
+    function setFace(mode) {
+      face.className = `tutor-face ${mode}`;
+    }
+
+    function typingBubble() {
+      const div = document.createElement("div");
+      div.className = "typing";
+      div.textContent = "...";
+      box.appendChild(div);
+      box.scrollTop = box.scrollHeight;
+      return div;
+    }
+
+    function speakTutor(text) {
+      if (!text || text.startsWith("Ошибка:")) {
+        setFace("idle");
+        return;
+      }
+      if (!("speechSynthesis" in window)) {
+        setFace("speaking");
+        setTimeout(() => setFace("idle"), 1400);
+        return;
+      }
+      try {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        const isRussian = /[а-яё]/i.test(text);
+        utterance.lang = isRussian ? "ru-RU" : "en-US";
+        utterance.rate = isRussian ? 0.95 : 0.86;
+        utterance.pitch = 1.08;
+        utterance.onstart = () => setFace("speaking");
+        utterance.onend = () => setFace("idle");
+        utterance.onerror = () => setFace("idle");
+        window.speechSynthesis.speak(utterance);
+      } catch (_) {
+        setFace("idle");
+      }
+    }
+
+    function preferredMimeType() {
+      if (!window.MediaRecorder?.isTypeSupported) return "";
+      return ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find(type => MediaRecorder.isTypeSupported(type)) || "";
+    }
+
+    function stopTracks() {
+      recordingStream?.getTracks().forEach(track => track.stop());
+      recordingStream = null;
+    }
+
     if (!data.messages?.length) {
       box.innerHTML = `<div class="chat-empty">Напиши: Hello! или I like games.</div>`;
     } else {
       data.messages.forEach(m => bubble(m.role, m.content));
     }
 
-    async function send() {
-      const text = input.value.trim();
+    async function send(textOverride) {
+      const text = typeof textOverride === "string" ? textOverride.trim() : input.value.trim();
       if (!text) return;
+      if (sending) return;
+      sending = true;
+      sendButton.disabled = true;
+      mic.disabled = true;
       if (box.querySelector(".chat-empty")) box.innerHTML = "";
       input.value = "";
       bubble("user", text);
+      const typing = typingBubble();
+      setFace("thinking");
       try {
         const reply = await api("/api/chat/send", "POST", { message: text });
+        typing.remove();
         bubble("assistant", reply.reply);
+        speakTutor(reply.reply);
       } catch (e) {
+        typing.remove();
         bubble("assistant", `Ошибка: ${e.message}`);
+        setFace("idle");
+      } finally {
+        sending = false;
+        sendButton.disabled = false;
+        mic.disabled = false;
+        input.focus();
       }
     }
 
-    document.getElementById("send").onclick = send;
+    async function uploadVoice(blob) {
+      const form = new FormData();
+      const extension = blob.type.includes("mp4") ? "mp4" : "webm";
+      form.append("audio", blob, `voice.${extension}`);
+      const result = await apiForm("/api/audio/transcribe", form);
+      return (result.text || "").trim();
+    }
+
+    async function handleRecordingStop(mimeType) {
+      stopTracks();
+      mic.classList.remove("recording");
+      mic.disabled = true;
+      sendButton.disabled = true;
+      setFace("thinking");
+      try {
+        const blob = new Blob(audioChunks, { type: mimeType || "audio/webm" });
+        audioChunks = [];
+        if (blob.size < 600) {
+          tg.showAlert("Голосовое сообщение слишком короткое");
+          setFace("idle");
+          return;
+        }
+        const text = await uploadVoice(blob);
+        if (!text) {
+          tg.showAlert("Не удалось разобрать речь. Попробуй еще раз.");
+          setFace("idle");
+          return;
+        }
+        await send(text);
+      } catch (e) {
+        tg.showAlert(e.message);
+        setFace("idle");
+      } finally {
+        mic.disabled = false;
+        if (!sending) sendButton.disabled = false;
+      }
+    }
+
+    async function startRecording() {
+      if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+        tg.showAlert("Голосовой ввод не поддерживается на этом устройстве");
+        return;
+      }
+      try {
+        audioChunks = [];
+        recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mimeType = preferredMimeType();
+        recorder = mimeType
+          ? new MediaRecorder(recordingStream, { mimeType })
+          : new MediaRecorder(recordingStream);
+        recorder.ondataavailable = event => {
+          if (event.data?.size) audioChunks.push(event.data);
+        };
+        recorder.onstop = () => handleRecordingStop(recorder?.mimeType || mimeType);
+        recorder.start();
+        mic.classList.add("recording");
+        sendButton.disabled = true;
+        setFace("listening");
+        haptic();
+      } catch (e) {
+        stopTracks();
+        tg.showAlert(`Не удалось включить микрофон: ${e.message}`);
+        setFace("idle");
+      }
+    }
+
+    function stopRecording() {
+      if (!recorder || recorder.state === "inactive") return;
+      recorder.stop();
+      sendButton.disabled = false;
+      haptic("success");
+    }
+
+    function toggleRecording() {
+      if (sending) return;
+      if (recorder && recorder.state === "recording") stopRecording();
+      else startRecording();
+    }
+
+    mic.onclick = toggleRecording;
+    sendButton.onclick = send;
     input.addEventListener("keypress", e => { if (e.key === "Enter") send(); });
     document.getElementById("reset").onclick = async () => {
+      window.speechSynthesis?.cancel?.();
       await api("/api/chat/reset", "POST");
       renderChat();
     };

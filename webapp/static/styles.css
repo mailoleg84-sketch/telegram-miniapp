@@ -119,6 +119,113 @@ input[type="text"]:focus { border-color: var(--button); }
 .stat-row:last-child { border-bottom: none; }
 .stat-row b { font-weight: 700; }
 
+.leaderboard {
+  padding: 8px;
+}
+
+.leader-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 12px;
+}
+.leader-row + .leader-row { border-top: 1px solid var(--bg); }
+.leader-row.me {
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1.5px var(--button);
+}
+.leader-rank {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--hint);
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+.leader-main {
+  min-width: 0;
+  flex: 1;
+}
+.leader-main b,
+.leader-main span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.leader-main span {
+  margin-top: 2px;
+  color: var(--hint);
+  font-size: 13px;
+}
+.leader-points {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.daily-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--button);
+  color: var(--button-text);
+  font-size: 13px;
+  font-weight: 700;
+}
+.daily-steps {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+.daily-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  color: var(--hint);
+}
+.daily-step span {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--hint);
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+.daily-step b {
+  color: inherit;
+  font-size: 15px;
+}
+.daily-step.current {
+  color: var(--text);
+}
+.daily-step.done {
+  color: var(--text);
+}
+.daily-step.done span {
+  background: var(--green);
+  color: #fff;
+}
+.daily-feedback {
+  background: var(--secondary-bg);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+.daily-feedback p {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  line-height: 1.4;
+}
+
 .result-card { border-radius: 14px; padding: 20px; margin-bottom: 12px; color: #fff; }
 .result-card.correct { background: var(--green); }
 .result-card.wrong   { background: var(--red); }
@@ -181,7 +288,11 @@ code {
   align-items: flex-end;
   padding-top: 8px;
 }
-.chat-input-row input[type="text"] { margin-bottom: 0; }
+.chat-input-row input[type="text"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-bottom: 0;
+}
 .chat-send {
   flex-shrink: 0;
   width: 52px;
@@ -201,6 +312,15 @@ code {
   align-items: center;
   margin-bottom: 8px;
 }
+.chat-meta {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--secondary-bg);
+  color: var(--hint);
+  font-size: 12px;
+  line-height: 1.35;
+}
 .chat-reset {
   background: none;
   border: none;
@@ -208,4 +328,184 @@ code {
   font-size: 14px;
   cursor: pointer;
   padding: 4px;
+}
+
+.tutor-stage {
+  min-height: 86px;
+  display: grid;
+  place-items: center;
+  padding: 2px 0 10px;
+}
+
+.tutor-face {
+  position: relative;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background: #ffd166;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.10);
+  transform-origin: center bottom;
+  animation: faceFloat 2.8s ease-in-out infinite;
+}
+
+.face-hair {
+  position: absolute;
+  left: 18px;
+  top: -4px;
+  width: 40px;
+  height: 18px;
+  border-radius: 18px 18px 8px 8px;
+  background: #2ec4b6;
+}
+
+.face-eye {
+  position: absolute;
+  top: 31px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #263238;
+  animation: blink 4s infinite;
+}
+.face-eye.left { left: 23px; }
+.face-eye.right { right: 23px; }
+
+.face-cheek {
+  position: absolute;
+  top: 45px;
+  width: 12px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ff8fa3;
+  opacity: 0.7;
+}
+.face-cheek.left { left: 13px; }
+.face-cheek.right { right: 13px; }
+
+.face-mouth {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  width: 22px;
+  height: 10px;
+  border: 3px solid #263238;
+  border-top: 0;
+  border-radius: 0 0 18px 18px;
+  transform: translateX(-50%);
+}
+
+.tutor-face.listening {
+  animation: faceListen 1.1s ease-in-out infinite;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.08), 0 0 0 7px rgba(46, 196, 182, 0.18);
+}
+
+.tutor-face.thinking {
+  animation: faceThink 0.9s ease-in-out infinite;
+}
+.tutor-face.thinking .face-mouth {
+  width: 16px;
+  height: 4px;
+  border: 0;
+  border-radius: 999px;
+  background: #263238;
+}
+
+.tutor-face.speaking .face-mouth {
+  width: 20px;
+  height: 18px;
+  border: 0;
+  border-radius: 50%;
+  background: #263238;
+  animation: talk 0.24s ease-in-out infinite alternate;
+}
+
+@keyframes faceFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+@keyframes faceListen {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+@keyframes faceThink {
+  0%, 100% { transform: rotate(-2deg); }
+  50% { transform: rotate(2deg); }
+}
+@keyframes blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.12); }
+}
+@keyframes talk {
+  from { transform: translateX(-50%) scaleY(0.55); }
+  to { transform: translateX(-50%) scaleY(1.1); }
+}
+
+.chat-mic,
+.chat-send {
+  flex: 0 0 52px;
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+}
+
+.chat-mic {
+  background: var(--secondary-bg);
+  color: var(--button);
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.chat-mic:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.chat-mic.recording {
+  background: var(--red);
+  color: #fff;
+}
+
+.mic-icon {
+  position: relative;
+  display: block;
+  width: 15px;
+  height: 21px;
+  border: 2px solid currentColor;
+  border-radius: 10px;
+}
+.mic-icon::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -9px;
+  width: 2px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: translateX(-50%);
+}
+.mic-icon::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -12px;
+  width: 16px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: translateX(-50%);
+}
+
+.chat-mic.recording .mic-icon {
+  width: 15px;
+  height: 15px;
+  border: 0;
+  border-radius: 4px;
+  background: currentColor;
+}
+.chat-mic.recording .mic-icon::before,
+.chat-mic.recording .mic-icon::after {
+  display: none;
 }
