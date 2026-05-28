@@ -317,7 +317,6 @@ async function renderDailyLesson() {
 }
 
 async function renderChat() {
-  setBack(renderMenu);
   loading();
   try {
     const data = await api("/api/chat/history", "GET");
@@ -341,7 +340,7 @@ async function renderChat() {
         <div class="chat-messages" id="messages"></div>
         <div class="chat-input-row">
           <button class="chat-mic" id="mic" type="button" aria-label="Голосовое сообщение" title="Голосовое сообщение"><span class="mic-icon"></span></button>
-          <input id="msg" type="text" placeholder="Напиши по-английски..." autocomplete="off">
+          <input id="msg" type="text" placeholder="Напиши или скажи..." autocomplete="off">
           <button class="chat-send" id="send" type="button">➤</button>
         </div>
       </div>`;
@@ -354,6 +353,7 @@ async function renderChat() {
     let audioChunks = [];
     let recordingStream = null;
     let sending = false;
+    let discardRecording = false;
 
     function bubble(role, text) {
       const div = document.createElement("div");
@@ -412,8 +412,21 @@ async function renderChat() {
       recordingStream = null;
     }
 
+    function cleanupChat() {
+      window.speechSynthesis?.cancel?.();
+      discardRecording = true;
+      if (recorder && recorder.state !== "inactive") {
+        recorder.onstop = null;
+        recorder.stop();
+      }
+      audioChunks = [];
+      stopTracks();
+      mic.classList.remove("recording");
+      setFace("idle");
+    }
+
     if (!data.messages?.length) {
-      box.innerHTML = `<div class="chat-empty">Напиши: Hello! или I like games.</div>`;
+      box.innerHTML = `<div class="chat-empty">Hello! или Я не понимаю.</div>`;
     } else {
       data.messages.forEach(m => bubble(m.role, m.content));
     }
@@ -500,7 +513,15 @@ async function renderChat() {
         recorder.ondataavailable = event => {
           if (event.data?.size) audioChunks.push(event.data);
         };
-        recorder.onstop = () => handleRecordingStop(recorder?.mimeType || mimeType);
+        recorder.onstop = () => {
+          if (discardRecording) {
+            discardRecording = false;
+            audioChunks = [];
+            stopTracks();
+            return;
+          }
+          handleRecordingStop(recorder?.mimeType || mimeType);
+        };
         recorder.start();
         mic.classList.add("recording");
         sendButton.disabled = true;
@@ -529,8 +550,12 @@ async function renderChat() {
     mic.onclick = toggleRecording;
     sendButton.onclick = send;
     input.addEventListener("keypress", e => { if (e.key === "Enter") send(); });
+    setBack(() => {
+      cleanupChat();
+      renderMenu();
+    });
     document.getElementById("reset").onclick = async () => {
-      window.speechSynthesis?.cancel?.();
+      cleanupChat();
       await api("/api/chat/reset", "POST");
       renderChat();
     };
