@@ -110,6 +110,14 @@ function optionButtons(items, className = "choice") {
   `).join("");
 }
 
+function ageToGroup(age) {
+  if (age >= 5 && age <= 7) return "5_7";
+  if (age >= 8 && age <= 10) return "8_10";
+  if (age >= 11 && age <= 13) return "11_13";
+  if (age >= 14 && age <= 18) return "14_18";
+  return "";
+}
+
 function renderRegistration() {
   setBack(null);
   tg.MainButton.hide();
@@ -154,11 +162,20 @@ function renderRegistration() {
     haptic();
   }
 
+  function chooseByValue(selector, value, setter) {
+    const button = document.querySelector(`${selector}[data-value="${value}"]`);
+    if (button) choose(selector, button, setter);
+  }
+
   document.querySelectorAll(".age").forEach(btn => {
     btn.onclick = () => choose(".age", btn, value => { ageGroup = value; });
   });
   document.querySelectorAll(".goal").forEach(btn => {
     btn.onclick = () => choose(".goal", btn, value => { goal = value; });
+  });
+  document.getElementById("childAge").addEventListener("input", event => {
+    const suggestedGroup = ageToGroup(Number(event.target.value));
+    if (suggestedGroup) chooseByValue(".age", suggestedGroup, value => { ageGroup = value; });
   });
 
   document.getElementById("register").onclick = async () => {
@@ -194,15 +211,19 @@ function renderMenu() {
 
       <button class="btn" id="vocab">Новые слова + тест</button>
       <button class="btn" id="daily">Ежедневный урок</button>
+      <button class="btn" id="training">Тренировка слов</button>
       <button class="btn" id="chat">Поговорить с репетитором</button>
       <button class="btn btn-secondary" id="report">Отчет для родителя</button>
+      <button class="btn btn-secondary" id="leaderboard">Рейтинг</button>
       <button class="btn btn-secondary" id="profile">Профиль</button>
     </div>`;
 
   document.getElementById("vocab").onclick = () => { haptic(); renderVocabStart(); };
   document.getElementById("daily").onclick = () => { haptic(); renderDailyLesson(); };
+  document.getElementById("training").onclick = () => { haptic(); renderTrainingMenu(); };
   document.getElementById("chat").onclick = () => { haptic(); renderChat(); };
   document.getElementById("report").onclick = () => { haptic(); renderParentReport(); };
+  document.getElementById("leaderboard").onclick = () => { haptic(); renderLeaderboard(); };
   document.getElementById("profile").onclick = () => { haptic(); renderProfile(); };
 }
 
@@ -305,6 +326,135 @@ async function finishVocabQuiz() {
   } catch (e) {
     renderError(e.message);
   }
+}
+
+async function renderTrainingMenu() {
+  setBack(renderMenu);
+  app.innerHTML = `
+    <div class="screen">
+      <h1>Тренировка слов</h1>
+      <div class="card">
+        <p class="hint">Короткая практика без длинного теста: выбери перевод или напиши слово по-английски.</p>
+      </div>
+      <button class="btn" id="choiceTraining">Выбрать перевод</button>
+      <button class="btn" id="inputTraining">Написать слово</button>
+      <button class="btn btn-secondary" id="trainingHome">В меню</button>
+    </div>`;
+  document.getElementById("choiceTraining").onclick = () => { haptic(); renderChoiceTraining(); };
+  document.getElementById("inputTraining").onclick = () => { haptic(); renderInputTraining(); };
+  document.getElementById("trainingHome").onclick = () => { haptic(); renderMenu(); };
+}
+
+async function renderChoiceTraining() {
+  setBack(renderTrainingMenu);
+  loading();
+  try {
+    const task = await api("/api/training/choice/next", "POST", {});
+    app.innerHTML = `
+      <div class="screen">
+        <h1>Выбери перевод</h1>
+        <div class="card center">
+          <div class="big">${esc(task.word)}</div>
+          <p class="hint mt-12">Как переводится это слово?</p>
+        </div>
+        ${task.options.map(option => `
+          <button class="btn btn-secondary choice-answer" data-id="${option.id}">${esc(option.translation)}</button>
+        `).join("")}
+      </div>`;
+
+    document.querySelectorAll(".choice-answer").forEach(button => {
+      button.onclick = async () => {
+        const selectedId = Number(button.dataset.id);
+        document.querySelectorAll(".choice-answer").forEach(item => item.disabled = true);
+        loading();
+        try {
+          const result = await api("/api/training/choice/answer", "POST", {
+            word_id: task.word_id,
+            selected_id: selectedId,
+          });
+          if (state.me?.user) state.me.user.points = result.points;
+          renderTrainingResult({
+            correct: result.correct,
+            title: result.correct ? "Верно!" : "Почти",
+            text: `${result.word} — ${result.translation}`,
+            delta: result.delta,
+            points: result.points,
+            next: renderChoiceTraining,
+          });
+        } catch (e) {
+          renderError(e.message);
+        }
+      };
+    });
+  } catch (e) {
+    renderError(e.message);
+  }
+}
+
+async function renderInputTraining() {
+  setBack(renderTrainingMenu);
+  loading();
+  try {
+    const task = await api("/api/training/input/next", "POST", {});
+    app.innerHTML = `
+      <div class="screen">
+        <h1>Напиши слово</h1>
+        <div class="card center">
+          <p class="hint">Напиши по-английски:</p>
+          <div class="big-sub">${esc(task.translation)}</div>
+        </div>
+        <input id="inputAnswer" type="text" placeholder="English word" autocomplete="off">
+        <button class="btn" id="checkInputAnswer">Проверить</button>
+      </div>`;
+
+    const input = document.getElementById("inputAnswer");
+    const submit = async () => {
+      const answer = input.value.trim();
+      if (!answer) return tg.showAlert("Напиши слово");
+      loading();
+      try {
+        const result = await api("/api/training/input/answer", "POST", {
+          word_id: task.word_id,
+          answer,
+        });
+        if (state.me?.user) state.me.user.points = result.points;
+        renderTrainingResult({
+          correct: result.correct,
+          title: result.correct ? "Верно!" : "Запомни правильный вариант",
+          text: `${result.translation} — ${result.word}`,
+          delta: result.delta,
+          points: result.points,
+          next: renderInputTraining,
+        });
+      } catch (e) {
+        renderError(e.message);
+      }
+    };
+    document.getElementById("checkInputAnswer").onclick = submit;
+    input.addEventListener("keypress", e => { if (e.key === "Enter") submit(); });
+    input.focus();
+  } catch (e) {
+    renderError(e.message);
+  }
+}
+
+function renderTrainingResult({ correct, title, text, delta, points, next }) {
+  setBack(renderTrainingMenu);
+  haptic(correct ? "success" : "error");
+  app.innerHTML = `
+    <div class="screen">
+      <div class="result-card ${correct ? "correct" : "wrong"}">
+        <h1>${esc(title)}</h1>
+        <p>${esc(text)}</p>
+        <p><b>${delta >= 0 ? "+" : ""}${delta} 💎</b> · всего: ${points}</p>
+      </div>
+      <button class="btn" id="trainingNext">Еще слово</button>
+      <button class="btn btn-secondary" id="trainingModes">Другой режим</button>
+      <button class="btn btn-secondary" id="trainingMenu">В меню</button>
+    </div>`;
+  document.getElementById("trainingNext").onclick = () => { haptic(); next(); };
+  document.getElementById("trainingModes").onclick = () => { haptic(); renderTrainingMenu(); };
+  document.getElementById("trainingMenu").onclick = () => { haptic(); renderMenu(); };
 }
 
 async function updateDailyProgress(completedSteps) {
@@ -1014,7 +1164,37 @@ async function renderParentReport() {
           <div class="stat-row"><span>Правильных ответов</span><b>${r.total_correct}</b></div>
           <div class="stat-row"><span>Ошибок</span><b>${r.total_wrong}</b></div>
         </div>
+        <button class="btn btn-secondary" id="reportHome">В меню</button>
       </div>`;
+    document.getElementById("reportHome").onclick = () => { haptic(); renderMenu(); };
+  } catch (e) {
+    renderError(e.message);
+  }
+}
+
+async function renderLeaderboard() {
+  setBack(renderMenu);
+  loading();
+  try {
+    const data = await api("/api/leaderboard", "GET");
+    app.innerHTML = `
+      <div class="screen">
+        <h1>Рейтинг</h1>
+        <div class="card leaderboard">
+          ${(data.leaders || []).length ? data.leaders.map(leader => `
+            <div class="leader-row ${leader.is_me ? "me" : ""}">
+              <div class="leader-rank">${leader.rank}</div>
+              <div class="leader-main">
+                <b>${esc(leader.name)}</b>
+                <span>${esc(leader.age_label)}</span>
+              </div>
+              <div class="leader-points">${leader.points} 💎</div>
+            </div>
+          `).join("") : `<p class="hint center">Рейтинг появится после первых тренировок.</p>`}
+        </div>
+        <button class="btn btn-secondary" id="leaderboardHome">В меню</button>
+      </div>`;
+    document.getElementById("leaderboardHome").onclick = () => { haptic(); renderMenu(); };
   } catch (e) {
     renderError(e.message);
   }
@@ -1042,7 +1222,9 @@ async function renderProfile() {
           <div class="stat-row"><span>Правильных ответов</span><b>${s.total_correct}</b></div>
           <div class="stat-row"><span>Ошибок</span><b>${s.total_wrong}</b></div>
         </div>
+        <button class="btn btn-secondary" id="profileHome">В меню</button>
       </div>`;
+    document.getElementById("profileHome").onclick = () => { haptic(); renderMenu(); };
   } catch (e) {
     renderError(e.message);
   }
