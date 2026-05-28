@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from io import BytesIO
 import logging
 
-from openai import AsyncOpenAI, RateLimitError
+from openai import AsyncOpenAI, BadRequestError, RateLimitError
 
 from config import (
     CHAT_MAX_TOKENS,
@@ -12,6 +12,8 @@ from config import (
     OPENAI_MODEL,
     OPENAI_OUTPUT_COST_PER_1M,
     OPENAI_REASONING_EFFORT,
+    OPENAI_TTS_MODEL,
+    OPENAI_TTS_VOICE,
     OPENAI_TRANSCRIBE_MODEL,
 )
 
@@ -107,6 +109,45 @@ async def transcribe_audio(file_bytes: bytes, filename: str = "voice.webm", cont
     )
     text = getattr(result, "text", result)
     return str(text or "").strip()
+
+
+async def synthesize_speech(text: str) -> bytes:
+    """Generates a short MP3 tutor voice response."""
+    if _client is None:
+        raise RuntimeError("OPENAI_API_KEY is not configured")
+
+    clean_text = " ".join((text or "").split())
+    if not clean_text:
+        raise ValueError("Text is empty")
+    if len(clean_text) > 900:
+        clean_text = clean_text[:900]
+
+    is_russian = any("а" <= ch.lower() <= "я" or ch.lower() == "ё" for ch in clean_text)
+    instructions = (
+        "Говори дружелюбно, мягко и понятно для ребенка. Темп спокойный."
+        if is_russian else
+        "Speak warmly and clearly for a child learning English. Keep a calm, friendly pace."
+    )
+    async def create_audio(model: str, include_instructions: bool = True) -> bytes:
+        request = {
+            "model": model,
+            "voice": OPENAI_TTS_VOICE,
+            "input": clean_text,
+            "response_format": "mp3",
+            "speed": 0.95,
+        }
+        if include_instructions:
+            request["instructions"] = instructions
+        response = await _client.audio.speech.create(**request)
+        return await response.aread()
+
+    try:
+        return await create_audio(OPENAI_TTS_MODEL, include_instructions=True)
+    except BadRequestError:
+        if OPENAI_TTS_MODEL == "tts-1":
+            raise
+        log.warning("TTS model %s is unavailable, falling back to tts-1", OPENAI_TTS_MODEL)
+        return await create_audio("tts-1", include_instructions=False)
 
 
 async def chat_reply(history: list[dict], user_name: str, age_label: str = "") -> ChatReply:

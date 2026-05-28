@@ -48,6 +48,22 @@ async function apiForm(path, formData) {
   return res.json();
 }
 
+async function apiBlob(path, body) {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Telegram-Init-Data": tg.initData || "",
+    },
+    body: JSON.stringify(body || {}),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+  return res.blob();
+}
+
 function esc(value) {
   return String(value ?? "").replace(/[&<>"']/g, c => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -354,6 +370,8 @@ async function renderChat() {
     let recordingStream = null;
     let sending = false;
     let discardRecording = false;
+    let tutorAudio = null;
+    let tutorAudioUrl = "";
 
     function bubble(role, text) {
       const div = document.createElement("div");
@@ -376,7 +394,21 @@ async function renderChat() {
       return div;
     }
 
-    function speakTutor(text) {
+    function stopTutorSpeech() {
+      window.speechSynthesis?.cancel?.();
+      if (tutorAudio) {
+        tutorAudio.pause();
+        tutorAudio.removeAttribute("src");
+        tutorAudio.load();
+        tutorAudio = null;
+      }
+      if (tutorAudioUrl) {
+        URL.revokeObjectURL(tutorAudioUrl);
+        tutorAudioUrl = "";
+      }
+    }
+
+    function speakTutorFallback(text) {
       if (!text || text.startsWith("Ошибка:")) {
         setFace("idle");
         return;
@@ -402,6 +434,33 @@ async function renderChat() {
       }
     }
 
+    async function speakTutor(text) {
+      if (!text || text.startsWith("Ошибка:")) {
+        setFace("idle");
+        return;
+      }
+      stopTutorSpeech();
+      setFace("thinking");
+      try {
+        const audioBlob = await apiBlob("/api/audio/speech", { text });
+        tutorAudioUrl = URL.createObjectURL(audioBlob);
+        tutorAudio = new Audio(tutorAudioUrl);
+        tutorAudio.onplaying = () => setFace("speaking");
+        tutorAudio.onended = () => {
+          stopTutorSpeech();
+          setFace("idle");
+        };
+        tutorAudio.onerror = () => {
+          stopTutorSpeech();
+          speakTutorFallback(text);
+        };
+        await tutorAudio.play();
+      } catch (_) {
+        stopTutorSpeech();
+        speakTutorFallback(text);
+      }
+    }
+
     function preferredMimeType() {
       if (!window.MediaRecorder?.isTypeSupported) return "";
       return ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find(type => MediaRecorder.isTypeSupported(type)) || "";
@@ -413,7 +472,7 @@ async function renderChat() {
     }
 
     function cleanupChat() {
-      window.speechSynthesis?.cancel?.();
+      stopTutorSpeech();
       discardRecording = true;
       if (recorder && recorder.state !== "inactive") {
         recorder.onstop = null;

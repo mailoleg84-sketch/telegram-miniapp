@@ -21,7 +21,7 @@ from config import (
     WEBAPP_PORT,
 )
 from webapp.auth import verify_init_data
-from webapp.openai_service import chat_reply, transcribe_audio
+from webapp.openai_service import chat_reply, synthesize_speech, transcribe_audio
 
 log = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
@@ -583,6 +583,29 @@ async def api_audio_transcribe(request: web.Request):
     return web.json_response({"text": text})
 
 
+async def api_audio_speech(request: web.Request):
+    body = await _safe_json(request)
+    text = (body.get("text") or "").strip()
+    if not text:
+        return web.json_response({"error": "Нет текста для озвучки"}, status=400)
+    if len(text) > 1200:
+        text = text[:1200]
+
+    try:
+        audio = await synthesize_speech(text)
+    except Exception as e:
+        log.exception("Speech synthesis failed")
+        return web.json_response({"error": f"Не удалось озвучить ответ: {e}"}, status=502)
+
+    return web.Response(
+        body=audio,
+        content_type="audio/mpeg",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        },
+    )
+
+
 async def api_chat_reset(request: web.Request):
     user_id = request["tg_user"]["id"]
     await database.clear_conversation(user_id)
@@ -627,6 +650,7 @@ def create_app() -> web.Application:
     app.router.add_get("/api/chat/history",            api_chat_history)
     app.router.add_post("/api/chat/send",              api_chat_send)
     app.router.add_post("/api/audio/transcribe",       api_audio_transcribe)
+    app.router.add_post("/api/audio/speech",           api_audio_speech)
     app.router.add_post("/api/chat/reset",             api_chat_reset)
     app.router.add_static("/static", STATIC_DIR)
 
