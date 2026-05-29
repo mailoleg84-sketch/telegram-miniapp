@@ -718,7 +718,7 @@ async def create_realtime_call(
                     "Realtime call FAILED: HTTP %s body=%s session_keys=%s",
                     response.status, text[:800], list(session_config.keys()),
                 )
-                raise RuntimeError(f"Realtime setup failed: HTTP {response.status}")
+                raise RuntimeError(f"HTTP {response.status}: {text[:400]}")
             log.info("Realtime call OK: SDP answer length=%d", len(text))
             return text
 
