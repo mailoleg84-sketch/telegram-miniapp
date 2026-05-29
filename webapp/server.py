@@ -755,6 +755,7 @@ async def api_realtime_call(request: web.Request):
     age_label = _age_label(user["age_group"]) if user else ""
     prompt_context = _prompt_context_for_user(user) if user else {}
     prompt_context["mode"] = "voice"
+    prompt_context["age_group"] = user["age_group"] if user else "default"
     prompt_context.update(_voice_prompt_context(user, history))
 
     try:

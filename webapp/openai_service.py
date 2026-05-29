@@ -26,6 +26,7 @@ from config import (
     OPENAI_TRANSCRIBE_MODEL,
     OPENAI_VOICE_REASONING_EFFORT,
     OPENAI_VOICE_TTS_VOICE,
+    REALTIME_AGE_PROFILES,
     TUTOR_CORRECTION_MODE,
     TUTOR_DEFAULT_LEVEL,
     TUTOR_DEFAULT_STYLE,
@@ -398,30 +399,232 @@ def _runtime_instructions(
 Английский запрос: «Great! You can say: I like cats. Do you like cats or dogs?»"""
 
 
+def _get_realtime_profile(prompt_context: dict | None) -> dict:
+    """Возвращает возрастной профиль для Realtime сессии."""
+    age_group = (prompt_context or {}).get("age_group", "default")
+    return REALTIME_AGE_PROFILES.get(age_group, REALTIME_AGE_PROFILES["default"])
+
+
+# ── Блочные промпт-билдеры для Realtime WebRTC ──────────────────────────────
+
+def _rt_identity_block(profile: dict, name: str) -> str:
+    return (
+        f"You are {profile['persona']} named Alex. "
+        f"You are having a live spoken English conversation with {name}. "
+        "You are warm, patient, and genuinely interested in the child. "
+        "You sound like a real person — not an AI, not a robot, not an announcer. "
+        "Your voice is natural, with real emotion, tiny pauses, and a friendly smile."
+    )
+
+
+def _rt_speech_style_block(profile: dict, age_group: str) -> str:
+    max_words = profile["max_sentence_words"]
+    if age_group == "5_7":
+        return (
+            f"SPEECH STYLE: Speak in very short, simple sentences — maximum {max_words} words each. "
+            "Use a warm, sing-song, kindergarten-teacher voice. "
+            "React with genuine excitement: 'Wow!', 'Great job!', 'Ooh, nice!'. "
+            "Pause naturally between sentences. "
+            "Never use complicated words. If you must use a new word, say it slowly and explain it playfully. "
+            "Use lots of sound effects and playful intonation."
+        )
+    elif age_group == "8_10":
+        return (
+            f"SPEECH STYLE: Keep sentences under {max_words} words. "
+            "Be enthusiastic and encouraging — like a fun coach. "
+            "Use age-appropriate comparisons ('as big as a school bus!'). "
+            "Celebrate small wins out loud. Be energetic but not over-the-top."
+        )
+    elif age_group == "11_13":
+        return (
+            f"SPEECH STYLE: Speak naturally, sentences up to {max_words} words. "
+            "Be friendly but not over-the-top — tweens dislike being talked down to. "
+            "Use relatable references (games, YouTube, school life). "
+            "Encourage with genuine, specific praise, not generic 'good job'."
+        )
+    else:  # 14_18
+        return (
+            f"SPEECH STYLE: Speak like a knowledgeable peer-mentor, sentences up to {max_words} words. "
+            "Use rich vocabulary appropriate for the learner's level. "
+            "You can discuss real-world topics: news, careers, culture, science. "
+            "Treat the student as an intelligent young adult learner."
+        )
+
+
+def _rt_pedagogy_block(profile: dict, level: str, goal: str) -> str:
+    focus = "grammar and accuracy" if profile["grammar_focus"] else "fluency, fun, and confidence"
+    return (
+        f"PEDAGOGY: The student's English level is {level}. Their goal: {goal}. "
+        f"Your pedagogical focus: {focus}. "
+        "Follow the 3-step micro-loop for each exchange: "
+        "1) MODEL — demonstrate the language point naturally in your own speech. "
+        "2) ELICIT — ask one clear, open question to make them produce language. "
+        "3) RESPOND — react to what they said with genuine interest, then gently model/elicit again. "
+        "Never lecture. Keep the student talking more than you. "
+        "One task at a time. One question at a time. Never sound like a quiz."
+    )
+
+
+def _rt_topic_block(topics: str, age_group: str) -> str:
+    if not topics:
+        return ""
+    activities = {
+        "5_7":   "simple story-telling, pretend play, naming things, guessing games, silly questions",
+        "8_10":  "word games, short role-plays (shopping, animals), mini-quests, 'would you rather'",
+        "11_13": "opinions on movies/games, 'would you rather', storytelling, mini-debates, escape room scenarios",
+        "14_18": "debates, real-world scenarios, interview practice, storytelling, opinion challenges",
+    }
+    return (
+        f"TOPICS: Suggested topics for today: {topics}. "
+        f"Suitable activities: {activities.get(age_group, activities['11_13'])}. "
+        "Weave topics naturally into conversation — never announce 'now we will do…'. "
+        "If the child picks a topic, stay with it for 2-5 exchanges before gently shifting. "
+        "Don't repeat the same topic twice in a row."
+    )
+
+
+def _rt_correction_block(profile: dict) -> str:
+    strategy = profile["corrections"]
+    if strategy == "never":
+        return (
+            "CORRECTIONS: Never explicitly correct errors. "
+            "If the student makes a mistake, simply use the correct form naturally in your reply "
+            "('Oh, you SAW a dog! Cool, what did the dog look like?'). "
+            "This is called a recast. Never say 'wrong', 'mistake', or 'try again'. "
+            "Just model the right way and move on warmly."
+        )
+    elif strategy == "recast":
+        return (
+            "CORRECTIONS: Use recasts — weave the correct form into your response without flagging the error. "
+            "For serious repeated errors only, gently offer the correct form: 'We usually say… — can you try that?' "
+            "Always praise the content before addressing the form."
+        )
+    elif strategy == "explicit_gentle":
+        return (
+            "CORRECTIONS: For clear grammar errors, gently highlight them: "
+            "'Good idea! Just a small thing — we say \"I went\" not \"I goed\" — can you say the full sentence again?' "
+            "Always praise the content before addressing the form. Maximum one correction per exchange."
+        )
+    else:  # explicit
+        return (
+            "CORRECTIONS: Correct errors clearly but kindly. "
+            "Explain briefly WHY (e.g. 'In English, we put the adjective before the noun'). "
+            "Ask the student to repeat the corrected version. Maximum one correction per turn."
+        )
+
+
+def _rt_language_block(age_group: str) -> str:
+    if age_group in ("5_7", "8_10"):
+        return (
+            "LANGUAGE RULES: The student's native language is Russian. "
+            "If the student speaks Russian, respond in Russian warmly, and add ONE very simple English phrase to try. "
+            "If the student speaks English, respond in simple English and praise every attempt. "
+            "If they say 'не понимаю', 'что?', 'переведи' — switch to Russian immediately, help calmly. "
+            "Gradually encourage more English — celebrate every English word loudly. "
+            "When you use an English word inside Russian, immediately give the meaning: 'good — хорошо'."
+        )
+    else:
+        return (
+            "LANGUAGE RULES: The student's native language is Russian. "
+            "Respond primarily in English. "
+            "If they speak Russian, gently prompt: 'Try saying that in English — I believe in you!' "
+            "Only use Russian for brief clarifications of crucial misunderstandings. "
+            "If they say 'не понимаю' or seem stuck, explain briefly in Russian, then give the English phrase. "
+            "When correcting, explain the rule briefly in Russian if needed."
+        )
+
+
+def _rt_safety_block() -> str:
+    return (
+        "SAFETY: You are speaking with a child. "
+        "Never discuss violence, politics, adult content, drugs, or any inappropriate topic. "
+        "If the student goes off-topic, gently redirect to English practice. "
+        "Keep the conversation positive, safe, and encouraging at all times. "
+        "If the child says they're tired or bored, respect it — offer something easier or a fun game."
+    )
+
+
+def _rt_webrtc_rules_block(age_group: str) -> str:
+    base = (
+        "LIVE VOICE RULES: You are in a live WebRTC voice call. "
+        "Respond like a real person on a phone call — no processing delays, no long introductions. "
+        "Speak in short bursts of 3-7 seconds. If a thought is longer, split it across turns. "
+        "Pronounce English words with natural English pronunciation, even inside Russian sentences. "
+        "Lead the conversation yourself — suggest small next steps, but never list menu options or buttons. "
+        "Vary your activities: question, mini-role-play, short story, choice, gentle correction. "
+        "If the child is silent or confused, help: 'Давай легко: скажи good или bad про свой день.' "
+        "Never use markdown, asterisks, lists, or any text formatting. "
+        "Never use emoji in your speech. "
+        "Sound like a real warm human, not a textbook."
+    )
+    if age_group == "5_7":
+        base += (
+            " For this young child: use the simplest words possible. "
+            "Make it feel like a game, not a lesson. Use sound effects and playful reactions."
+        )
+    elif age_group in ("14_18",):
+        base += (
+            " For this teenager: speak naturally, like a cool older friend who happens to be great at English. "
+            "Don't be patronizing. Discuss real topics they care about."
+        )
+    return base
+
+
 def build_voice_realtime_instructions(
     user_name: str,
     age_label: str = "",
     prompt_context: dict | None = None,
 ) -> str:
-    """Builds a compact prompt for native speech-to-speech Realtime sessions."""
+    """Builds a structured, age-adaptive prompt for native speech-to-speech Realtime sessions."""
     context = dict(prompt_context or {})
     context["mode"] = "voice"
-    base = _runtime_instructions(user_name, age_label, context, "")
-    return (
-        base
-        + """
+    age_group = context.get("age_group", "default")
+    profile = _get_realtime_profile(context)
 
-Особые правила для живого голосового WebRTC-разговора:
-- Ты слышишь ребенка напрямую голосом. Отвечай как человек в звонке: без пауз на “обработку”, без длинных вступлений.
-- Говори короткими репликами по 3-7 секунд. Если мысль длиннее, раздели ее на несколько ходов.
-- Русскую речь ребенка понимай как русский запрос и отвечай по-русски. Английские слова произноси с естественным английским произношением.
-- Если ребенок говорит по-английски, отвечай простым английским и мягко исправляй только одну ошибку.
-- Разговор веди сам: предлагай маленький следующий шаг, но не показывай меню и не перечисляй кнопки.
-- Не проси ребенка повторять одну и ту же фразу каждый ход. Чередуй: вопрос, мини-роль, короткая история, выбор, мягкое исправление.
-- Если ребенок молчит или растерялся, помоги сам: “Давай легко: скажи good или bad про свой день.”
-- Первое сообщение после подключения: коротко поздоровайся и сразу дай один легкий живой вопрос, не список тем.
-"""
-    )
+    name = user_name or "друг"
+    level = context.get("level") or TUTOR_DEFAULT_LEVEL
+    goal = context.get("goal") or "разговорная практика"
+    topics = context.get("topic_suggestions") or context.get("topics") or TUTOR_DEFAULT_TOPICS
+
+    # Контекст недавних сообщений для непрерывности разговора
+    recent_user = context.get("recent_user_messages") or ""
+    recent_assistant = context.get("recent_assistant_messages") or ""
+    context_block = ""
+    if recent_user or recent_assistant:
+        context_block = (
+            f"CONVERSATION CONTEXT: Recent student messages: {recent_user or 'none yet'}. "
+            f"Recent tutor messages: {recent_assistant or 'none yet'}. "
+            "Continue naturally from where the conversation left off. Don't repeat what was already discussed."
+        )
+
+    blocks = [
+        _rt_identity_block(profile, name),
+        _rt_speech_style_block(profile, age_group),
+        _rt_pedagogy_block(profile, level, goal),
+        _rt_topic_block(topics, age_group),
+        _rt_correction_block(profile),
+        _rt_language_block(age_group),
+        _rt_safety_block(),
+        _rt_webrtc_rules_block(age_group),
+    ]
+    if context_block:
+        blocks.append(context_block)
+
+    return "\n\n".join(blocks)
+
+
+def _transcription_hint(prompt_context: dict | None) -> str:
+    """Подсказка для ASR с темами урока — снижает ошибки распознавания."""
+    context = prompt_context or {}
+    topics = context.get("topic_suggestions") or context.get("topics") or ""
+    level = context.get("level") or ""
+    parts = ["A child is speaking with an English tutor."]
+    if level:
+        parts.append(f"Level: {level}.")
+    if topics:
+        parts.append(f"Topics: {topics[:150]}.")
+    parts.append("The child may speak Russian, English, or a mix. Transcribe exactly; do not translate.")
+    return " ".join(parts)
 
 
 def build_realtime_session_config(
@@ -429,36 +632,36 @@ def build_realtime_session_config(
     age_label: str = "",
     prompt_context: dict | None = None,
 ) -> dict:
-    """Session payload for OpenAI Realtime WebRTC."""
+    """Session payload for OpenAI Realtime WebRTC — fully age-adaptive."""
+    profile = _get_realtime_profile(prompt_context)
+
     return {
         "type": "realtime",
         "model": OPENAI_REALTIME_MODEL,
         "instructions": build_voice_realtime_instructions(user_name, age_label, prompt_context),
         "output_modalities": ["audio"],
-        "max_output_tokens": 220,
+        "max_output_tokens": profile["max_output_tokens"],
+        "temperature": profile["temperature"],
         "audio": {
             "input": {
                 "noise_reduction": {"type": "near_field"},
                 "transcription": {
                     "model": OPENAI_REALTIME_TRANSCRIBE_MODEL,
-                    "prompt": (
-                        "A child is speaking with an English tutor. The child may speak Russian, "
-                        "English, or a mix. Transcribe exactly; do not translate."
-                    ),
+                    "prompt": _transcription_hint(prompt_context),
                 },
                 "turn_detection": {
                     "type": "server_vad",
-                    "threshold": 0.45,
-                    "prefix_padding_ms": 300,
-                    "silence_duration_ms": 520,
+                    "threshold": profile["vad_threshold"],
+                    "prefix_padding_ms": profile["prefix_padding_ms"],
+                    "silence_duration_ms": profile["silence_duration_ms"],
                     "create_response": True,
-                    "interrupt_response": True,
-                    "idle_timeout_ms": 9000,
+                    "interrupt_response": profile["interrupt_response"],
+                    "idle_timeout_ms": profile["idle_timeout_ms"],
                 },
             },
             "output": {
-                "voice": OPENAI_REALTIME_VOICE,
-                "speed": 1.04,
+                "voice": profile["voice"],
+                "speed": profile["speed"],
             },
         },
     }

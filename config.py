@@ -100,3 +100,87 @@ WORDS_PER_AGE_GROUP = {
     "11_13": 8,
     "14_18": 10,
 }
+
+# ── Возрастные профили для Realtime WebRTC голосового режима ──────────────────
+# Каждый профиль адаптирует параметры OpenAI Realtime API под возрастную группу:
+# - speed: скорость речи AI (0.88 = медленнее для малышей, 1.02 = нормальная для подростков)
+# - max_output_tokens: лимит длины ответа (короче для малышей, длиннее для старших)
+# - temperature: креативность (выше = игривее для малышей, ниже = точнее для старших)
+# - VAD: настройки детекции голоса (чувствительнее для тихих детей, длиннее паузы для думающих)
+# - persona/corrections/grammar_focus: педагогические параметры для промпта
+REALTIME_AGE_PROFILES = {
+    "5_7": {
+        # Аудио / модель
+        "speed": 0.88,                # медленнее — как воспитатель в детском саду
+        "max_output_tokens": 150,     # очень короткие ответы, внимание ребёнка ограничено
+        "temperature": 0.9,           # теплее/креативнее = игривый тон
+        "voice": OPENAI_REALTIME_VOICE,
+
+        # VAD / детекция голоса — маленькие дети говорят тихо и с паузами
+        "vad_threshold": 0.35,        # ниже = ловит тихий голос
+        "silence_duration_ms": 1200,  # 1.2 сек паузы перед ответом AI — дать договорить
+        "prefix_padding_ms": 400,     # захватить начало тихой речи
+        "idle_timeout_ms": 45_000,    # 45 сек тишины — дети долго думают
+        "interrupt_response": False,  # не прерывать AI — малышей это путает
+
+        # Педагогика (используется в промпт-билдере)
+        "persona": "a super-friendly kindergarten teacher",
+        "max_sentence_words": 8,
+        "corrections": "never",       # никогда не исправлять напрямую — только recast
+        "grammar_focus": False,
+    },
+    "8_10": {
+        "speed": 0.94,
+        "max_output_tokens": 200,
+        "temperature": 0.85,
+        "voice": OPENAI_REALTIME_VOICE,
+
+        "vad_threshold": 0.38,
+        "silence_duration_ms": 950,
+        "prefix_padding_ms": 350,
+        "idle_timeout_ms": 35_000,
+        "interrupt_response": True,
+
+        "persona": "a fun and encouraging primary-school English tutor",
+        "max_sentence_words": 12,
+        "corrections": "recast",      # повторить правильно без акцента на ошибке
+        "grammar_focus": False,
+    },
+    "11_13": {
+        "speed": 0.99,
+        "max_output_tokens": 280,
+        "temperature": 0.80,
+        "voice": OPENAI_REALTIME_VOICE,
+
+        "vad_threshold": 0.40,
+        "silence_duration_ms": 750,
+        "prefix_padding_ms": 320,
+        "idle_timeout_ms": 28_000,
+        "interrupt_response": True,
+
+        "persona": "a cool and supportive middle-school English tutor",
+        "max_sentence_words": 18,
+        "corrections": "explicit_gentle",  # "Good try! The word is actually…"
+        "grammar_focus": True,
+    },
+    "14_18": {
+        "speed": 1.02,                # почти нативный темп
+        "max_output_tokens": 400,     # место для развёрнутых объяснений
+        "temperature": 0.75,          # точнее, взрослее
+        "voice": OPENAI_REALTIME_VOICE,
+
+        "vad_threshold": 0.42,
+        "silence_duration_ms": 600,
+        "prefix_padding_ms": 300,
+        "idle_timeout_ms": 22_000,
+        "interrupt_response": True,
+
+        "persona": "a knowledgeable and engaging high-school English tutor and mentor",
+        "max_sentence_words": 30,
+        "corrections": "explicit",    # исправлять и объяснять почему
+        "grammar_focus": True,
+    },
+}
+
+# Фолбэк, если age_group не определена
+REALTIME_AGE_PROFILES["default"] = REALTIME_AGE_PROFILES["11_13"]

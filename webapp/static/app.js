@@ -1435,9 +1435,12 @@ async function renderChat() {
 
       realtimeStream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
+          echoCancellation: { ideal: true },
+          noiseSuppression: { ideal: true },
+          autoGainControl: { ideal: true },
+          sampleRate: { ideal: 16000 },
+          channelCount: { ideal: 1 },
+          latency: { ideal: 0.02 },
         },
       });
       realtimeStream.getAudioTracks().forEach(track => realtimePc.addTrack(track, realtimeStream));
@@ -1447,10 +1450,20 @@ async function renderChat() {
       realtimeDataChannel.onopen = () => {
         updateVoiceModeUi("Слушаю...");
         setFace("listening");
+        const ageGroup = state.me?.user?.age_group || "default";
+        const childName = state.me?.user?.child_name || "друг";
+        const ageGreetings = {
+          "5_7": `Поздоровайся с ${childName} самым тёплым, весёлым голосом воспитателя. Одно короткое предложение и один суперлёгкий вопрос, например "Какое твоё любимое животное?" или "Ты любишь мороженое?". Говори очень просто и ласково.`,
+          "8_10": `Поздоровайся с ${childName} как классный, дружелюбный учитель. Одно предложение, потом один весёлый вопрос, например "Если бы у тебя была суперсила, какая бы это была?" — легко и весело!`,
+          "11_13": `Скажи привет ${childName} естественно и по-дружески — как будто начинаешь обычный разговор, а не урок. Одно приветствие, потом один интересный вопрос про их день или что-то, что им нравится.`,
+          "14_18": `Поздоровайся с ${childName} естественно и тепло, потом задай один интересный вопрос — что-то, что заставит задуматься, например "What's something you've been curious about lately?" или "How's your day going so far?"`,
+          "default": `Начни разговор: поздоровайся с ${childName} тепло в одном предложении, потом задай один лёгкий вопрос на английском.`,
+        };
+        const greeting = ageGreetings[ageGroup] || ageGreetings["default"];
         sendRealtimeEvent({
           type: "response.create",
           response: {
-            instructions: "Начни разговор как живой детский репетитор: одно короткое приветствие и один легкий вопрос. Не перечисляй темы и не говори про кнопки.",
+            instructions: greeting,
           },
         });
       };
