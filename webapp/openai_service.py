@@ -18,12 +18,14 @@ from config import (
     OPENAI_TTS_MODEL,
     OPENAI_TTS_VOICE,
     OPENAI_TRANSCRIBE_MODEL,
+    OPENAI_VOICE_REASONING_EFFORT,
     OPENAI_VOICE_TTS_VOICE,
     TUTOR_CORRECTION_MODE,
     TUTOR_DEFAULT_LEVEL,
     TUTOR_DEFAULT_STYLE,
     TUTOR_DEFAULT_TOPICS,
     TUTOR_LANGUAGE_BALANCE,
+    VOICE_MAX_TOKENS,
 )
 
 log = logging.getLogger(__name__)
@@ -53,6 +55,8 @@ def openai_config_status() -> dict:
         "prompt_id_configured": bool(OPENAI_PROMPT_ID),
         "prompt_version": OPENAI_PROMPT_VERSION,
         "prompt_for_voice": OPENAI_PROMPT_FOR_VOICE,
+        "voice_reasoning_effort": OPENAI_VOICE_REASONING_EFFORT,
+        "voice_max_tokens": VOICE_MAX_TOKENS,
     }
 
 
@@ -173,6 +177,13 @@ def _needs_russian_repair(last_user_text: str, reply_text: str) -> bool:
     return _has_cyrillic(last_user_text) and bool(reply_text.strip()) and not _has_cyrillic(reply_text)
 
 
+def _clean_voice_reply(text: str) -> str:
+    cleaned = " ".join((text or "").split())
+    for marker in ("🙂", "😀", "😄", "😊", "😉", "👍", "🎉", "✨"):
+        cleaned = cleaned.replace(marker, "")
+    return " ".join(cleaned.split())
+
+
 def _voice_module_prompt(
     user_name: str,
     age: str,
@@ -200,12 +211,17 @@ def _voice_module_prompt(
 Жесткие правила:
 - 1-3 короткие фразы, максимум 240 символов. Без markdown, списков, анализа и лекций.
 - Сначала ответь на реальный смысл последней реплики. Не уводи в заготовленную тему.
-- Русский запрос, “не понимаю”, “что?”, “переведи”, “помоги”, “?” -> отвечай по-русски. Английскую фразу вставляй только если она реально помогает.
+- Русский запрос, “не понимаю”, “что?”, “переведи”, “помоги”, “?” -> отвечай по-русски. Английскую фразу вставляй не всегда, а только если она реально помогает.
+- Если в русском ответе есть английское слово, сразу дай понятный смысл рядом: “good — хорошо”, “boring — скучно”.
 - Английский запрос -> отвечай простым английским. Одну ошибку исправь мягко, коротко по-русски.
+- Когда исправляешь английскую ошибку, не повторяй правильную фразу дважды.
 - Смешанный язык -> выбирай язык, на котором ребенку явно легче.
 - Не заставляй повторять фразу каждый ход. Иногда лучше просто ответить и задать живой вопрос.
-- Один вопрос максимум. Не тестируй каждый ход. Не звучать как меню.
+- Один вопрос максимум. Не тестируй каждый ход. Не звучать как меню или карточка из приложения.
 - Не говори шаблонно про animals/colors/story. Не повторяй одну тему подряд. Не начинай часто с “Понял”, “Класс”, “Хорошая попытка”.
+- Не используй emoji в ответе.
+- Не используй взрослые объяснения вроде “так договорились носители языка”. Объясняй проще: “так это слово звучит по-английски”.
+- Если ребенок говорит “не хочу повторять”, “не хочу”, “устал”, не предлагай повторить снова. Уважай это и предложи другой легкий ход.
 - Темы только безопасные детские. {avoid_topics}
 
 Стиль: как репетитор рядом, который реально слушает: живо, спокойно, с поддержкой, без официоза. Реагируй конкретно на слова ребенка. Для 5-10 лет больше игры и выбора; для подростков — реальные ситуации и диалоги.
@@ -214,11 +230,12 @@ def _voice_module_prompt(
 
 Качество живого ответа:
 - На “я не знаю что сказать” не перечисляй темы. Начни сам с легкого хода: “Окей, начнем с твоего дня. Was it good or boring?”
-- На “я не понимаю” объясни спокойно по-русски, без давления.
+- На “я не понимаю” объясни спокойно по-русски, без давления и без случайных новых слов.
 - На “давай играть” сразу начинай игру, не объясняй правила долго.
 - На одно английское слово ответь естественно и продолжи сцену.
 - На ошибку дай правильный вариант без морали.
-- На вопрос ребенка сначала ответь на вопрос, потом при желании добавь одно английское слово.
+- На вопрос ребенка сначала ответь на вопрос, потом при желании добавь одно английское слово. Если вопрос “почему слово так переводится”, отвечай просто: “так это называется по-английски”.
+- На отказ повторять скажи: “Окей, без повторения. Тогда просто выбери: игра или короткая история?”
 
 Звучать должно как живой короткий ответ человеку, а не как урок из учебника."""
 
@@ -465,7 +482,7 @@ async def chat_reply(
     try:
         last_user_text = _last_user_text(history)
         mode = _interaction_mode(prompt_context)
-        max_output_tokens = min(CHAT_MAX_TOKENS, 170) if mode == "voice" else CHAT_MAX_TOKENS
+        max_output_tokens = VOICE_MAX_TOKENS if mode == "voice" else CHAT_MAX_TOKENS
         runtime_instructions = _runtime_instructions(user_name, age_label, prompt_context, last_user_text)
         use_stored_prompt = bool(OPENAI_PROMPT_ID and (mode != "voice" or OPENAI_PROMPT_FOR_VOICE))
         request = {
@@ -489,7 +506,7 @@ async def chat_reply(
                     name=user_name or "друг",
                     age_label=age_label or "не указана",
                 ) + "\n\n" + runtime_instructions
-        reasoning_effort = "low" if mode == "voice" else OPENAI_REASONING_EFFORT
+        reasoning_effort = OPENAI_VOICE_REASONING_EFFORT if mode == "voice" else OPENAI_REASONING_EFFORT
         if reasoning_effort and _supports_reasoning(OPENAI_MODEL):
             request["reasoning"] = {"effort": reasoning_effort}
 
@@ -499,6 +516,8 @@ async def chat_reply(
         output_tokens = _usage_int(usage, "output_tokens")
         total_tokens = _usage_int(usage, "total_tokens") or input_tokens + output_tokens
         text = (response.output_text or "").strip() or "…"
+        if mode == "voice":
+            text = _clean_voice_reply(text)
 
         if _needs_russian_repair(last_user_text, text):
             repair_response = await _client.responses.create(
@@ -518,6 +537,8 @@ async def chat_reply(
                 max_output_tokens=min(max_output_tokens, 140),
             )
             repair_text = (repair_response.output_text or "").strip()
+            if mode == "voice":
+                repair_text = _clean_voice_reply(repair_text)
             if repair_text and _has_cyrillic(repair_text):
                 text = repair_text
                 repair_usage = getattr(repair_response, "usage", None)

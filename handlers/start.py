@@ -84,6 +84,8 @@ async def diag_handler(message: Message) -> None:
         f"OPENAI model: {openai['model']}\n"
         f"OPENAI TTS model: {openai['tts_model']}\n"
         f"OPENAI voice TTS voice: {openai['voice_tts_voice']}\n"
+        f"OPENAI voice reasoning: {openai['voice_reasoning_effort']}\n"
+        f"OPENAI voice max tokens: {openai['voice_max_tokens']}\n"
         f"OPENAI prompt configured: {openai['prompt_id_configured']}\n"
         f"OPENAI prompt version: {openai['prompt_version'] or 'latest'}\n"
         f"OPENAI prompt for voice: {openai['prompt_for_voice']}"
