@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from io import BytesIO
 import logging
 
-from openai import AsyncOpenAI, BadRequestError, RateLimitError
+from openai import APIConnectionError, AuthenticationError, AsyncOpenAI, BadRequestError, RateLimitError
 
 from config import (
     CHAT_MAX_TOKENS,
@@ -41,25 +41,41 @@ def openai_config_status() -> dict:
     }
 
 
-SYSTEM_PROMPT = """Ты — дружелюбный и терпеливый AI-репетитор английского языка для русскоязычного ребенка по имени {name}.
+def public_openai_error(error: Exception) -> str:
+    """Returns a child-safe error message without leaking secrets or raw provider payloads."""
+    if isinstance(error, AuthenticationError):
+        return "Репетитор пока не настроен. Родителю нужно обновить ключ OpenAI."
+    if isinstance(error, RateLimitError):
+        message = str(error)
+        if "insufficient_quota" in message:
+            return "У OpenAI закончилась квота или не включена оплата. Проверь billing и limits."
+        return "OpenAI временно ограничил запросы. Попробуй чуть позже."
+    if isinstance(error, APIConnectionError):
+        return "Не удалось подключиться к OpenAI. Попробуй еще раз через минуту."
+    return "Не удалось получить ответ от репетитора. Попробуй еще раз."
+
+
+SYSTEM_PROMPT = """Ты — живой, добрый AI-репетитор английского для ребенка по имени {name}.
 
 Возрастная группа ученика: {age_label}.
 
-Правила:
-- Основной режим: веди живой разговор на английском.
-- Отвечай коротко: 2–4 предложения.
-- Подстраивай сложность, тон и темы под возраст.
-- Для детей 5–10 лет используй очень простые слова, игровые примеры и мягкий тон.
-- Для подростков 14–18 лет можно говорить чуть взрослее, но без неподходящих тем.
-- Если есть заметная ошибка, мягко исправь и кратко объясни по-русски.
-- Режим поддержки на русском включается автоматически, если ученик пишет по-русски, говорит что не понимает, просит перевод, присылает только знак вопроса или явно путается.
-- В режиме поддержки отвечай именно на русском языке. Не спрашивай, нужно ли объяснить по-русски.
-- В режиме поддержки: сначала просто объясни смысл по-русски, затем дай 1–2 очень простые английские фразы для повторения. После этого мягко верни ученика к английскому.
-- Если ученик пишет русскую фразу и хочет сказать её по-английски, дай английский вариант и короткое русское объяснение.
-- Иногда задавай простой вопрос, чтобы продолжить разговор.
-- Не обсуждай взрослые, опасные или неподходящие для детей темы.
+Твоя задача — вести голосовой диалог так, чтобы ребенку было легко, интересно и не страшно ошибаться.
 
-Отвечай обычным текстом, без markdown-разметки и без списков."""
+Главные правила:
+- Всегда определяй язык последней реплики ребенка.
+- Если ребенок говорит или пишет по-русски, отвечай по-русски, коротко объясняй смысл и давай 1–2 очень простые английские фразы для повторения.
+- Если ребенок говорит или пишет по-английски, отвечай в основном по-английски, но сложные объяснения и исправления давай по-русски.
+- Если ребенок говорит «не понимаю», «что делать», «переведи», присылает «?» или молчит/путается, сразу переходи на русский и помогай.
+- Не спрашивай, нужен ли русский язык. Если видишь, что ребенку трудно, просто помоги по-русски.
+- Отвечай очень коротко для голосового режима: 1–3 коротких предложения.
+- В конце почти всегда задавай один простой вопрос или предлагай выбор из 2–3 тем.
+- Темы должны быть детскими: животные, цвета, еда, школа, игры, спорт, путешествия, сказочная история, загадка, мини-квест.
+- Для детей 5–10 лет используй самые простые слова, игру, похвалу и повторение.
+- Для 11–18 лет можно чуть взрослее: диалоги, школа, хобби, путешествия, экзамены, но без взрослых или опасных тем.
+- Исправляй ошибки мягко: сначала похвали, потом дай правильный вариант.
+- Не выдавай длинные списки, markdown, таблицы и сложную грамматику.
+
+Если ребенок просто здоровается или не знает, что сказать, предложи 2–3 темы и начни легкую игру. Пример: «Можем поговорить про animals, food или games. Choose one: animals or food?»"""
 
 
 @dataclass(frozen=True)
@@ -105,7 +121,11 @@ async def transcribe_audio(file_bytes: bytes, filename: str = "voice.webm", cont
     result = await _client.audio.transcriptions.create(
         model=OPENAI_TRANSCRIBE_MODEL,
         file=(safe_name, audio_file, content_type or "audio/webm"),
-        prompt="Child learning English. Speech may be in Russian or English.",
+        prompt=(
+            "A child is speaking to an English tutor. "
+            "The speech can be Russian, English, or a mix. "
+            "Transcribe exactly what the child says; do not translate."
+        ),
     )
     text = getattr(result, "text", result)
     return str(text or "").strip()
@@ -124,9 +144,9 @@ async def synthesize_speech(text: str) -> bytes:
 
     is_russian = any("а" <= ch.lower() <= "я" or ch.lower() == "ё" for ch in clean_text)
     instructions = (
-        "Говори дружелюбно, мягко и понятно для ребенка. Темп спокойный."
+        "Говори дружелюбно, мягко и понятно для ребенка. Темп спокойный, фразы короткие, интонация ободряющая."
         if is_russian else
-        "Speak warmly and clearly for a child learning English. Keep a calm, friendly pace."
+        "Speak warmly and clearly for a child learning English. Keep a calm, friendly pace and short phrases."
     )
     async def create_audio(model: str, include_instructions: bool = True) -> bytes:
         request = {
@@ -191,20 +211,26 @@ async def chat_reply(history: list[dict], user_name: str, age_label: str = "") -
         )
     except RateLimitError as e:
         log.warning("OpenAI rate/quota limit: %s", e)
-        message = str(e)
-        if "insufficient_quota" in message:
-            text = ("⚠️ У OpenAI закончилась квота или не включена оплата. "
-                    "Проверь billing и limits в кабинете OpenAI.")
-        else:
-            text = "⚠️ OpenAI временно ограничил запросы. Попробуй позже."
         return ChatReply(
-            text=text,
+            text=f"⚠️ {public_openai_error(e)}",
+            model=OPENAI_MODEL,
+        )
+    except AuthenticationError as e:
+        log.exception("OpenAI authentication failed")
+        return ChatReply(
+            text=f"⚠️ {public_openai_error(e)}",
+            model=OPENAI_MODEL,
+        )
+    except APIConnectionError as e:
+        log.exception("OpenAI connection failed")
+        return ChatReply(
+            text=f"⚠️ {public_openai_error(e)}",
             model=OPENAI_MODEL,
         )
     except Exception as e:
         log.exception("Ошибка обращения к OpenAI")
         return ChatReply(
-            text=f"⚠️ Не удалось получить ответ от репетитора: {e}",
+            text=f"⚠️ {public_openai_error(e)}",
             model=OPENAI_MODEL,
         )
 

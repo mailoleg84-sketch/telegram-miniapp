@@ -53,17 +53,26 @@ async function apiForm(path, formData) {
   return res.json();
 }
 
-async function apiBlob(path, body) {
-  const res = await fetch(path, {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify(body || {}),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `HTTP ${res.status}`);
+async function apiBlob(path, body, timeoutMs = 0) {
+  const controller = timeoutMs ? new AbortController() : null;
+  const timeoutId = controller
+    ? setTimeout(() => controller.abort(), timeoutMs)
+    : null;
+  try {
+    const res = await fetch(path, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(body || {}),
+      signal: controller?.signal,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+    return res.blob();
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
-  return res.blob();
 }
 
 function esc(value) {
@@ -713,6 +722,16 @@ async function renderChat() {
     let heardVoice = false;
     let recordingStartedAt = 0;
     let lastVoiceAt = 0;
+    let missedAutoRecordings = 0;
+    let voiceIntroPlayed = false;
+
+    const VOICE_VOLUME_THRESHOLD = 0.012;
+    const VOICE_SILENCE_MS = 1700;
+    const VOICE_MIN_RECORDING_MS = 1500;
+    const VOICE_NO_SPEECH_MS = 7500;
+    const VOICE_MAX_RECORDING_MS = 18000;
+    const VOICE_RESTART_DELAY_MS = 450;
+    const VOICE_TTS_TIMEOUT_MS = 4200;
 
     function bubble(role, text) {
       const div = document.createElement("div");
@@ -768,8 +787,12 @@ async function renderChat() {
       if (typeof onDone === "function") onDone();
     }
 
+    function isAssistantError(text) {
+      return !text || text.startsWith("Ошибка:") || text.startsWith("⚠️");
+    }
+
     function speakTutorFallback(text, onDone = null) {
-      if (!text || text.startsWith("Ошибка:")) {
+      if (isAssistantError(text)) {
         finishTutorSpeech(onDone);
         return;
       }
@@ -795,14 +818,14 @@ async function renderChat() {
     }
 
     async function speakTutor(text, onDone = null) {
-      if (!text || text.startsWith("Ошибка:")) {
+      if (isAssistantError(text)) {
         finishTutorSpeech(onDone);
         return;
       }
       stopTutorSpeech();
       setFace("thinking");
       try {
-        const audioBlob = await apiBlob("/api/audio/speech", { text });
+        const audioBlob = await apiBlob("/api/audio/speech", { text }, VOICE_TTS_TIMEOUT_MS);
         tutorAudioUrl = URL.createObjectURL(audioBlob);
         tutorAudio = new Audio(tutorAudioUrl);
         tutorAudio.onplaying = () => setFace("speaking");
@@ -851,6 +874,9 @@ async function renderChat() {
         return;
       }
       audioContext = new AudioContextClass();
+      if (audioContext.state === "suspended") {
+        audioContext.resume().catch(() => {});
+      }
       const source = audioContext.createMediaStreamSource(stream);
       analyser = audioContext.createAnalyser();
       analyser.fftSize = 1024;
@@ -870,22 +896,30 @@ async function renderChat() {
         }
         const volume = Math.sqrt(sum / samples.length);
         const now = Date.now();
-        if (volume > 0.018) {
+        if (volume > VOICE_VOLUME_THRESHOLD) {
           heardVoice = true;
           lastVoiceAt = now;
+          missedAutoRecordings = 0;
           updateVoiceModeUi("Говори...");
         }
-        if (heardVoice && now - lastVoiceAt > 1300 && now - recordingStartedAt > 1800) {
+        if (heardVoice && now - lastVoiceAt > VOICE_SILENCE_MS && now - recordingStartedAt > VOICE_MIN_RECORDING_MS) {
           stopRecording();
           return;
         }
-        if (!heardVoice && now - recordingStartedAt > 9000) {
+        if (!heardVoice && now - recordingStartedAt > 3500) {
+          updateVoiceModeUi("Я слушаю. Скажи фразу...");
+        }
+        if (!heardVoice && now - recordingStartedAt > VOICE_NO_SPEECH_MS) {
+          missedAutoRecordings += 1;
           skipUploadOnStop = true;
           stopRecording();
-          scheduleVoiceListen(500);
+          if (missedAutoRecordings === 2) {
+            bubble("assistant", "Я пока не слышу голос. Скажи по-русски или по-английски: «Я не понимаю», «Let's talk about animals» или «Хочу игру».");
+          }
+          scheduleVoiceListen(VOICE_RESTART_DELAY_MS);
           return;
         }
-        if (now - recordingStartedAt > 16000) {
+        if (now - recordingStartedAt > VOICE_MAX_RECORDING_MS) {
           stopRecording();
           return;
         }
@@ -919,7 +953,7 @@ async function renderChat() {
     }
 
     if (!data.messages?.length) {
-      box.innerHTML = `<div class="chat-empty">Hello! или Я не понимаю.</div>`;
+      box.innerHTML = `<div class="chat-empty">Нажми «Говорить» и скажи: «Я не понимаю», «Let's talk about animals» или «Хочу игру».</div>`;
     } else {
       data.messages.forEach(m => bubble(m.role, m.content));
     }
@@ -969,7 +1003,12 @@ async function renderChat() {
       voiceModeTimer = setTimeout(() => {
         if (!voiceModeActive || sending) return;
         if (recorder && recorder.state === "recording") return;
-        startRecording(true);
+        startRecording(true).catch(error => {
+          bubble("assistant", `Не удалось начать запись: ${error.message}`);
+          voiceModeActive = false;
+          updateVoiceModeUi();
+          setFace("idle");
+        });
       }, delay);
     }
 
@@ -999,6 +1038,7 @@ async function renderChat() {
           if (wasAuto) scheduleVoiceListen(900);
           return;
         }
+        missedAutoRecordings = 0;
         updateVoiceModeUi("Отвечаю...");
         await send(text, { autoContinue: wasAuto });
       } catch (e) {
@@ -1031,7 +1071,13 @@ async function renderChat() {
         audioChunks = [];
         skipUploadOnStop = false;
         autoRecording = auto;
-        recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        recordingStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
         const mimeType = preferredMimeType();
         recorder = mimeType
           ? new MediaRecorder(recordingStream, { mimeType })
@@ -1099,8 +1145,17 @@ async function renderChat() {
       stopTutorSpeech();
       clearVoiceModeTimer();
       voiceModeActive = true;
-      updateVoiceModeUi("Слушаю...");
+      missedAutoRecordings = 0;
+      updateVoiceModeUi("Готовлюсь...");
       haptic();
+      if (!voiceIntroPlayed && box.querySelector(".chat-empty")) {
+        voiceIntroPlayed = true;
+        box.innerHTML = "";
+        const intro = "Привет! Я слушаю тебя. Можно говорить по-русски или по-английски. Скажи: «Я не понимаю», «Let's talk about animals» или «Хочу игру».";
+        bubble("assistant", intro);
+        speakTutor(intro, () => scheduleVoiceListen(VOICE_RESTART_DELAY_MS));
+        return;
+      }
       await startRecording(true);
     }
 

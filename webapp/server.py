@@ -21,7 +21,7 @@ from config import (
     WEBAPP_PORT,
 )
 from webapp.auth import verify_fallback_auth, verify_init_data
-from webapp.openai_service import chat_reply, synthesize_speech, transcribe_audio
+from webapp.openai_service import chat_reply, public_openai_error, synthesize_speech, transcribe_audio
 
 log = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
@@ -574,7 +574,7 @@ async def api_audio_transcribe(request: web.Request):
         )
     except Exception as e:
         log.exception("Audio transcription failed")
-        return web.json_response({"error": f"Не удалось распознать голос: {e}"}, status=502)
+        return web.json_response({"error": f"Не удалось распознать голос. {public_openai_error(e)}"}, status=502)
 
     return web.json_response({"text": text})
 
@@ -591,7 +591,7 @@ async def api_audio_speech(request: web.Request):
         audio = await synthesize_speech(text)
     except Exception as e:
         log.exception("Speech synthesis failed")
-        return web.json_response({"error": f"Не удалось озвучить ответ: {e}"}, status=502)
+        return web.json_response({"error": f"Не удалось озвучить ответ. {public_openai_error(e)}"}, status=502)
 
     return web.Response(
         body=audio,
