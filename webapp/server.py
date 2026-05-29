@@ -767,8 +767,8 @@ async def api_realtime_call(request: web.Request):
             prompt_context=prompt_context,
         )
     except Exception as e:
-        log.exception("Realtime call setup failed")
-        return web.json_response({"error": f"Не удалось включить живой голос. {public_openai_error(e)}"}, status=502)
+        log.exception("Realtime call setup failed: %s", e)
+        return web.json_response({"error": f"Realtime error: {str(e)[:300]}"}, status=502)
 
     return web.Response(
         text=answer_sdp,
