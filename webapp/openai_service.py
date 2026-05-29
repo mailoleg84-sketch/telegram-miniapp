@@ -101,6 +101,15 @@ SYSTEM_PROMPT = """Ты — живой, добрый AI-репетитор ан�
 Если ребенок просто здоровается или не знает, что сказать, предложи 2–3 разные безопасные темы из текущего контекста и начни легкую игру. Не повторяй одну и ту же тему подряд."""
 
 
+VOICE_TTS_INSTRUCTIONS = (
+    "Говори как живой добрый репетитор для ребенка. Тепло, естественно, разговорно, "
+    "с мягкой интонацией и маленькими естественными паузами. Не как диктор, не как робот, "
+    "не театрально. Русский произноси натурально. Английские слова произноси с чистым "
+    "английским произношением, даже если вся фраза на русском. Говори бодро, но спокойно; "
+    "фразы короткие, голос с ощущением улыбки."
+)
+
+
 @dataclass(frozen=True)
 class ChatReply:
     text: str
@@ -164,6 +173,52 @@ def _needs_russian_repair(last_user_text: str, reply_text: str) -> bool:
     return _has_cyrillic(last_user_text) and bool(reply_text.strip()) and not _has_cyrillic(reply_text)
 
 
+def _voice_module_prompt(
+    user_name: str,
+    age: str,
+    level: str,
+    goal: str,
+    topics: str,
+    topic_suggestions: str,
+    avoid_topics: str,
+    recent_user_messages: str,
+    recent_assistant_messages: str,
+    last_user_text: str,
+    language: str,
+    activity_menu: str,
+    lesson_loop: str,
+) -> str:
+    return f"""Ты — живой голосовой AI-репетитор английского для ребенка. Отвечай быстро, тепло, по теме и только финальной устной репликой.
+
+Контекст: имя {user_name or "друг"}; возраст {age}; уровень {level}; цель {goal}; интересы {topics}; свежие темы {topic_suggestions}; язык последней реплики {language}.
+Последняя реплика ребенка: {last_user_text or "пусто"}.
+Недавно ребенок говорил: {recent_user_messages}. Ты отвечал: {recent_assistant_messages}.
+
+Жесткие правила:
+- 1-3 короткие фразы, максимум 220 символов. Без markdown, списков, анализа и лекций.
+- Сначала ответь на реальный смысл последней реплики. Не уводи в заготовленную тему.
+- Русский запрос, “не понимаю”, “что?”, “переведи”, “помоги”, “?” -> отвечай по-русски. Вставь максимум одну короткую английскую фразу.
+- Английский запрос -> отвечай простым английским. Одну ошибку исправь мягко, коротко по-русски.
+- Смешанный язык -> выбирай язык, на котором ребенку явно легче.
+- Один ответ = одно маленькое действие: повторить 2-5 слов, выбрать один вариант, назвать одно слово или yes/no.
+- Один вопрос максимум. Не тестируй каждый ход.
+- Не говори шаблонно про animals/colors/story. Не повторяй одну тему подряд.
+- Темы только безопасные детские. {avoid_topics}
+
+Стиль: как репетитор рядом, который реально слушает: живо, спокойно, с поддержкой, без официоза. Для 5-10 лет больше игры и выбора; для подростков — реальные ситуации и диалоги.
+
+Методика: {lesson_loop}. Форматы меняй: {activity_menu}. Веди мини-сцену 2-5 ходов, если ребенок не просит сменить тему. Иногда верни одно старое слово для повторения.
+
+Микро-шаблоны:
+Русский: “Понял. Проще: say ‘I like games’. Повтори: I like games.”
+Одно слово: “Great! Say: I like cats. Black cats or white cats?”
+Ошибка: “Good try! Лучше: I have a dog. Скажи: I have a dog.”
+Вопрос: “Да, apple — это яблоко. Скажи: I want an apple.”
+Игра: “Давай! It is yellow and sweet. Banana or lemon?”
+
+Звучать должно как живой короткий ответ человеку, а не как урок из учебника."""
+
+
 def _runtime_instructions(
     user_name: str,
     age_label: str,
@@ -174,6 +229,9 @@ def _runtime_instructions(
     mode = _interaction_mode(context)
     language = _last_language(last_user_text)
     age = context.get("age") or age_label or "не указан"
+    level = context.get("level") or TUTOR_DEFAULT_LEVEL
+    goal = context.get("goal") or "разговорная практика"
+    topics = context.get("topics") or TUTOR_DEFAULT_TOPICS
     topic_suggestions = context.get("topic_suggestions") or context.get("topics") or TUTOR_DEFAULT_TOPICS
     avoid_topics = context.get("avoid_topics") or "Не повторяй одну и ту же тему подряд."
     recent_user_messages = context.get("recent_user_messages") or "нет"
@@ -190,6 +248,22 @@ def _runtime_instructions(
         "connect: отреагируй на ребенка; model: дай правильную короткую фразу; "
         "try: попроси сказать или выбрать одно; review: иногда верни одно прошлое слово."
     )
+    if mode == "voice":
+        return _voice_module_prompt(
+            user_name=user_name,
+            age=str(age),
+            level=str(level),
+            goal=str(goal),
+            topics=str(topics),
+            topic_suggestions=str(topic_suggestions),
+            avoid_topics=str(avoid_topics),
+            recent_user_messages=str(recent_user_messages),
+            recent_assistant_messages=str(recent_assistant_messages),
+            last_user_text=str(last_user_text or ""),
+            language=language,
+            activity_menu=str(activity_menu),
+            lesson_loop=str(lesson_loop),
+        )
     voice_rules = (
         "Режим сейчас: ГОЛОС. Отвечай как живой человек в короткой живой беседе: 2-4 короткие фразы, "
         "сначала по сути реплики ребенка, затем одна полезная английская фраза или микро-задание. "
@@ -337,9 +411,11 @@ async def synthesize_speech(text: str, mode: str = "chat") -> bytes:
             "Use natural clear English pronunciation, friendly intonation, gentle emotion, and short conversational phrases."
         )
     if mode == "voice":
-        instructions += (
-            " This is a live voice conversation. Be quick, spontaneous, present, and playful. "
-            "Do not overact, do not sound theatrical, and do not stretch words."
+        instructions = (
+            VOICE_TTS_INSTRUCTIONS
+            + " Это живой голосовой диалог: отвечай звучанием быстро, естественно и в тему. "
+            "Не растягивай слова, не переигрывай, не читай как диктор. "
+            + instructions
         )
     voice = OPENAI_VOICE_TTS_VOICE if mode == "voice" else OPENAI_TTS_VOICE
 
@@ -402,10 +478,13 @@ async def chat_reply(
             if OPENAI_PROMPT_VERSION:
                 request["prompt"]["version"] = OPENAI_PROMPT_VERSION
         else:
-            request["instructions"] = SYSTEM_PROMPT.format(
-                name=user_name or "друг",
-                age_label=age_label or "не указана",
-            ) + "\n\n" + runtime_instructions
+            if mode == "voice":
+                request["instructions"] = runtime_instructions
+            else:
+                request["instructions"] = SYSTEM_PROMPT.format(
+                    name=user_name or "друг",
+                    age_label=age_label or "не указана",
+                ) + "\n\n" + runtime_instructions
         reasoning_effort = "low" if mode == "voice" else OPENAI_REASONING_EFFORT
         if reasoning_effort and _supports_reasoning(OPENAI_MODEL):
             request["reasoning"] = {"effort": reasoning_effort}
