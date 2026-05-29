@@ -641,7 +641,6 @@ def build_realtime_session_config(
         "instructions": build_voice_realtime_instructions(user_name, age_label, prompt_context),
         "output_modalities": ["audio"],
         "max_output_tokens": profile["max_output_tokens"],
-        "temperature": profile["temperature"],
         "audio": {
             "input": {
                 "noise_reduction": {"type": "near_field"},
