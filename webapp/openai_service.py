@@ -371,7 +371,7 @@ async def chat_reply(
                 name=user_name or "друг",
                 age_label=age_label or "не указана",
             ) + "\n\n" + runtime_instructions
-        reasoning_effort = "minimal" if mode == "voice" else OPENAI_REASONING_EFFORT
+        reasoning_effort = "low" if mode == "voice" else OPENAI_REASONING_EFFORT
         if reasoning_effort and _supports_reasoning(OPENAI_MODEL):
             request["reasoning"] = {"effort": reasoning_effort}
 
