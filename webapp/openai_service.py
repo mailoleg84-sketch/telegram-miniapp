@@ -1,8 +1,11 @@
 """Обёртка над OpenAI API: ИИ-репетитор английского."""
 from dataclasses import dataclass
+import hashlib
 from io import BytesIO
+import json
 import logging
 
+import aiohttp
 from openai import APIConnectionError, AuthenticationError, AsyncOpenAI, BadRequestError, RateLimitError
 
 from config import (
@@ -14,6 +17,9 @@ from config import (
     OPENAI_PROMPT_FOR_VOICE,
     OPENAI_PROMPT_ID,
     OPENAI_PROMPT_VERSION,
+    OPENAI_REALTIME_MODEL,
+    OPENAI_REALTIME_TRANSCRIBE_MODEL,
+    OPENAI_REALTIME_VOICE,
     OPENAI_REASONING_EFFORT,
     OPENAI_TTS_MODEL,
     OPENAI_TTS_VOICE,
@@ -52,6 +58,9 @@ def openai_config_status() -> dict:
         "tts_model": OPENAI_TTS_MODEL,
         "tts_voice": OPENAI_TTS_VOICE,
         "voice_tts_voice": OPENAI_VOICE_TTS_VOICE,
+        "realtime_model": OPENAI_REALTIME_MODEL,
+        "realtime_voice": OPENAI_REALTIME_VOICE,
+        "realtime_transcribe_model": OPENAI_REALTIME_TRANSCRIBE_MODEL,
         "prompt_id_configured": bool(OPENAI_PROMPT_ID),
         "prompt_version": OPENAI_PROMPT_VERSION,
         "prompt_for_voice": OPENAI_PROMPT_FOR_VOICE,
@@ -387,6 +396,116 @@ def _runtime_instructions(
 Примеры тона:
 Русский запрос: «Понял! Давай проще: say "I like games". Выбери: games или animals?»
 Английский запрос: «Great! You can say: I like cats. Do you like cats or dogs?»"""
+
+
+def build_voice_realtime_instructions(
+    user_name: str,
+    age_label: str = "",
+    prompt_context: dict | None = None,
+) -> str:
+    """Builds a compact prompt for native speech-to-speech Realtime sessions."""
+    context = dict(prompt_context or {})
+    context["mode"] = "voice"
+    base = _runtime_instructions(user_name, age_label, context, "")
+    return (
+        base
+        + """
+
+Особые правила для живого голосового WebRTC-разговора:
+- Ты слышишь ребенка напрямую голосом. Отвечай как человек в звонке: без пауз на “обработку”, без длинных вступлений.
+- Говори короткими репликами по 3-7 секунд. Если мысль длиннее, раздели ее на несколько ходов.
+- Русскую речь ребенка понимай как русский запрос и отвечай по-русски. Английские слова произноси с естественным английским произношением.
+- Если ребенок говорит по-английски, отвечай простым английским и мягко исправляй только одну ошибку.
+- Разговор веди сам: предлагай маленький следующий шаг, но не показывай меню и не перечисляй кнопки.
+- Не проси ребенка повторять одну и ту же фразу каждый ход. Чередуй: вопрос, мини-роль, короткая история, выбор, мягкое исправление.
+- Если ребенок молчит или растерялся, помоги сам: “Давай легко: скажи good или bad про свой день.”
+- Первое сообщение после подключения: коротко поздоровайся и сразу дай один легкий живой вопрос, не список тем.
+"""
+    )
+
+
+def build_realtime_session_config(
+    user_name: str,
+    age_label: str = "",
+    prompt_context: dict | None = None,
+) -> dict:
+    """Session payload for OpenAI Realtime WebRTC."""
+    return {
+        "type": "realtime",
+        "model": OPENAI_REALTIME_MODEL,
+        "instructions": build_voice_realtime_instructions(user_name, age_label, prompt_context),
+        "output_modalities": ["audio"],
+        "max_output_tokens": 220,
+        "audio": {
+            "input": {
+                "noise_reduction": {"type": "near_field"},
+                "transcription": {
+                    "model": OPENAI_REALTIME_TRANSCRIBE_MODEL,
+                    "prompt": (
+                        "A child is speaking with an English tutor. The child may speak Russian, "
+                        "English, or a mix. Transcribe exactly; do not translate."
+                    ),
+                },
+                "turn_detection": {
+                    "type": "server_vad",
+                    "threshold": 0.45,
+                    "prefix_padding_ms": 300,
+                    "silence_duration_ms": 520,
+                    "create_response": True,
+                    "interrupt_response": True,
+                    "idle_timeout_ms": 9000,
+                },
+            },
+            "output": {
+                "voice": OPENAI_REALTIME_VOICE,
+                "speed": 1.04,
+            },
+        },
+    }
+
+
+def _safety_identifier(user_id: int | str) -> str:
+    raw = f"telegram-miniapp:{user_id}".encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()[:32]
+
+
+async def create_realtime_call(
+    sdp_offer: str,
+    user_id: int | str,
+    user_name: str,
+    age_label: str = "",
+    prompt_context: dict | None = None,
+) -> str:
+    """Creates a Realtime WebRTC call and returns the SDP answer."""
+    if not OPENAI_API_KEY:
+        raise RuntimeError("OPENAI_API_KEY is not configured")
+    clean_sdp = (sdp_offer or "").strip()
+    if not clean_sdp.startswith("v=0"):
+        raise ValueError("Invalid SDP offer")
+
+    form = aiohttp.FormData()
+    form.add_field("sdp", clean_sdp, content_type="application/sdp")
+    form.add_field(
+        "session",
+        json.dumps(build_realtime_session_config(user_name, age_label, prompt_context)),
+        content_type="application/json",
+    )
+
+    timeout = aiohttp.ClientTimeout(total=25)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.post(
+            "https://api.openai.com/v1/realtime/calls",
+            headers={
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+                "OpenAI-Safety-Identifier": _safety_identifier(user_id),
+            },
+            data=form,
+        ) as response:
+            text = await response.text()
+            if response.status >= 400:
+                log.warning("Realtime call setup failed: %s %s", response.status, text[:500])
+                raise RuntimeError(f"Realtime setup failed: HTTP {response.status}")
+            return text
 
 
 def _prompt_variables(user_name: str, age_label: str = "", prompt_context: dict | None = None) -> dict:

@@ -21,11 +21,12 @@ from config import (
     WEBAPP_PORT,
 )
 from webapp.auth import verify_fallback_auth, verify_init_data
-from webapp.openai_service import chat_reply, public_openai_error, synthesize_speech, transcribe_audio
+from webapp.openai_service import chat_reply, create_realtime_call, public_openai_error, synthesize_speech, transcribe_audio
 
 log = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
 MAX_AUDIO_BYTES = 8 * 1024 * 1024
+MAX_SDP_BYTES = 512 * 1024
 
 
 # ---------- Middleware ----------
@@ -742,6 +743,52 @@ async def api_audio_speech(request: web.Request):
     )
 
 
+async def api_realtime_call(request: web.Request):
+    user_id = request["tg_user"]["id"]
+    sdp_offer = await request.text()
+    if not sdp_offer or len(sdp_offer.encode("utf-8")) > MAX_SDP_BYTES:
+        return web.json_response({"error": "Некорректный голосовой запрос"}, status=400)
+
+    user = await _current_user_or_404(request)
+    rows = await database.get_recent_messages(user_id, limit=CHAT_HISTORY_LIMIT)
+    history = [{"role": r["role"], "content": r["content"]} for r in rows]
+    age_label = _age_label(user["age_group"]) if user else ""
+    prompt_context = _prompt_context_for_user(user) if user else {}
+    prompt_context["mode"] = "voice"
+    prompt_context.update(_voice_prompt_context(user, history))
+
+    try:
+        answer_sdp = await create_realtime_call(
+            sdp_offer=sdp_offer,
+            user_id=user_id,
+            user_name=user["name"] if user else "друг",
+            age_label=age_label,
+            prompt_context=prompt_context,
+        )
+    except Exception as e:
+        log.exception("Realtime call setup failed")
+        return web.json_response({"error": f"Не удалось включить живой голос. {public_openai_error(e)}"}, status=502)
+
+    return web.Response(
+        text=answer_sdp,
+        content_type="application/sdp",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+async def api_realtime_log(request: web.Request):
+    user_id = request["tg_user"]["id"]
+    body = await _safe_json(request)
+    role = "assistant" if body.get("role") == "assistant" else "user"
+    content = " ".join(str(body.get("content") or "").split())
+    if not content:
+        return web.json_response({"ok": True})
+    if len(content) > 1000:
+        content = content[:1000]
+    await database.add_message(user_id, role, content)
+    return web.json_response({"ok": True})
+
+
 async def api_chat_reset(request: web.Request):
     user_id = request["tg_user"]["id"]
     await database.clear_conversation(user_id)
@@ -792,6 +839,8 @@ def create_app(
     app.router.add_post("/api/chat/send",              api_chat_send)
     app.router.add_post("/api/audio/transcribe",       api_audio_transcribe)
     app.router.add_post("/api/audio/speech",           api_audio_speech)
+    app.router.add_post("/api/realtime/call",          api_realtime_call)
+    app.router.add_post("/api/realtime/log",           api_realtime_log)
     app.router.add_post("/api/chat/reset",             api_chat_reset)
 
     if bot is not None and dispatcher is not None and webhook_path:

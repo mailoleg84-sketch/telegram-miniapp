@@ -75,6 +75,24 @@ async function apiBlob(path, body, timeoutMs = 0) {
   }
 }
 
+async function apiSdp(path, sdp) {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: authHeaders("application/sdp"),
+    body: sdp,
+  });
+  if (!res.ok) {
+    const raw = await res.text().catch(() => "");
+    let message = raw || `HTTP ${res.status}`;
+    try {
+      const parsed = JSON.parse(raw);
+      message = parsed.error || message;
+    } catch (_) {}
+    throw new Error(message);
+  }
+  return res.text();
+}
+
 function esc(value) {
   return String(value ?? "").replace(/[&<>"']/g, c => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -724,6 +742,13 @@ async function renderChat() {
     let lastVoiceAt = 0;
     let missedAutoRecordings = 0;
     let voiceIntroPlayed = false;
+    let realtimeActive = false;
+    let realtimePc = null;
+    let realtimeDataChannel = null;
+    let realtimeStream = null;
+    let realtimeAudio = null;
+    const realtimeLogged = new Set();
+    const realtimeResponseText = new Map();
 
     const VOICE_VOLUME_THRESHOLD = 0.012;
     const VOICE_SILENCE_MS = 950;
@@ -792,6 +817,136 @@ async function renderChat() {
         clearTimeout(voiceModeTimer);
         voiceModeTimer = null;
       }
+    }
+
+    function realtimeSupported() {
+      return Boolean(window.RTCPeerConnection && navigator.mediaDevices?.getUserMedia);
+    }
+
+    function sendRealtimeEvent(event) {
+      if (realtimeDataChannel?.readyState === "open") {
+        realtimeDataChannel.send(JSON.stringify(event));
+      }
+    }
+
+    async function logRealtimeMessage(role, text, key) {
+      const clean = String(text || "").trim();
+      const textKey = `${role}:text:${clean}`;
+      if (!clean || realtimeLogged.has(key) || realtimeLogged.has(textKey)) return;
+      realtimeLogged.add(key);
+      realtimeLogged.add(textKey);
+      try {
+        await api("/api/realtime/log", "POST", { role, content: clean });
+      } catch (_) {}
+    }
+
+    function extractRealtimeTextFromResponse(response) {
+      const parts = [];
+      for (const item of response?.output || []) {
+        for (const content of item.content || []) {
+          if (content.transcript) parts.push(content.transcript);
+          else if (content.text) parts.push(content.text);
+        }
+      }
+      return parts.join(" ").trim();
+    }
+
+    function handleRealtimeEvent(rawEvent) {
+      let event = null;
+      try {
+        event = JSON.parse(rawEvent.data);
+      } catch (_) {
+        return;
+      }
+      const type = event.type || "";
+      if (type === "session.created") {
+        updateVoiceModeUi("Слушаю...");
+        setFace("listening");
+        return;
+      }
+      if (type === "input_audio_buffer.speech_started") {
+        updateVoiceModeUi("Слушаю...");
+        setFace("listening");
+        return;
+      }
+      if (type === "input_audio_buffer.speech_stopped") {
+        updateVoiceModeUi("Думаю...");
+        setFace("thinking");
+        return;
+      }
+      if (type === "conversation.item.input_audio_transcription.completed") {
+        const text = String(event.transcript || event.text || "").trim();
+        const key = `user:${event.item_id || event.event_id || text}`;
+        if (text && !realtimeLogged.has(key) && !realtimeLogged.has(`user:text:${text}`)) {
+          bubble("user", text);
+          logRealtimeMessage("user", text, key);
+        }
+        return;
+      }
+      if (type === "response.output_audio_transcript.delta" || type === "response.audio_transcript.delta") {
+        const id = event.response_id || event.item_id || "latest";
+        realtimeResponseText.set(id, (realtimeResponseText.get(id) || "") + (event.delta || ""));
+        return;
+      }
+      if (type === "response.output_audio_transcript.done" || type === "response.audio_transcript.done") {
+        const id = event.response_id || event.item_id || "latest";
+        const text = String(event.transcript || realtimeResponseText.get(id) || "").trim();
+        realtimeResponseText.delete(id);
+        const key = `assistant:${id}:${text}`;
+        if (text && !realtimeLogged.has(key) && !realtimeLogged.has(`assistant:text:${text}`)) {
+          bubble("assistant", text);
+          logRealtimeMessage("assistant", text, key);
+        }
+        updateVoiceModeUi("Слушаю...");
+        setFace("listening");
+        return;
+      }
+      if (type === "response.created") {
+        updateVoiceModeUi("Отвечаю...");
+        setFace("thinking");
+        return;
+      }
+      if (type === "response.done") {
+        const text = extractRealtimeTextFromResponse(event.response);
+        const id = event.response?.id || event.event_id || "done";
+        const key = `assistant:${id}:${text}`;
+        if (text && !realtimeLogged.has(key) && !realtimeLogged.has(`assistant:text:${text}`)) {
+          bubble("assistant", text);
+          logRealtimeMessage("assistant", text, key);
+        }
+        updateVoiceModeUi("Слушаю...");
+        setFace("listening");
+        return;
+      }
+      if (type === "error") {
+        const message = event.error?.message || "Ошибка живого голоса";
+        bubble("assistant", `Ошибка голоса: ${message}`);
+        updateVoiceModeUi("Ошибка голоса");
+        setFace("idle");
+      }
+    }
+
+    function stopRealtimeSession() {
+      realtimeActive = false;
+      if (realtimeDataChannel) {
+        try { realtimeDataChannel.close(); } catch (_) {}
+        realtimeDataChannel = null;
+      }
+      if (realtimePc) {
+        try {
+          realtimePc.getSenders().forEach(sender => sender.track?.stop());
+          realtimePc.close();
+        } catch (_) {}
+        realtimePc = null;
+      }
+      realtimeStream?.getTracks().forEach(track => track.stop());
+      realtimeStream = null;
+      if (realtimeAudio) {
+        realtimeAudio.pause();
+        realtimeAudio.srcObject = null;
+        realtimeAudio = null;
+      }
+      realtimeResponseText.clear();
     }
 
     function stopTutorSpeech() {
@@ -1009,6 +1164,7 @@ async function renderChat() {
       clearVoiceModeTimer();
       voiceModeActive = false;
       autoRecording = false;
+      stopRealtimeSession();
       stopTutorSpeech();
       stopSilenceMonitor();
       discardRecording = true;
@@ -1218,7 +1374,7 @@ async function renderChat() {
       else startRecording();
     }
 
-    async function startVoiceMode() {
+    async function startLegacyVoiceMode() {
       if (voiceModeActive || sending) return;
       stopTutorSpeech();
       clearVoiceModeTimer();
@@ -1237,12 +1393,104 @@ async function renderChat() {
       await startRecording(true);
     }
 
+    async function startRealtimeVoiceMode() {
+      if (!realtimeSupported()) {
+        throw new Error("WebRTC не поддерживается на этом устройстве");
+      }
+      stopTutorSpeech();
+      stopRealtimeSession();
+      clearVoiceModeTimer();
+      voiceModeActive = true;
+      realtimeActive = true;
+      missedAutoRecordings = 0;
+      if (box.querySelector(".chat-empty")) box.innerHTML = "";
+      updateVoiceModeUi("Подключаю живой голос...");
+      setFace("thinking");
+      haptic();
+
+      realtimePc = new RTCPeerConnection();
+      realtimeAudio = document.createElement("audio");
+      realtimeAudio.autoplay = true;
+      realtimeAudio.playsInline = true;
+      realtimeAudio.onplaying = () => {
+        updateVoiceModeUi("Говорю...");
+        setFace("speaking");
+      };
+      realtimeAudio.onpause = () => {
+        if (voiceModeActive && realtimeActive) {
+          updateVoiceModeUi("Слушаю...");
+          setFace("listening");
+        }
+      };
+      realtimePc.ontrack = event => {
+        realtimeAudio.srcObject = event.streams[0];
+      };
+      realtimePc.onconnectionstatechange = () => {
+        if (!voiceModeActive || !realtimeActive) return;
+        if (["failed", "disconnected", "closed"].includes(realtimePc.connectionState)) {
+          updateVoiceModeUi("Связь прервалась");
+          setFace("idle");
+        }
+      };
+
+      realtimeStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      realtimeStream.getAudioTracks().forEach(track => realtimePc.addTrack(track, realtimeStream));
+
+      realtimeDataChannel = realtimePc.createDataChannel("oai-events");
+      realtimeDataChannel.onmessage = handleRealtimeEvent;
+      realtimeDataChannel.onopen = () => {
+        updateVoiceModeUi("Слушаю...");
+        setFace("listening");
+        sendRealtimeEvent({
+          type: "response.create",
+          response: {
+            instructions: "Начни разговор как живой детский репетитор: одно короткое приветствие и один легкий вопрос. Не перечисляй темы и не говори про кнопки.",
+          },
+        });
+      };
+      realtimeDataChannel.onclose = () => {
+        if (voiceModeActive && realtimeActive) {
+          updateVoiceModeUi("Голос остановлен");
+          setFace("idle");
+        }
+      };
+
+      const offer = await realtimePc.createOffer();
+      await realtimePc.setLocalDescription(offer);
+      const answerSdp = await apiSdp("/api/realtime/call", offer.sdp);
+      await realtimePc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+    }
+
+    async function startVoiceMode() {
+      if (voiceModeActive || sending) return;
+      if (realtimeSupported()) {
+        try {
+          await startRealtimeVoiceMode();
+          return;
+        } catch (e) {
+          stopRealtimeSession();
+          voiceModeActive = false;
+          updateVoiceModeUi("Включаю запасной режим...");
+          bubble("assistant", "Живой голос сейчас не включился, попробую запасной режим.");
+          setFace("idle");
+        }
+      }
+      await startLegacyVoiceMode();
+    }
+
     function stopVoiceMode() {
       clearVoiceModeTimer();
       voiceModeActive = false;
       autoRecording = false;
       skipUploadOnStop = true;
       updateVoiceModeUi("Обычный режим");
+      stopRealtimeSession();
       if (recorder && recorder.state === "recording") {
         stopRecording();
       } else {

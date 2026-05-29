@@ -37,7 +37,7 @@ DATABASE_URL = _env("DATABASE_URL", "")
 
 # --- Mini App (Telegram WebApp) ---
 WEBAPP_URL = _env("WEBAPP_URL", "https://telegram-miniapp-1-r0sj.onrender.com")
-APP_VERSION = _env("APP_VERSION", "20260529-kids-v29")
+APP_VERSION = _env("APP_VERSION", "20260529-kids-v30")
 
 WEBAPP_HOST = os.getenv("WEBAPP_HOST", "0.0.0.0")
 # Render задаёт порт через переменную PORT — читаем её, иначе 8080.
@@ -53,6 +53,9 @@ OPENAI_TRANSCRIBE_MODEL = _env("OPENAI_TRANSCRIBE_MODEL", "whisper-1")
 OPENAI_TTS_MODEL = _env("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
 OPENAI_TTS_VOICE = _env("OPENAI_TTS_VOICE", "coral")
 OPENAI_VOICE_TTS_VOICE = _env("OPENAI_VOICE_TTS_VOICE", "marin")
+OPENAI_REALTIME_MODEL = _env("OPENAI_REALTIME_MODEL", "gpt-realtime-mini")
+OPENAI_REALTIME_VOICE = _env("OPENAI_REALTIME_VOICE", OPENAI_VOICE_TTS_VOICE or "marin")
+OPENAI_REALTIME_TRANSCRIBE_MODEL = _env("OPENAI_REALTIME_TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe")
 OPENAI_REASONING_EFFORT = _env("OPENAI_REASONING_EFFORT", "medium")
 OPENAI_VOICE_REASONING_EFFORT = _env("OPENAI_VOICE_REASONING_EFFORT", "low")
 CHAT_HISTORY_LIMIT = int(os.getenv("CHAT_HISTORY_LIMIT", "8"))
