@@ -1487,10 +1487,11 @@ async function renderChat() {
           await startRealtimeVoiceMode();
           return;
         } catch (e) {
+          console.error("Realtime voice failed:", e);
           stopRealtimeSession();
           voiceModeActive = false;
           updateVoiceModeUi("Включаю запасной режим...");
-          bubble("assistant", "Живой голос сейчас не включился, попробую запасной режим.");
+          bubble("assistant", `Живой голос не включился: ${e.message || e}. Пробую запасной режим.`);
           setFace("idle");
         }
       }
