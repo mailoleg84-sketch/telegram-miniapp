@@ -17,6 +17,7 @@ from config import (
     OPENAI_TTS_MODEL,
     OPENAI_TTS_VOICE,
     OPENAI_TRANSCRIBE_MODEL,
+    OPENAI_VOICE_TTS_VOICE,
     TUTOR_CORRECTION_MODE,
     TUTOR_DEFAULT_LEVEL,
     TUTOR_DEFAULT_STYLE,
@@ -269,7 +270,7 @@ async def transcribe_audio(file_bytes: bytes, filename: str = "voice.webm", cont
     return str(text or "").strip()
 
 
-async def synthesize_speech(text: str) -> bytes:
+async def synthesize_speech(text: str, mode: str = "chat") -> bytes:
     """Generates a short MP3 tutor voice response."""
     if _client is None:
         raise RuntimeError("OPENAI_API_KEY is not configured")
@@ -280,19 +281,41 @@ async def synthesize_speech(text: str) -> bytes:
     if len(clean_text) > 900:
         clean_text = clean_text[:900]
 
-    is_russian = any("а" <= ch.lower() <= "я" or ch.lower() == "ё" for ch in clean_text)
-    instructions = (
-        "Говори дружелюбно, мягко и понятно для ребенка. Темп спокойный, фразы короткие, интонация ободряющая."
-        if is_russian else
-        "Speak warmly and clearly for a child learning English. Keep a calm, friendly pace and short phrases."
-    )
+    has_russian = _has_cyrillic(clean_text)
+    has_english = _has_latin(clean_text)
+    if has_russian and has_english:
+        instructions = (
+            "Speak like a warm, real human English tutor for a child, not like a robot. "
+            "The text mixes Russian and English. Pronounce Russian with natural native Russian pronunciation. "
+            "Pronounce English words and phrases with natural clear English pronunciation, never with a Russian accent. "
+            "Use tiny natural pauses when switching languages. Keep the tone lively, kind, and conversational."
+        )
+    elif has_russian:
+        instructions = (
+            "Говори как живой добрый репетитор для ребенка, не как робот. "
+            "Русский произноси естественно, тепло и разговорно. "
+            "Если встречается английское слово, произнеси его с нормальным английским произношением. "
+            "Темп спокойный, интонация живая, фразы короткие."
+        )
+    else:
+        instructions = (
+            "Speak like a warm, real human English tutor for a child, not like a robot. "
+            "Use natural clear English pronunciation, friendly intonation, and short conversational phrases."
+        )
+    if mode == "voice":
+        instructions += (
+            " This is a live voice conversation. Sound spontaneous and present, with gentle emotion, "
+            "small natural pauses, and no announcer or audiobook style."
+        )
+    voice = OPENAI_VOICE_TTS_VOICE if mode == "voice" else OPENAI_TTS_VOICE
+
     async def create_audio(model: str, include_instructions: bool = True) -> bytes:
         request = {
             "model": model,
-            "voice": OPENAI_TTS_VOICE,
+            "voice": voice,
             "input": clean_text,
             "response_format": "mp3",
-            "speed": 0.95,
+            "speed": 1.0,
         }
         if include_instructions:
             request["instructions"] = instructions

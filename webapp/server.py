@@ -695,13 +695,14 @@ async def api_audio_transcribe(request: web.Request):
 async def api_audio_speech(request: web.Request):
     body = await _safe_json(request)
     text = (body.get("text") or "").strip()
+    mode = "voice" if body.get("mode") == "voice" else "chat"
     if not text:
         return web.json_response({"error": "Нет текста для озвучки"}, status=400)
     if len(text) > 1200:
         text = text[:1200]
 
     try:
-        audio = await synthesize_speech(text)
+        audio = await synthesize_speech(text, mode=mode)
     except Exception as e:
         log.exception("Speech synthesis failed")
         return web.json_response({"error": f"Не удалось озвучить ответ. {public_openai_error(e)}"}, status=502)

@@ -731,7 +731,8 @@ async function renderChat() {
     const VOICE_NO_SPEECH_MS = 6200;
     const VOICE_MAX_RECORDING_MS = 18000;
     const VOICE_RESTART_DELAY_MS = 450;
-    const VOICE_TTS_TIMEOUT_MS = 3200;
+    const VOICE_TTS_TIMEOUT_MS = 12000;
+    const CHAT_TTS_TIMEOUT_MS = 7000;
     const VOICE_STARTERS = [
       "Привет! Сегодня можем начать с мини-квеста, кафе или космоса. Что выбираешь?",
       "Я слушаю. Можем сыграть в продавца, тренера или путешествие. Можно ответить по-русски.",
@@ -816,6 +817,31 @@ async function renderChat() {
       return !text || text.startsWith("Ошибка:") || text.startsWith("⚠️");
     }
 
+    function speechLang(char) {
+      if (/[a-z]/i.test(char)) return "en-US";
+      if (/[а-яё]/i.test(char)) return "ru-RU";
+      return "";
+    }
+
+    function speechSegments(text) {
+      const segments = [];
+      let current = "";
+      let currentLang = "";
+      for (const char of text) {
+        const lang = speechLang(char);
+        if (!lang || !currentLang || lang === currentLang) {
+          current += char;
+          if (lang && !currentLang) currentLang = lang;
+          continue;
+        }
+        if (current.trim()) segments.push({ text: current, lang: currentLang });
+        current = char;
+        currentLang = lang;
+      }
+      if (current.trim()) segments.push({ text: current, lang: currentLang || "ru-RU" });
+      return segments.length ? segments : [{ text, lang: /[а-яё]/i.test(text) ? "ru-RU" : "en-US" }];
+    }
+
     function speakTutorFallback(text, onDone = null) {
       if (isAssistantError(text)) {
         finishTutorSpeech(onDone);
@@ -828,34 +854,46 @@ async function renderChat() {
       }
       try {
         window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        const isRussian = /[а-яё]/i.test(text);
-        utterance.lang = isRussian ? "ru-RU" : "en-US";
-        utterance.rate = isRussian ? 0.95 : 0.86;
-        utterance.pitch = 1.08;
-        utterance.onstart = () => setFace("speaking");
-        utterance.onend = () => finishTutorSpeech(onDone);
-        utterance.onerror = () => finishTutorSpeech(onDone);
-        window.speechSynthesis.speak(utterance);
+        const segments = speechSegments(text);
+        let index = 0;
+        const speakNext = () => {
+          const segment = segments[index];
+          if (!segment) {
+            finishTutorSpeech(onDone);
+            return;
+          }
+          const utterance = new SpeechSynthesisUtterance(segment.text);
+          utterance.lang = segment.lang;
+          utterance.rate = segment.lang === "en-US" ? 0.88 : 0.95;
+          utterance.pitch = 1.05;
+          utterance.onstart = () => setFace("speaking");
+          utterance.onend = () => {
+            index += 1;
+            speakNext();
+          };
+          utterance.onerror = () => finishTutorSpeech(onDone);
+          window.speechSynthesis.speak(utterance);
+        };
+        speakNext();
       } catch (_) {
         finishTutorSpeech(onDone);
       }
     }
 
-    async function speakTutor(text, onDone = null, fast = false) {
+    async function speakTutor(text, onDone = null, voice = false) {
       if (isAssistantError(text)) {
         finishTutorSpeech(onDone);
         return;
       }
-      if (fast) {
-        stopTutorSpeech();
-        speakTutorFallback(text, onDone);
-        return;
-      }
       stopTutorSpeech();
       setFace("thinking");
+      if (voice) updateVoiceModeUi("Озвучиваю...");
       try {
-        const audioBlob = await apiBlob("/api/audio/speech", { text }, VOICE_TTS_TIMEOUT_MS);
+        const audioBlob = await apiBlob(
+          "/api/audio/speech",
+          { text, mode: voice ? "voice" : "chat" },
+          voice ? VOICE_TTS_TIMEOUT_MS : CHAT_TTS_TIMEOUT_MS,
+        );
         tutorAudioUrl = URL.createObjectURL(audioBlob);
         tutorAudio = new Audio(tutorAudioUrl);
         tutorAudio.onplaying = () => setFace("speaking");
