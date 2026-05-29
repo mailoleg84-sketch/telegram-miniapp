@@ -685,13 +685,22 @@ async def create_realtime_call(
     if not clean_sdp.startswith("v=0"):
         raise ValueError("Invalid SDP offer")
 
+    session_config = build_realtime_session_config(user_name, age_label, prompt_context)
+    session_json = json.dumps(session_config)
+    age_group = (prompt_context or {}).get("age_group", "?")
+    log.info(
+        "Realtime session: age_group=%s speed=%.2f max_tokens=%d silence_ms=%d idle_ms=%d instructions_len=%d",
+        age_group,
+        session_config.get("audio", {}).get("output", {}).get("speed", 0),
+        session_config.get("max_output_tokens", 0),
+        session_config.get("audio", {}).get("input", {}).get("turn_detection", {}).get("silence_duration_ms", 0),
+        session_config.get("audio", {}).get("input", {}).get("turn_detection", {}).get("idle_timeout_ms", 0),
+        len(session_config.get("instructions", "")),
+    )
+
     form = aiohttp.FormData()
     form.add_field("sdp", clean_sdp, content_type="application/sdp")
-    form.add_field(
-        "session",
-        json.dumps(build_realtime_session_config(user_name, age_label, prompt_context)),
-        content_type="application/json",
-    )
+    form.add_field("session", session_json, content_type="application/json")
 
     timeout = aiohttp.ClientTimeout(total=25)
     async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -705,8 +714,12 @@ async def create_realtime_call(
         ) as response:
             text = await response.text()
             if response.status >= 400:
-                log.warning("Realtime call setup failed: %s %s", response.status, text[:500])
+                log.error(
+                    "Realtime call FAILED: HTTP %s body=%s session_keys=%s",
+                    response.status, text[:800], list(session_config.keys()),
+                )
                 raise RuntimeError(f"Realtime setup failed: HTTP {response.status}")
+            log.info("Realtime call OK: SDP answer length=%d", len(text))
             return text
 
 
