@@ -728,10 +728,10 @@ async function renderChat() {
     const VOICE_VOLUME_THRESHOLD = 0.012;
     const VOICE_SILENCE_MS = 1700;
     const VOICE_MIN_RECORDING_MS = 1500;
-    const VOICE_NO_SPEECH_MS = 7500;
+    const VOICE_NO_SPEECH_MS = 6200;
     const VOICE_MAX_RECORDING_MS = 18000;
     const VOICE_RESTART_DELAY_MS = 450;
-    const VOICE_TTS_TIMEOUT_MS = 4200;
+    const VOICE_TTS_TIMEOUT_MS = 3200;
 
     function bubble(role, text) {
       const div = document.createElement("div");
@@ -906,15 +906,17 @@ async function renderChat() {
           stopRecording();
           return;
         }
-        if (!heardVoice && now - recordingStartedAt > 3500) {
-          updateVoiceModeUi("Я слушаю. Скажи фразу...");
+        if (!heardVoice && now - recordingStartedAt > 2800) {
+          updateVoiceModeUi("Я слушаю. Скажи: «Хочу игру»...");
         }
         if (!heardVoice && now - recordingStartedAt > VOICE_NO_SPEECH_MS) {
           missedAutoRecordings += 1;
           skipUploadOnStop = true;
           stopRecording();
-          if (missedAutoRecordings === 2) {
-            bubble("assistant", "Я пока не слышу голос. Скажи по-русски или по-английски: «Я не понимаю», «Let's talk about animals» или «Хочу игру».");
+          if (missedAutoRecordings === 1) {
+            bubble("assistant", "Я не расслышал. Попробуй сказать: «Хочу игру» или «I like games».");
+          } else if (missedAutoRecordings === 2) {
+            bubble("assistant", "Можно говорить по-русски. Скажи: «Я не понимаю», «Хочу животных» или «Давай историю».");
           }
           scheduleVoiceListen(VOICE_RESTART_DELAY_MS);
           return;
@@ -953,7 +955,16 @@ async function renderChat() {
     }
 
     if (!data.messages?.length) {
-      box.innerHTML = `<div class="chat-empty">Нажми «Говорить» и скажи: «Я не понимаю», «Let's talk about animals» или «Хочу игру».</div>`;
+      box.innerHTML = `
+        <div class="chat-empty">
+          <div>Нажми «Говорить» или выбери тему.</div>
+          <div class="quick-topic-row">
+            <button class="quick-topic" data-message="Я не понимаю">Я не понимаю</button>
+            <button class="quick-topic" data-message="Let's talk about animals">Animals</button>
+            <button class="quick-topic" data-message="Хочу игру">Игра</button>
+            <button class="quick-topic" data-message="Давай историю">История</button>
+          </div>
+        </div>`;
     } else {
       data.messages.forEach(m => bubble(m.role, m.content));
     }
@@ -987,6 +998,13 @@ async function renderChat() {
         input.focus();
       }
     }
+
+    document.querySelectorAll(".quick-topic").forEach(button => {
+      button.onclick = () => {
+        haptic();
+        send(button.dataset.message || button.textContent || "");
+      };
+    });
 
     async function uploadVoice(blob) {
       const form = new FormData();
@@ -1151,7 +1169,7 @@ async function renderChat() {
       if (!voiceIntroPlayed && box.querySelector(".chat-empty")) {
         voiceIntroPlayed = true;
         box.innerHTML = "";
-        const intro = "Привет! Я слушаю тебя. Можно говорить по-русски или по-английски. Скажи: «Я не понимаю», «Let's talk about animals» или «Хочу игру».";
+        const intro = "Привет! Говори по-русски или по-английски. Можно сказать: «Я не понимаю», «Хочу игру» или «Let's talk about animals».";
         bubble("assistant", intro);
         speakTutor(intro, () => scheduleVoiceListen(VOICE_RESTART_DELAY_MS));
         return;

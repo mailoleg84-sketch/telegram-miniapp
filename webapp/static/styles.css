@@ -278,7 +278,41 @@ code {
   border-bottom-left-radius: 4px;
 }
 
-.chat-empty { color: var(--hint); text-align: center; margin: auto; font-size: 14px; }
+.chat-empty {
+  color: var(--hint);
+  text-align: center;
+  margin: auto;
+  font-size: 14px;
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  max-width: 300px;
+}
+
+.quick-topic-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.quick-topic {
+  min-height: 34px;
+  padding: 7px 11px;
+  border: 1px solid var(--secondary-bg);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.quick-topic:active {
+  opacity: 0.75;
+  transform: scale(0.98);
+}
 
 .typing { color: var(--hint); font-size: 14px; align-self: flex-start; padding: 4px 6px; }
 
