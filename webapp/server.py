@@ -157,12 +157,16 @@ def _voice_topic_bank(user) -> list[str]:
             "airport adventure", "hotel check-in", "cafe order", "city map",
             "souvenir shop", "beach day", "train station", "lost backpack",
             "photo walk", "weather talk", "ice cream kiosk", "museum quest",
+            "passport helper", "bus stop", "theme park", "family trip",
+            "restaurant mistake", "ask for directions",
         ]
     if goal == "exams":
         return [
             "school day", "favorite hobby", "weekend plans", "short interview",
             "picture description", "study routine", "sports club", "my room",
             "healthy food", "future job", "friendship", "small presentation",
+            "compare two pictures", "tell a mini story", "opinion practice",
+            "exam calm-down", "daily routine challenge", "question cards",
         ]
     if age_group in {"5_7", "8_10"}:
         return [
@@ -170,17 +174,25 @@ def _voice_topic_bank(user) -> list[str]:
             "funny cafe", "toy store", "school bag", "secret door",
             "superhero training", "rainbow colors", "little chef", "sports day",
             "pet doctor", "birthday party", "snowy park", "music game",
+            "dragon library", "pirate bakery", "dino museum", "jungle camera",
+            "monster picnic", "art studio", "weather machine", "lost teddy",
+            "train of words", "moon playground", "detective game", "tiny theater",
         ]
     if age_group == "11_13":
         return [
             "school project", "gaming club", "sports practice", "music playlist",
             "movie scene", "travel vlog", "cafe dialogue", "new classmate",
             "weekend plan", "pet story", "shopping challenge", "mystery quest",
+            "YouTube plan", "comic book idea", "science fair", "escape room",
+            "football commentary", "birthday planning", "school club pitch",
+            "phone call practice",
         ]
     return [
         "real conversation", "travel problem", "school debate", "job interview mini",
         "movie discussion", "music and hobbies", "daily routine", "exam warm-up",
         "ordering food", "city directions", "online safety", "future plans",
+        "small talk practice", "opinion challenge", "presentation opener",
+        "friendly disagreement", "study abroad scene", "interview with a blogger",
     ]
 
 
@@ -200,16 +212,30 @@ def _voice_prompt_context(user, messages: list[dict]) -> dict:
     recent_assistant_messages = [m["content"] for m in messages if m["role"] == "assistant"][-3:]
     return {
         "topic_suggestions": ", ".join(topics),
-        "avoid_topics": "Не повторяй подряд одну и ту же тему; если в истории уже были games, animals или story, выбери другой ход.",
+        "avoid_topics": (
+            "Не повторяй подряд одну и ту же тему; если в истории уже были games, animals или story, "
+            "выбери другой ход. Не перечисляй темы как кнопки, если ребенок уже что-то сказал."
+        ),
         "recent_user_messages": " | ".join(recent_user_messages) or "пока нет",
         "recent_assistant_messages": " | ".join(recent_assistant_messages) or "пока нет",
+        "activity_menu": (
+            "роль: продавец/покупатель, мини-квест, угадай слово, эхо-повторение, "
+            "выбор из двух вариантов, вопрос про день ребенка, короткая смешная сценка, "
+            "мини-история на 2 реплики, возвращение к слову из прошлой реплики"
+        ),
+        "lesson_loop": (
+            "Сначала живо отреагируй на ребенка. Затем дай модель фразы, например: I want..., I like..., "
+            "Can I have...? После этого попроси ребенка сказать только маленький кусочек или выбрать вариант. "
+            "Через несколько реплик верни одно старое слово как легкое повторение."
+        ),
         "conversation_plan": (
             "1) Сначала понять настоящий запрос ребенка: вопрос, просьба, выбор темы, усталость или ошибка. "
             "2) Ответить по сути на этот запрос, не игнорировать его ради плана урока. "
             "3) Связать ответ с короткой английской фразой, которую легко повторить. "
-            "4) Продолжить текущую мини-сцену или предложить новый ход из свежих тем. "
+            "4) Продолжить текущую мини-сцену 2-4 хода, если ребенок не просит сменить тему. "
             "5) Каждые 3-4 реплики мягко менять активность: мини-диалог, угадай слово, роль, история, вопрос, исправление. "
-            "6) Если ребенок отвечает коротко, упростить и дать выбор из двух вариантов."
+            "6) Если ребенок отвечает коротко, упростить и дать выбор из двух вариантов. "
+            "7) Если ребенок спрашивает по-русски, ответить по-русски и дать одну маленькую английскую фразу."
         ),
     }
 

@@ -11,6 +11,7 @@ from config import (
     OPENAI_API_KEY,
     OPENAI_MODEL,
     OPENAI_OUTPUT_COST_PER_1M,
+    OPENAI_PROMPT_FOR_VOICE,
     OPENAI_PROMPT_ID,
     OPENAI_PROMPT_VERSION,
     OPENAI_REASONING_EFFORT,
@@ -51,6 +52,7 @@ def openai_config_status() -> dict:
         "voice_tts_voice": OPENAI_VOICE_TTS_VOICE,
         "prompt_id_configured": bool(OPENAI_PROMPT_ID),
         "prompt_version": OPENAI_PROMPT_VERSION,
+        "prompt_for_voice": OPENAI_PROMPT_FOR_VOICE,
     }
 
 
@@ -92,6 +94,9 @@ SYSTEM_PROMPT = """Ты — живой, добрый AI-репетитор ан�
 - Исправляй ошибки мягко: сначала похвали, потом дай правильный вариант.
 - Говори тепло, понятно и коротко, как живой репетитор в голосовом разговоре.
 - Не используй markdown, таблицы, длинные списки и нумерацию, если ребенок не просит подробный урок.
+- Веди не лекцию, а короткий цикл: услышал ребенка, ответил по сути, дал одну полезную фразу, попросил ребенка сказать или выбрать что-то маленькое.
+- Используй повторение с интервалом: иногда возвращай одно слово или фразу из недавнего разговора, но не превращай каждый ответ в тест.
+- Не начинай каждый раз с animals, colors, game или story. Меняй активность: роль, мини-квест, угадай слово, вопрос про день, короткая сценка, повторение фразы.
 
 Если ребенок просто здоровается или не знает, что сказать, предложи 2–3 разные безопасные темы из текущего контекста и начни легкую игру. Не повторяй одну и ту же тему подряд."""
 
@@ -177,9 +182,18 @@ def _runtime_instructions(
         "Слушай последнюю реплику, отвечай по сути, дай одну простую английскую фразу, "
         "затем задай один легкий вопрос или предложи выбор."
     )
+    activity_menu = context.get("activity_menu") or (
+        "мини-диалог, ролевая сцена, угадай слово, повтори фразу, короткая история, "
+        "вопрос про день, выбор из двух вариантов, мягкое исправление, повторение старого слова"
+    )
+    lesson_loop = context.get("lesson_loop") or (
+        "connect: отреагируй на ребенка; model: дай правильную короткую фразу; "
+        "try: попроси сказать или выбрать одно; review: иногда верни одно прошлое слово."
+    )
     voice_rules = (
-        "Режим сейчас: ГОЛОС. Отвечай как живой человек: одна короткая реакция + один маленький вопрос "
-        "или выбор из двух вариантов. Без списков, markdown и длинных объяснений. Желательно до 150 символов."
+        "Режим сейчас: ГОЛОС. Отвечай как живой человек в короткой живой беседе: 2-4 короткие фразы, "
+        "сначала по сути реплики ребенка, затем одна полезная английская фраза или микро-задание. "
+        "Без списков, markdown и длинных объяснений. Желательно до 220 символов."
     )
     chat_rules = (
         "Режим сейчас: ЧАТ. Можно дать чуть больше текста, но все равно коротко и по-детски: "
@@ -204,6 +218,19 @@ def _runtime_instructions(
 План живой беседы:
 {conversation_plan}
 
+Методика короткого урока:
+{lesson_loop}
+
+Доступные активности, чтобы не повторяться:
+{activity_menu}.
+
+Обязательный алгоритм ответа:
+- Определи намерение последней реплики: приветствие, вопрос, просьба перевести, непонимание, выбор темы, короткий ответ, ошибка, усталость.
+- Ответь именно на это намерение первым предложением.
+- Подстрой язык: русский запрос -> русский ответ с одной короткой английской фразой; английский запрос -> простой английский с коротким русским исправлением при ошибке.
+- Дай ребенку очень маленький следующий шаг: повторить 2-5 слов, выбрать один вариант, назвать одно слово или ответить yes/no.
+- Если в недавней истории есть слово или фраза, иногда верни ее как легкое повторение. Не делай это в каждом ответе.
+
 Как слушать и вести диалог:
 - Сначала отвечай на то, что ребенок реально спросил или попросил. Не уводи разговор в заготовленную тему.
 - Если ребенок выбрал тему, продолжай ее 2-4 реплики как мини-сцену, а не сбрасывай разговор каждый раз.
@@ -220,6 +247,8 @@ def _runtime_instructions(
 - Для 5-10 лет используй игру, выбор и очень простые слова.
 - Не давай больше одного задания и больше одного вопроса.
 - Темы безопасные и детские: игры, животные, еда, школа, спорт, цвета, история, мини-квест.
+- Не говори “давай поговорим про animals/colors/story” по шаблону, если можно живо отреагировать на слова ребенка.
+- Если ребенок спрашивает по-русски, не заставляй его сразу говорить английским предложением; сначала помоги понять, потом дай маленькую фразу.
 
 {voice_rules if mode == "voice" else chat_rules}
 
@@ -248,6 +277,8 @@ def _prompt_variables(user_name: str, age_label: str = "", prompt_context: dict 
         "conversation_plan": str(context.get("conversation_plan") or ""),
         "recent_user_messages": str(context.get("recent_user_messages") or ""),
         "recent_assistant_messages": str(context.get("recent_assistant_messages") or ""),
+        "activity_menu": str(context.get("activity_menu") or ""),
+        "lesson_loop": str(context.get("lesson_loop") or ""),
     }
 
 
@@ -280,7 +311,7 @@ async def synthesize_speech(text: str, mode: str = "chat") -> bytes:
     clean_text = " ".join((text or "").split())
     if not clean_text:
         raise ValueError("Text is empty")
-    max_chars = 520 if mode == "voice" else 900
+    max_chars = 420 if mode == "voice" else 900
     if len(clean_text) > max_chars:
         clean_text = clean_text[:max_chars]
 
@@ -318,7 +349,7 @@ async def synthesize_speech(text: str, mode: str = "chat") -> bytes:
             "voice": voice,
             "input": clean_text,
             "response_format": "mp3",
-            "speed": 1.06 if mode == "voice" else 1.0,
+            "speed": 1.02 if mode == "voice" else 1.0,
         }
         if include_instructions:
             request["instructions"] = instructions
@@ -354,15 +385,16 @@ async def chat_reply(
     try:
         last_user_text = _last_user_text(history)
         mode = _interaction_mode(prompt_context)
-        max_output_tokens = min(CHAT_MAX_TOKENS, 120) if mode == "voice" else CHAT_MAX_TOKENS
+        max_output_tokens = min(CHAT_MAX_TOKENS, 170) if mode == "voice" else CHAT_MAX_TOKENS
         runtime_instructions = _runtime_instructions(user_name, age_label, prompt_context, last_user_text)
+        use_stored_prompt = bool(OPENAI_PROMPT_ID and (mode != "voice" or OPENAI_PROMPT_FOR_VOICE))
         request = {
             "model": OPENAI_MODEL,
             "input": history,
             "max_output_tokens": max_output_tokens,
             "instructions": runtime_instructions,
         }
-        if OPENAI_PROMPT_ID:
+        if use_stored_prompt:
             request["prompt"] = {
                 "id": OPENAI_PROMPT_ID,
                 "variables": _prompt_variables(user_name, age_label, prompt_context),
