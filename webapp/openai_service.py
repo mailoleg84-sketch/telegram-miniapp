@@ -184,6 +184,34 @@ def _clean_voice_reply(text: str) -> str:
     return " ".join(cleaned.split())
 
 
+def _looks_like_legacy_voice_template(text: str) -> bool:
+    normalized = " ".join((text or "").split()).lower()
+    if not normalized:
+        return False
+    legacy_markers = (
+        "repeat:",
+        "say:",
+        "good! say",
+        "nice! say",
+        "repeat ",
+        "in russian:",
+    )
+    return any(marker in normalized for marker in legacy_markers)
+
+
+def _clean_history_for_mode(history: list[dict], mode: str) -> list[dict]:
+    if mode != "voice":
+        return history
+    cleaned: list[dict] = []
+    for message in history:
+        role = message.get("role")
+        content = str(message.get("content") or "")
+        if role == "assistant" and _looks_like_legacy_voice_template(content):
+            continue
+        cleaned.append(message)
+    return cleaned[-8:]
+
+
 def _voice_module_prompt(
     user_name: str,
     age: str,
@@ -257,6 +285,8 @@ def _runtime_instructions(
     avoid_topics = context.get("avoid_topics") or "Не повторяй одну и ту же тему подряд."
     recent_user_messages = context.get("recent_user_messages") or "нет"
     recent_assistant_messages = context.get("recent_assistant_messages") or "нет"
+    if mode == "voice" and _looks_like_legacy_voice_template(str(recent_assistant_messages)):
+        recent_assistant_messages = "в истории есть старые шаблонные ответы; не копируй их стиль"
     conversation_plan = context.get("conversation_plan") or (
         "Слушай последнюю реплику, отвечай по сути, дай одну простую английскую фразу, "
         "затем задай один легкий вопрос или предложи выбор."
@@ -483,11 +513,12 @@ async def chat_reply(
         last_user_text = _last_user_text(history)
         mode = _interaction_mode(prompt_context)
         max_output_tokens = VOICE_MAX_TOKENS if mode == "voice" else CHAT_MAX_TOKENS
+        model_history = _clean_history_for_mode(history, mode)
         runtime_instructions = _runtime_instructions(user_name, age_label, prompt_context, last_user_text)
         use_stored_prompt = bool(OPENAI_PROMPT_ID and (mode != "voice" or OPENAI_PROMPT_FOR_VOICE))
         request = {
             "model": OPENAI_MODEL,
-            "input": history,
+            "input": model_history,
             "max_output_tokens": max_output_tokens,
             "instructions": runtime_instructions,
         }
