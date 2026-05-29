@@ -81,7 +81,9 @@ async def diag_handler(message: Message) -> None:
         f"OPENAI configured: {openai['configured']}\n"
         f"OPENAI key length: {openai['length']}\n"
         f"OPENAI key prefix: {openai['prefix']}\n"
-        f"OPENAI model: {openai['model']}"
+        f"OPENAI model: {openai['model']}\n"
+        f"OPENAI prompt configured: {openai['prompt_id_configured']}\n"
+        f"OPENAI prompt version: {openai['prompt_version'] or 'latest'}"
     )
 
 

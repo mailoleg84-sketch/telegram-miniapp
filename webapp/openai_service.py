@@ -11,10 +11,17 @@ from config import (
     OPENAI_API_KEY,
     OPENAI_MODEL,
     OPENAI_OUTPUT_COST_PER_1M,
+    OPENAI_PROMPT_ID,
+    OPENAI_PROMPT_VERSION,
     OPENAI_REASONING_EFFORT,
     OPENAI_TTS_MODEL,
     OPENAI_TTS_VOICE,
     OPENAI_TRANSCRIBE_MODEL,
+    TUTOR_CORRECTION_MODE,
+    TUTOR_DEFAULT_LEVEL,
+    TUTOR_DEFAULT_STYLE,
+    TUTOR_DEFAULT_TOPICS,
+    TUTOR_LANGUAGE_BALANCE,
 )
 
 log = logging.getLogger(__name__)
@@ -38,6 +45,8 @@ def openai_config_status() -> dict:
         "length": len(OPENAI_API_KEY),
         "prefix": OPENAI_API_KEY[:8] if OPENAI_API_KEY else "",
         "model": OPENAI_MODEL,
+        "prompt_id_configured": bool(OPENAI_PROMPT_ID),
+        "prompt_version": OPENAI_PROMPT_VERSION,
     }
 
 
@@ -110,6 +119,22 @@ def _estimate_cost(input_tokens: int, output_tokens: int) -> float:
     return round(input_cost + output_cost, 6)
 
 
+def _prompt_variables(user_name: str, age_label: str = "", prompt_context: dict | None = None) -> dict:
+    context = prompt_context or {}
+    age = context.get("age") or age_label or "не указан"
+    return {
+        "name": str(user_name or "друг"),
+        "age": str(age),
+        "age_label": str(age_label or age),
+        "level": str(context.get("level") or TUTOR_DEFAULT_LEVEL),
+        "goal": str(context.get("goal") or "разговорная практика"),
+        "style": str(context.get("style") or TUTOR_DEFAULT_STYLE),
+        "topics": str(context.get("topics") or TUTOR_DEFAULT_TOPICS),
+        "correction_mode": str(context.get("correction_mode") or TUTOR_CORRECTION_MODE),
+        "language_balance": str(context.get("language_balance") or TUTOR_LANGUAGE_BALANCE),
+    }
+
+
 async def transcribe_audio(file_bytes: bytes, filename: str = "voice.webm", content_type: str = "audio/webm") -> str:
     """Transcribes a short voice message for the chat input."""
     if _client is None:
@@ -170,7 +195,12 @@ async def synthesize_speech(text: str) -> bytes:
         return await create_audio("tts-1", include_instructions=False)
 
 
-async def chat_reply(history: list[dict], user_name: str, age_label: str = "") -> ChatReply:
+async def chat_reply(
+    history: list[dict],
+    user_name: str,
+    age_label: str = "",
+    prompt_context: dict | None = None,
+) -> ChatReply:
     """
     history: список сообщений вида [{"role": "user"/"assistant", "content": "..."}].
     Возвращает текст ответа репетитора.
@@ -185,13 +215,21 @@ async def chat_reply(history: list[dict], user_name: str, age_label: str = "") -
     try:
         request = {
             "model": OPENAI_MODEL,
-            "instructions": SYSTEM_PROMPT.format(
-                name=user_name or "друг",
-                age_label=age_label or "не указана",
-            ),
             "input": history,
             "max_output_tokens": CHAT_MAX_TOKENS,
         }
+        if OPENAI_PROMPT_ID:
+            request["prompt"] = {
+                "id": OPENAI_PROMPT_ID,
+                "variables": _prompt_variables(user_name, age_label, prompt_context),
+            }
+            if OPENAI_PROMPT_VERSION:
+                request["prompt"]["version"] = OPENAI_PROMPT_VERSION
+        else:
+            request["instructions"] = SYSTEM_PROMPT.format(
+                name=user_name or "друг",
+                age_label=age_label or "не указана",
+            )
         if OPENAI_REASONING_EFFORT and _supports_reasoning(OPENAI_MODEL):
             request["reasoning"] = {"effort": OPENAI_REASONING_EFFORT}
 

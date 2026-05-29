@@ -106,6 +106,49 @@ def _goal_label(goal: str | None) -> str:
     return next((label for label, value in LEARNING_GOALS if value == goal), goal or "")
 
 
+def _level_for_user(user) -> str:
+    goal = user["goal"] if user else ""
+    age_group = user["age_group"] if user else ""
+    if goal in {"exams", "travel"} or age_group == "14_18":
+        return "elementary"
+    if age_group in {"5_7", "8_10"} or goal == "first_steps":
+        return "beginner"
+    return "beginner+"
+
+
+def _style_for_user(user) -> str:
+    age_group = user["age_group"] if user else ""
+    if age_group in {"5_7", "8_10"}:
+        return "игровой, очень доброжелательный, с простыми фразами и мини-играми"
+    if age_group == "14_18":
+        return "спокойный, дружелюбный, с диалогами и реальными ситуациями"
+    return "дружелюбный, короткими репликами, с понятными примерами"
+
+
+def _topics_for_user(user) -> str:
+    goal = user["goal"] if user else ""
+    age_group = user["age_group"] if user else ""
+    if goal == "travel":
+        return "путешествия, аэропорт, кафе, покупки, знакомство, карта города"
+    if goal == "exams":
+        return "школа, хобби, планы, короткие диалоги, экзаменационные темы без стресса"
+    if goal == "speaking":
+        return "игры, друзья, спорт, музыка, фильмы, хобби, повседневные диалоги"
+    if age_group in {"5_7", "8_10"}:
+        return "животные, цвета, еда, игрушки, игры, школа, сказочные истории"
+    return "школа, игры, спорт, путешествия, хобби, истории, повседневные ситуации"
+
+
+def _prompt_context_for_user(user) -> dict:
+    return {
+        "age": str(user["child_age"] or _age_label(user["age_group"])) if user else "не указан",
+        "level": _level_for_user(user),
+        "goal": _goal_label(user["goal"]) if user else "разговорная практика",
+        "style": _style_for_user(user),
+        "topics": _topics_for_user(user),
+    }
+
+
 async def _current_user_or_404(request: web.Request):
     user = await database.get_user(request["tg_user"]["id"])
     if not user:
@@ -521,7 +564,7 @@ async def api_chat_send(request: web.Request):
     history = [{"role": r["role"], "content": r["content"]} for r in rows]
 
     age_label = _age_label(user["age_group"]) if user else ""
-    reply = await chat_reply(history, user_name, age_label)
+    reply = await chat_reply(history, user_name, age_label, _prompt_context_for_user(user) if user else None)
 
     await database.add_message(user_id, "assistant", reply.text)
     if reply.total_tokens > 0:
