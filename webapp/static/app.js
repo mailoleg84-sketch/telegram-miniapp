@@ -732,6 +732,20 @@ async function renderChat() {
     const VOICE_MAX_RECORDING_MS = 18000;
     const VOICE_RESTART_DELAY_MS = 450;
     const VOICE_TTS_TIMEOUT_MS = 3200;
+    const VOICE_STARTERS = [
+      "Привет! Сегодня можем начать с мини-квеста, кафе или космоса. Что выбираешь?",
+      "Я слушаю. Можем сыграть в продавца, тренера или путешествие. Можно ответить по-русски.",
+      "Давай сделаем разговор как сценку: школа, магазин или секретная дверь?",
+      "Привет! Я буду помогать коротко. Выбери: спорт, еда или загадка.",
+      "Начнем легко: история, диалог в кафе или игра «угадай слово»?",
+      "Я рядом. Можешь спросить что угодно или выбрать тему: музыка, парк или робот.",
+    ];
+    const VOICE_HELP_HINTS = [
+      "Я рядом. Скажи любое слово: школа, еда или спорт.",
+      "Можно просто по-русски: хочу историю, хочу игру или хочу про школу.",
+      "Давай проще: скажи cafe, robot или music.",
+      "Если не знаешь, скажи: помоги мне. Я начну сам.",
+    ];
 
     function bubble(role, text) {
       const div = document.createElement("div");
@@ -759,6 +773,17 @@ async function renderChat() {
       voiceModeText.textContent = voiceModeActive ? "Стоп" : "Говорить";
       voiceStatus.textContent = status || (voiceModeActive ? "Слушаю..." : "Обычный режим");
       if (!sending) mic.disabled = voiceModeActive;
+    }
+
+    function nextRotatingItem(storageKey, items) {
+      if (!items.length) return "";
+      try {
+        const current = Number(localStorage.getItem(storageKey) || "0");
+        localStorage.setItem(storageKey, String(current + 1));
+        return items[current % items.length];
+      } catch (_) {
+        return items[Math.floor(Math.random() * items.length)];
+      }
     }
 
     function clearVoiceModeTimer() {
@@ -912,16 +937,17 @@ async function renderChat() {
           return;
         }
         if (!heardVoice && now - recordingStartedAt > 2800) {
-          updateVoiceModeUi("Я слушаю. Скажи: games или animals...");
+          updateVoiceModeUi("Я слушаю. Можно по-русски...");
         }
         if (!heardVoice && now - recordingStartedAt > VOICE_NO_SPEECH_MS) {
           missedAutoRecordings += 1;
           skipUploadOnStop = true;
           stopRecording();
-          if (missedAutoRecordings === 1) {
-            bubble("assistant", "Я не расслышал. Давай проще: скажи games, animals или story.");
-          } else if (missedAutoRecordings === 2) {
-            bubble("assistant", "Можно по-русски. Выбери: игра, животные или история?");
+          if (missedAutoRecordings <= 2) {
+            const hint = nextRotatingItem("voiceHelpHintIndex", VOICE_HELP_HINTS);
+            bubble("assistant", hint);
+            speakTutor(hint, () => scheduleVoiceListen(VOICE_RESTART_DELAY_MS), true);
+            return;
           }
           scheduleVoiceListen(VOICE_RESTART_DELAY_MS);
           return;
@@ -1165,7 +1191,7 @@ async function renderChat() {
       if (!voiceIntroPlayed && box.querySelector(".chat-empty")) {
         voiceIntroPlayed = true;
         box.innerHTML = "";
-        const intro = "Привет! Давай выберем тему: games, animals или story. Можно ответить по-русски.";
+        const intro = nextRotatingItem("voiceStarterIndex", VOICE_STARTERS);
         bubble("assistant", intro);
         speakTutor(intro, () => scheduleVoiceListen(VOICE_RESTART_DELAY_MS), true);
         return;

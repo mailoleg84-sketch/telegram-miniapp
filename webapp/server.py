@@ -149,6 +149,71 @@ def _prompt_context_for_user(user) -> dict:
     }
 
 
+def _voice_topic_bank(user) -> list[str]:
+    age_group = user["age_group"] if user else ""
+    goal = user["goal"] if user else ""
+    if goal == "travel":
+        return [
+            "airport adventure", "hotel check-in", "cafe order", "city map",
+            "souvenir shop", "beach day", "train station", "lost backpack",
+            "photo walk", "weather talk", "ice cream kiosk", "museum quest",
+        ]
+    if goal == "exams":
+        return [
+            "school day", "favorite hobby", "weekend plans", "short interview",
+            "picture description", "study routine", "sports club", "my room",
+            "healthy food", "future job", "friendship", "small presentation",
+        ]
+    if age_group in {"5_7", "8_10"}:
+        return [
+            "magic shop", "space picnic", "robot friend", "treasure map",
+            "funny cafe", "toy store", "school bag", "secret door",
+            "superhero training", "rainbow colors", "little chef", "sports day",
+            "pet doctor", "birthday party", "snowy park", "music game",
+        ]
+    if age_group == "11_13":
+        return [
+            "school project", "gaming club", "sports practice", "music playlist",
+            "movie scene", "travel vlog", "cafe dialogue", "new classmate",
+            "weekend plan", "pet story", "shopping challenge", "mystery quest",
+        ]
+    return [
+        "real conversation", "travel problem", "school debate", "job interview mini",
+        "movie discussion", "music and hobbies", "daily routine", "exam warm-up",
+        "ordering food", "city directions", "online safety", "future plans",
+    ]
+
+
+def _choose_voice_topics(user, messages: list[dict], count: int = 3) -> list[str]:
+    bank = _voice_topic_bank(user)
+    recent_text = " ".join(m["content"] for m in messages[-10:]).lower()
+    fresh = [topic for topic in bank if topic.lower() not in recent_text]
+    if len(fresh) < count:
+        fresh = bank[:]
+    random.shuffle(fresh)
+    return fresh[:count]
+
+
+def _voice_prompt_context(user, messages: list[dict]) -> dict:
+    topics = _choose_voice_topics(user, messages)
+    recent_user_messages = [m["content"] for m in messages if m["role"] == "user"][-3:]
+    recent_assistant_messages = [m["content"] for m in messages if m["role"] == "assistant"][-3:]
+    return {
+        "topic_suggestions": ", ".join(topics),
+        "avoid_topics": "Не повторяй подряд одну и ту же тему; если в истории уже были games, animals или story, выбери другой ход.",
+        "recent_user_messages": " | ".join(recent_user_messages) or "пока нет",
+        "recent_assistant_messages": " | ".join(recent_assistant_messages) or "пока нет",
+        "conversation_plan": (
+            "1) Сначала понять настоящий запрос ребенка: вопрос, просьба, выбор темы, усталость или ошибка. "
+            "2) Ответить по сути на этот запрос, не игнорировать его ради плана урока. "
+            "3) Связать ответ с короткой английской фразой, которую легко повторить. "
+            "4) Продолжить текущую мини-сцену или предложить новый ход из свежих тем. "
+            "5) Каждые 3-4 реплики мягко менять активность: мини-диалог, угадай слово, роль, история, вопрос, исправление. "
+            "6) Если ребенок отвечает коротко, упростить и дать выбор из двух вариантов."
+        ),
+    }
+
+
 async def _current_user_or_404(request: web.Request):
     user = await database.get_user(request["tg_user"]["id"])
     if not user:
@@ -567,6 +632,8 @@ async def api_chat_send(request: web.Request):
     age_label = _age_label(user["age_group"]) if user else ""
     prompt_context = _prompt_context_for_user(user) if user else {}
     prompt_context["mode"] = mode
+    if mode == "voice":
+        prompt_context.update(_voice_prompt_context(user, history))
     reply = await chat_reply(history, user_name, age_label, prompt_context)
 
     await database.add_message(user_id, "assistant", reply.text)

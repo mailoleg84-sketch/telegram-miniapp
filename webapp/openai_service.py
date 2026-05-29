@@ -89,7 +89,7 @@ SYSTEM_PROMPT = """Ты — живой, добрый AI-репетитор ан�
 - Говори тепло, понятно и коротко, как живой репетитор в голосовом разговоре.
 - Не используй markdown, таблицы, длинные списки и нумерацию, если ребенок не просит подробный урок.
 
-Если ребенок просто здоровается или не знает, что сказать, предложи 2–3 темы и начни легкую игру. Пример: «Можем поговорить про animals, food или games. Choose one: animals or food?»"""
+Если ребенок просто здоровается или не знает, что сказать, предложи 2–3 разные безопасные темы из текущего контекста и начни легкую игру. Не повторяй одну и ту же тему подряд."""
 
 
 @dataclass(frozen=True)
@@ -165,6 +165,14 @@ def _runtime_instructions(
     mode = _interaction_mode(context)
     language = _last_language(last_user_text)
     age = context.get("age") or age_label or "не указан"
+    topic_suggestions = context.get("topic_suggestions") or context.get("topics") or TUTOR_DEFAULT_TOPICS
+    avoid_topics = context.get("avoid_topics") or "Не повторяй одну и ту же тему подряд."
+    recent_user_messages = context.get("recent_user_messages") or "нет"
+    recent_assistant_messages = context.get("recent_assistant_messages") or "нет"
+    conversation_plan = context.get("conversation_plan") or (
+        "Слушай последнюю реплику, отвечай по сути, дай одну простую английскую фразу, "
+        "затем задай один легкий вопрос или предложи выбор."
+    )
     voice_rules = (
         "Режим сейчас: ГОЛОС. Отвечай как в живом разговоре: 1-2 коротких предложения, "
         "без списков, без markdown, без длинных объяснений. Желательно до 220 символов. "
@@ -180,12 +188,27 @@ def _runtime_instructions(
 Возраст ученика: {age}.
 Последняя реплика ученика: {last_user_text or "пусто"}.
 Определенный язык последней реплики: {language}.
+Свежие темы на выбор, если ребенок сам не задал тему: {topic_suggestions}.
+Недавние реплики ученика: {recent_user_messages}.
+Недавние ответы репетитора: {recent_assistant_messages}.
 
 Самое важное правило языка:
 - Если последняя реплика содержит русский текст или ученик пишет «не понимаю», «переведи», «что делать», «?», отвечай ПО-РУССКИ.
 - В русском ответе можно дать только одну очень короткую английскую фразу для повторения.
 - Не отвечай целиком по-английски на русский запрос.
 - Если последняя реплика на английском, отвечай простым английским, а исправление ошибки объясняй коротко по-русски.
+
+План живой беседы:
+{conversation_plan}
+
+Как слушать и вести диалог:
+- Сначала отвечай на то, что ребенок реально спросил или попросил. Не уводи разговор в заготовленную тему.
+- Если ребенок выбрал тему, продолжай ее 2-4 реплики как мини-сцену, а не сбрасывай разговор каждый раз.
+- Если ребенок задает вопрос не по уроку, коротко ответь на вопрос и мягко привяжи к английскому.
+- Если ребенок отвечает одним словом, развивай это слово в простую фразу.
+- Если ребенок ошибся, исправь только одну главную ошибку и дай правильный вариант.
+- Если тема уже повторялась, выбери другую из свежих тем.
+- {avoid_topics}
 
 Стиль для ребенка:
 - Не звучать как учебник. Звучать как добрый живой репетитор.
@@ -217,6 +240,11 @@ def _prompt_variables(user_name: str, age_label: str = "", prompt_context: dict 
         "language_balance": str(context.get("language_balance") or TUTOR_LANGUAGE_BALANCE),
         "mode": str(context.get("mode") or "chat"),
         "interaction_mode": str(context.get("mode") or "chat"),
+        "topic_suggestions": str(context.get("topic_suggestions") or context.get("topics") or TUTOR_DEFAULT_TOPICS),
+        "avoid_topics": str(context.get("avoid_topics") or "не повторять одну и ту же тему подряд"),
+        "conversation_plan": str(context.get("conversation_plan") or ""),
+        "recent_user_messages": str(context.get("recent_user_messages") or ""),
+        "recent_assistant_messages": str(context.get("recent_assistant_messages") or ""),
     }
 
 
