@@ -46,6 +46,9 @@ def openai_config_status() -> dict:
         "length": len(OPENAI_API_KEY),
         "prefix": OPENAI_API_KEY[:8] if OPENAI_API_KEY else "",
         "model": OPENAI_MODEL,
+        "tts_model": OPENAI_TTS_MODEL,
+        "tts_voice": OPENAI_TTS_VOICE,
+        "voice_tts_voice": OPENAI_VOICE_TTS_VOICE,
         "prompt_id_configured": bool(OPENAI_PROMPT_ID),
         "prompt_version": OPENAI_PROMPT_VERSION,
     }
@@ -175,9 +178,8 @@ def _runtime_instructions(
         "затем задай один легкий вопрос или предложи выбор."
     )
     voice_rules = (
-        "Режим сейчас: ГОЛОС. Отвечай как в живом разговоре: 1-2 коротких предложения, "
-        "без списков, без markdown, без длинных объяснений. Желательно до 220 символов. "
-        "В конце дай один простой вопрос или выбор из двух вариантов."
+        "Режим сейчас: ГОЛОС. Отвечай как живой человек: одна короткая реакция + один маленький вопрос "
+        "или выбор из двух вариантов. Без списков, markdown и длинных объяснений. Желательно до 150 символов."
     )
     chat_rules = (
         "Режим сейчас: ЧАТ. Можно дать чуть больше текста, но все равно коротко и по-детски: "
@@ -278,34 +280,35 @@ async def synthesize_speech(text: str, mode: str = "chat") -> bytes:
     clean_text = " ".join((text or "").split())
     if not clean_text:
         raise ValueError("Text is empty")
-    if len(clean_text) > 900:
-        clean_text = clean_text[:900]
+    max_chars = 520 if mode == "voice" else 900
+    if len(clean_text) > max_chars:
+        clean_text = clean_text[:max_chars]
 
     has_russian = _has_cyrillic(clean_text)
     has_english = _has_latin(clean_text)
     if has_russian and has_english:
         instructions = (
-            "Speak like a warm, real human English tutor for a child, not like a robot. "
-            "The text mixes Russian and English. Pronounce Russian with natural native Russian pronunciation. "
-            "Pronounce English words and phrases with natural clear English pronunciation, never with a Russian accent. "
-            "Use tiny natural pauses when switching languages. Keep the tone lively, kind, and conversational."
+            "Sound like a warm, expressive real person tutoring a child, not an announcer and not a robot. "
+            "The text mixes Russian and English. Speak Russian naturally and conversationally. "
+            "When an English word or phrase appears, switch briefly to clean natural English pronunciation, "
+            "then return to Russian. Use lively intonation, gentle emotion, tiny pauses, and a friendly smile in the voice."
         )
     elif has_russian:
         instructions = (
-            "Говори как живой добрый репетитор для ребенка, не как робот. "
-            "Русский произноси естественно, тепло и разговорно. "
+            "Говори как живой добрый репетитор для ребенка, не как диктор и не как робот. "
+            "Русский произноси естественно, тепло, разговорно, с живой интонацией и мягкой улыбкой в голосе. "
             "Если встречается английское слово, произнеси его с нормальным английским произношением. "
-            "Темп спокойный, интонация живая, фразы короткие."
+            "Делай маленькие естественные паузы. Фразы короткие."
         )
     else:
         instructions = (
-            "Speak like a warm, real human English tutor for a child, not like a robot. "
-            "Use natural clear English pronunciation, friendly intonation, and short conversational phrases."
+            "Sound like a warm, expressive real person tutoring a child, not an announcer and not a robot. "
+            "Use natural clear English pronunciation, friendly intonation, gentle emotion, and short conversational phrases."
         )
     if mode == "voice":
         instructions += (
-            " This is a live voice conversation. Sound spontaneous and present, with gentle emotion, "
-            "small natural pauses, and no announcer or audiobook style."
+            " This is a live voice conversation. Be quick, spontaneous, present, and playful. "
+            "Do not overact, do not sound theatrical, and do not stretch words."
         )
     voice = OPENAI_VOICE_TTS_VOICE if mode == "voice" else OPENAI_TTS_VOICE
 
@@ -315,7 +318,7 @@ async def synthesize_speech(text: str, mode: str = "chat") -> bytes:
             "voice": voice,
             "input": clean_text,
             "response_format": "mp3",
-            "speed": 1.0,
+            "speed": 1.06 if mode == "voice" else 1.0,
         }
         if include_instructions:
             request["instructions"] = instructions
@@ -351,7 +354,7 @@ async def chat_reply(
     try:
         last_user_text = _last_user_text(history)
         mode = _interaction_mode(prompt_context)
-        max_output_tokens = min(CHAT_MAX_TOKENS, 180) if mode == "voice" else CHAT_MAX_TOKENS
+        max_output_tokens = min(CHAT_MAX_TOKENS, 120) if mode == "voice" else CHAT_MAX_TOKENS
         runtime_instructions = _runtime_instructions(user_name, age_label, prompt_context, last_user_text)
         request = {
             "model": OPENAI_MODEL,
