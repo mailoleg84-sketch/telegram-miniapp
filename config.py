@@ -37,7 +37,7 @@ DATABASE_URL = _env("DATABASE_URL", "")
 
 # --- Mini App (Telegram WebApp) ---
 WEBAPP_URL = _env("WEBAPP_URL", "https://telegram-miniapp-1-r0sj.onrender.com")
-APP_VERSION = _env("APP_VERSION", "20260529-kids-v13")
+APP_VERSION = _env("APP_VERSION", "20260529-kids-v14")
 
 WEBAPP_HOST = os.getenv("WEBAPP_HOST", "0.0.0.0")
 # Render задаёт порт через переменную PORT — читаем её, иначе 8080.
@@ -51,9 +51,9 @@ OPENAI_PROMPT_VERSION = _env("OPENAI_PROMPT_VERSION", "")
 OPENAI_TRANSCRIBE_MODEL = _env("OPENAI_TRANSCRIBE_MODEL", "whisper-1")
 OPENAI_TTS_MODEL = _env("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
 OPENAI_TTS_VOICE = _env("OPENAI_TTS_VOICE", "nova")
-OPENAI_REASONING_EFFORT = _env("OPENAI_REASONING_EFFORT", "low")
+OPENAI_REASONING_EFFORT = _env("OPENAI_REASONING_EFFORT", "minimal")
 CHAT_HISTORY_LIMIT = int(os.getenv("CHAT_HISTORY_LIMIT", "8"))
-CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "300"))
+CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "240"))
 AI_DAILY_MESSAGE_LIMIT = int(os.getenv("AI_DAILY_MESSAGE_LIMIT", "0"))
 OPENAI_INPUT_COST_PER_1M = float(os.getenv("OPENAI_INPUT_COST_PER_1M", "0.05"))
 OPENAI_OUTPUT_COST_PER_1M = float(os.getenv("OPENAI_OUTPUT_COST_PER_1M", "0.40"))

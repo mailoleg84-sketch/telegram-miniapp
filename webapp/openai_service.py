@@ -124,6 +124,84 @@ def _estimate_cost(input_tokens: int, output_tokens: int) -> float:
     return round(input_cost + output_cost, 6)
 
 
+def _has_cyrillic(text: str) -> bool:
+    return any("а" <= ch.lower() <= "я" or ch.lower() == "ё" for ch in text or "")
+
+
+def _has_latin(text: str) -> bool:
+    return any("a" <= ch.lower() <= "z" for ch in text or "")
+
+
+def _last_user_text(history: list[dict]) -> str:
+    for message in reversed(history):
+        if message.get("role") == "user":
+            return str(message.get("content") or "")
+    return ""
+
+
+def _last_language(text: str) -> str:
+    if _has_cyrillic(text):
+        return "russian"
+    if _has_latin(text):
+        return "english"
+    return "unknown"
+
+
+def _interaction_mode(prompt_context: dict | None) -> str:
+    return "voice" if (prompt_context or {}).get("mode") == "voice" else "chat"
+
+
+def _needs_russian_repair(last_user_text: str, reply_text: str) -> bool:
+    return _has_cyrillic(last_user_text) and bool(reply_text.strip()) and not _has_cyrillic(reply_text)
+
+
+def _runtime_instructions(
+    user_name: str,
+    age_label: str,
+    prompt_context: dict | None,
+    last_user_text: str,
+) -> str:
+    context = prompt_context or {}
+    mode = _interaction_mode(context)
+    language = _last_language(last_user_text)
+    age = context.get("age") or age_label or "не указан"
+    voice_rules = (
+        "Режим сейчас: ГОЛОС. Отвечай как в живом разговоре: 1-2 коротких предложения, "
+        "без списков, без markdown, без длинных объяснений. Желательно до 220 символов. "
+        "В конце дай один простой вопрос или выбор из двух вариантов."
+    )
+    chat_rules = (
+        "Режим сейчас: ЧАТ. Можно дать чуть больше текста, но все равно коротко и по-детски: "
+        "не больше 4 коротких предложений, без markdown, если ученик не просит подробный урок."
+    )
+    return f"""Дополнительные обязательные правила для текущего ответа.
+
+Ученик: {user_name or "друг"}.
+Возраст ученика: {age}.
+Последняя реплика ученика: {last_user_text or "пусто"}.
+Определенный язык последней реплики: {language}.
+
+Самое важное правило языка:
+- Если последняя реплика содержит русский текст или ученик пишет «не понимаю», «переведи», «что делать», «?», отвечай ПО-РУССКИ.
+- В русском ответе можно дать только одну очень короткую английскую фразу для повторения.
+- Не отвечай целиком по-английски на русский запрос.
+- Если последняя реплика на английском, отвечай простым английским, а исправление ошибки объясняй коротко по-русски.
+
+Стиль для ребенка:
+- Не звучать как учебник. Звучать как добрый живой репетитор.
+- Сначала коротко поддержи ребенка: «Класс», «Понял», «Хорошая попытка».
+- Сразу дай маленькое действие: повторить фразу, выбрать тему, назвать 1 слово.
+- Для 5-10 лет используй игру, выбор и очень простые слова.
+- Не давай больше одного задания и больше одного вопроса.
+- Темы безопасные и детские: игры, животные, еда, школа, спорт, цвета, история, мини-квест.
+
+{voice_rules if mode == "voice" else chat_rules}
+
+Примеры тона:
+Русский запрос: «Понял! Давай проще: say "I like games". Выбери: games или animals?»
+Английский запрос: «Great! You can say: I like cats. Do you like cats or dogs?»"""
+
+
 def _prompt_variables(user_name: str, age_label: str = "", prompt_context: dict | None = None) -> dict:
     context = prompt_context or {}
     age = context.get("age") or age_label or "не указан"
@@ -137,6 +215,8 @@ def _prompt_variables(user_name: str, age_label: str = "", prompt_context: dict 
         "topics": str(context.get("topics") or TUTOR_DEFAULT_TOPICS),
         "correction_mode": str(context.get("correction_mode") or TUTOR_CORRECTION_MODE),
         "language_balance": str(context.get("language_balance") or TUTOR_LANGUAGE_BALANCE),
+        "mode": str(context.get("mode") or "chat"),
+        "interaction_mode": str(context.get("mode") or "chat"),
     }
 
 
@@ -218,10 +298,15 @@ async def chat_reply(
         )
 
     try:
+        last_user_text = _last_user_text(history)
+        mode = _interaction_mode(prompt_context)
+        max_output_tokens = min(CHAT_MAX_TOKENS, 180) if mode == "voice" else CHAT_MAX_TOKENS
+        runtime_instructions = _runtime_instructions(user_name, age_label, prompt_context, last_user_text)
         request = {
             "model": OPENAI_MODEL,
             "input": history,
-            "max_output_tokens": CHAT_MAX_TOKENS,
+            "max_output_tokens": max_output_tokens,
+            "instructions": runtime_instructions,
         }
         if OPENAI_PROMPT_ID:
             request["prompt"] = {
@@ -234,18 +319,47 @@ async def chat_reply(
             request["instructions"] = SYSTEM_PROMPT.format(
                 name=user_name or "друг",
                 age_label=age_label or "не указана",
-            )
-        if OPENAI_REASONING_EFFORT and _supports_reasoning(OPENAI_MODEL):
-            request["reasoning"] = {"effort": OPENAI_REASONING_EFFORT}
+            ) + "\n\n" + runtime_instructions
+        reasoning_effort = "minimal" if mode == "voice" else OPENAI_REASONING_EFFORT
+        if reasoning_effort and _supports_reasoning(OPENAI_MODEL):
+            request["reasoning"] = {"effort": reasoning_effort}
 
         response = await _client.responses.create(**request)
         usage = getattr(response, "usage", None)
         input_tokens = _usage_int(usage, "input_tokens")
         output_tokens = _usage_int(usage, "output_tokens")
         total_tokens = _usage_int(usage, "total_tokens") or input_tokens + output_tokens
+        text = (response.output_text or "").strip() or "…"
+
+        if _needs_russian_repair(last_user_text, text):
+            repair_response = await _client.responses.create(
+                model=OPENAI_MODEL,
+                input=[{
+                    "role": "user",
+                    "content": (
+                        "Ученик написал по-русски, а ответ получился не на русском.\n"
+                        f"Реплика ученика: {last_user_text}\n"
+                        f"Ответ, который нужно переписать: {text}\n\n"
+                        "Перепиши ответ по-русски для ребенка 10 лет. "
+                        "Оставь максимум одну простую английскую фразу для повторения. "
+                        "Сделай 1-2 коротких предложения и один вопрос или выбор."
+                    ),
+                }],
+                instructions="Ты исправляешь язык ответа детского репетитора. Ответь только финальной репликой.",
+                max_output_tokens=min(max_output_tokens, 140),
+            )
+            repair_text = (repair_response.output_text or "").strip()
+            if repair_text and _has_cyrillic(repair_text):
+                text = repair_text
+                repair_usage = getattr(repair_response, "usage", None)
+                input_tokens += _usage_int(repair_usage, "input_tokens")
+                output_tokens += _usage_int(repair_usage, "output_tokens")
+                total_tokens += _usage_int(repair_usage, "total_tokens")
+        if total_tokens < input_tokens + output_tokens:
+            total_tokens = input_tokens + output_tokens
 
         return ChatReply(
-            text=(response.output_text or "").strip() or "…",
+            text=text,
             model=OPENAI_MODEL,
             input_tokens=input_tokens,
             output_tokens=output_tokens,

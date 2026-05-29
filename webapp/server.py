@@ -546,6 +546,7 @@ async def api_chat_send(request: web.Request):
     user_id = request["tg_user"]["id"]
     body = await _safe_json(request)
     text = (body.get("message") or "").strip()
+    mode = "voice" if body.get("mode") == "voice" else "chat"
     if not text:
         return web.json_response({"error": "empty message"}, status=400)
     if len(text) > 1000:
@@ -564,7 +565,9 @@ async def api_chat_send(request: web.Request):
     history = [{"role": r["role"], "content": r["content"]} for r in rows]
 
     age_label = _age_label(user["age_group"]) if user else ""
-    reply = await chat_reply(history, user_name, age_label, _prompt_context_for_user(user) if user else None)
+    prompt_context = _prompt_context_for_user(user) if user else {}
+    prompt_context["mode"] = mode
+    reply = await chat_reply(history, user_name, age_label, prompt_context)
 
     await database.add_message(user_id, "assistant", reply.text)
     if reply.total_tokens > 0:

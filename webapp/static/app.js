@@ -726,8 +726,8 @@ async function renderChat() {
     let voiceIntroPlayed = false;
 
     const VOICE_VOLUME_THRESHOLD = 0.012;
-    const VOICE_SILENCE_MS = 1700;
-    const VOICE_MIN_RECORDING_MS = 1500;
+    const VOICE_SILENCE_MS = 1300;
+    const VOICE_MIN_RECORDING_MS = 1100;
     const VOICE_NO_SPEECH_MS = 6200;
     const VOICE_MAX_RECORDING_MS = 18000;
     const VOICE_RESTART_DELAY_MS = 450;
@@ -817,9 +817,14 @@ async function renderChat() {
       }
     }
 
-    async function speakTutor(text, onDone = null) {
+    async function speakTutor(text, onDone = null, fast = false) {
       if (isAssistantError(text)) {
         finishTutorSpeech(onDone);
+        return;
+      }
+      if (fast) {
+        stopTutorSpeech();
+        speakTutorFallback(text, onDone);
         return;
       }
       stopTutorSpeech();
@@ -982,10 +987,17 @@ async function renderChat() {
       const typing = typingBubble();
       setFace("thinking");
       try {
-        const reply = await api("/api/chat/send", "POST", { message: text });
+        const reply = await api("/api/chat/send", "POST", {
+          message: text,
+          mode: options.voice ? "voice" : "chat",
+        });
         typing.remove();
         bubble("assistant", reply.reply);
-        speakTutor(reply.reply, options.autoContinue ? () => scheduleVoiceListen(650) : null);
+        speakTutor(
+          reply.reply,
+          options.autoContinue ? () => scheduleVoiceListen(650) : null,
+          Boolean(options.voice),
+        );
       } catch (e) {
         typing.remove();
         bubble("assistant", `Ошибка: ${e.message}`);
@@ -1058,7 +1070,7 @@ async function renderChat() {
         }
         missedAutoRecordings = 0;
         updateVoiceModeUi("Отвечаю...");
-        await send(text, { autoContinue: wasAuto });
+        await send(text, { autoContinue: wasAuto, voice: true });
       } catch (e) {
         if (!wasAuto) tg.showAlert(e.message);
         else {
@@ -1171,7 +1183,7 @@ async function renderChat() {
         box.innerHTML = "";
         const intro = "Привет! Говори по-русски или по-английски. Можно сказать: «Я не понимаю», «Хочу игру» или «Let's talk about animals».";
         bubble("assistant", intro);
-        speakTutor(intro, () => scheduleVoiceListen(VOICE_RESTART_DELAY_MS));
+        speakTutor(intro, () => scheduleVoiceListen(VOICE_RESTART_DELAY_MS), true);
         return;
       }
       await startRecording(true);
