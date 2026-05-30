@@ -37,7 +37,7 @@ DATABASE_URL = _env("DATABASE_URL", "")
 
 # --- Mini App (Telegram WebApp) ---
 WEBAPP_URL = _env("WEBAPP_URL", "https://telegram-miniapp-1-r0sj.onrender.com")
-APP_VERSION = _env("APP_VERSION", "20260531-kids-v35")
+APP_VERSION = _env("APP_VERSION", "20260531-kids-v36")
 
 WEBAPP_HOST = os.getenv("WEBAPP_HOST", "0.0.0.0")
 # Render задаёт порт через переменную PORT — читаем её, иначе 8080.
@@ -52,12 +52,16 @@ OPENAI_PROMPT_FOR_VOICE = _env("OPENAI_PROMPT_FOR_VOICE", "0").lower() in {"1", 
 OPENAI_TRANSCRIBE_MODEL = _env("OPENAI_TRANSCRIBE_MODEL", "whisper-1")
 OPENAI_TTS_MODEL = _env("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
 OPENAI_TTS_VOICE = _env("OPENAI_TTS_VOICE", "coral")
-OPENAI_VOICE_TTS_VOICE = _env("OPENAI_VOICE_TTS_VOICE", "cedar")
-OPENAI_REALTIME_MODEL = _env("OPENAI_REALTIME_MODEL", "gpt-realtime")
-OPENAI_REALTIME_VOICE = _env("OPENAI_REALTIME_VOICE", "cedar")
+_RAW_OPENAI_VOICE_TTS_VOICE = _env("OPENAI_VOICE_TTS_VOICE", "")
+OPENAI_VOICE_TTS_VOICE = "coral" if _RAW_OPENAI_VOICE_TTS_VOICE.lower() in {"", "marin", "cedar"} else _RAW_OPENAI_VOICE_TTS_VOICE
+_RAW_OPENAI_REALTIME_MODEL = _env("OPENAI_REALTIME_MODEL", "")
+OPENAI_REALTIME_MODEL = "gpt-realtime-2" if _RAW_OPENAI_REALTIME_MODEL.lower() in {"", "gpt-realtime", "gpt-realtime-mini"} else _RAW_OPENAI_REALTIME_MODEL
+_RAW_OPENAI_REALTIME_VOICE = _env("OPENAI_REALTIME_VOICE", "")
+OPENAI_REALTIME_VOICE = "coral" if _RAW_OPENAI_REALTIME_VOICE.lower() in {"", "marin", "cedar"} else _RAW_OPENAI_REALTIME_VOICE
 OPENAI_REALTIME_TRANSCRIBE_MODEL = _env("OPENAI_REALTIME_TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe")
 OPENAI_REASONING_EFFORT = _env("OPENAI_REASONING_EFFORT", "medium")
 OPENAI_VOICE_REASONING_EFFORT = _env("OPENAI_VOICE_REASONING_EFFORT", "low")
+OPENAI_REALTIME_REASONING_EFFORT = _env("OPENAI_REALTIME_REASONING_EFFORT", "low")
 CHAT_HISTORY_LIMIT = int(os.getenv("CHAT_HISTORY_LIMIT", "8"))
 CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "240"))
 VOICE_MAX_TOKENS = int(os.getenv("VOICE_MAX_TOKENS", "700"))
@@ -111,13 +115,15 @@ WORDS_PER_AGE_GROUP = {
 REALTIME_AGE_PROFILES = {
     "5_7": {
         # Аудио / модель
-        "speed": 0.92,                # почти естественная скорость: сильное замедление портит тембр
+        "speed": 1.0,                 # не замедляем playback: темп задает промпт, а speed может портить тембр
         "max_output_tokens": 90,      # очень короткие ответы, внимание ребёнка ограничено
         "temperature": 0.9,           # теплее/креативнее = игривый тон
         "voice": OPENAI_REALTIME_VOICE,
 
         # VAD / детекция голоса — маленькие дети говорят тихо и с паузами
         "vad_threshold": 0.35,        # ниже = ловит тихий голос
+        "vad_type": "semantic_vad",
+        "semantic_eagerness": "low",
         "silence_duration_ms": 1200,  # 1.2 сек паузы перед ответом AI — дать договорить
         "prefix_padding_ms": 400,     # захватить начало тихой речи
         "idle_timeout_ms": 30_000,    # максимум OpenAI Realtime; дети долго думают
@@ -130,12 +136,14 @@ REALTIME_AGE_PROFILES = {
         "grammar_focus": False,
     },
     "8_10": {
-        "speed": 0.94,
+        "speed": 1.0,
         "max_output_tokens": 120,
         "temperature": 0.85,
         "voice": OPENAI_REALTIME_VOICE,
 
         "vad_threshold": 0.38,
+        "vad_type": "semantic_vad",
+        "semantic_eagerness": "low",
         "silence_duration_ms": 950,
         "prefix_padding_ms": 350,
         "idle_timeout_ms": 30_000,
@@ -147,12 +155,14 @@ REALTIME_AGE_PROFILES = {
         "grammar_focus": False,
     },
     "11_13": {
-        "speed": 0.97,
+        "speed": 1.0,
         "max_output_tokens": 170,
         "temperature": 0.80,
         "voice": OPENAI_REALTIME_VOICE,
 
         "vad_threshold": 0.40,
+        "vad_type": "semantic_vad",
+        "semantic_eagerness": "low",
         "silence_duration_ms": 750,
         "prefix_padding_ms": 320,
         "idle_timeout_ms": 28_000,
@@ -170,6 +180,8 @@ REALTIME_AGE_PROFILES = {
         "voice": OPENAI_REALTIME_VOICE,
 
         "vad_threshold": 0.42,
+        "vad_type": "semantic_vad",
+        "semantic_eagerness": "medium",
         "silence_duration_ms": 600,
         "prefix_padding_ms": 300,
         "idle_timeout_ms": 22_000,

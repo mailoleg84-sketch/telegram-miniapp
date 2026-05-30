@@ -18,6 +18,7 @@ from config import (
     OPENAI_PROMPT_ID,
     OPENAI_PROMPT_VERSION,
     OPENAI_REALTIME_MODEL,
+    OPENAI_REALTIME_REASONING_EFFORT,
     OPENAI_REALTIME_TRANSCRIBE_MODEL,
     OPENAI_REALTIME_VOICE,
     OPENAI_REASONING_EFFORT,
@@ -62,6 +63,7 @@ def openai_config_status() -> dict:
         "realtime_model": OPENAI_REALTIME_MODEL,
         "realtime_voice": OPENAI_REALTIME_VOICE,
         "realtime_transcribe_model": OPENAI_REALTIME_TRANSCRIBE_MODEL,
+        "realtime_reasoning_effort": OPENAI_REALTIME_REASONING_EFFORT,
         "prompt_id_configured": bool(OPENAI_PROMPT_ID),
         "prompt_version": OPENAI_PROMPT_VERSION,
         "prompt_for_voice": OPENAI_PROMPT_FOR_VOICE,
@@ -631,6 +633,67 @@ def build_voice_realtime_instructions(
 ) -> str:
     """Builds a structured, age-adaptive prompt for native speech-to-speech Realtime sessions."""
     context = dict(prompt_context or {})
+    age_group = _normalize_realtime_age_group(context.get("age_group", "default"), context.get("age"))
+    name = user_name or "друг"
+    age = context.get("age") or age_label or "не указан"
+    level = context.get("level") or TUTOR_DEFAULT_LEVEL
+    goal = context.get("goal") or "разговорная практика"
+    topics = context.get("topic_suggestions") or context.get("topics") or TUTOR_DEFAULT_TOPICS
+    recent_user = context.get("recent_user_messages") or "none"
+    recent_assistant = context.get("recent_assistant_messages") or "none"
+
+    if age_group in {"5_7", "8_10"}:
+        age_style = (
+            "Talk to the child like a kind, playful tutor. Use very simple words, one idea at a time, "
+            "and make the conversation feel like a small game."
+        )
+        max_words = "12"
+    elif age_group == "11_13":
+        age_style = (
+            "Talk like a friendly tutor for a pre-teen. Be natural, not babyish, and use school, games, hobbies, and daily life."
+        )
+        max_words = "18"
+    else:
+        age_style = "Talk like a warm mentor for a teenager. Be natural and respectful, with real-life examples."
+        max_words = "28"
+
+    return f"""You are Alex, a live voice English tutor for a child.
+Student: {name}. Age: {age}. Level: {level}. Goal: {goal}. Fresh topics: {topics}.
+Recent student messages: {recent_user}.
+Recent tutor messages: {recent_assistant}.
+
+Speak like a real human in a live call: warm, relaxed, attentive, with natural pauses. Do not sound like a robot, announcer, menu, or textbook.
+{age_style}
+
+Hard language rule:
+- Mirror the student's latest language.
+- If the child speaks Russian, answer in Russian. Do not switch to English for the whole answer.
+- If the child says "не понимаю", "что?", "переведи", "помоги", "по-русски", or sounds unsure, answer only in Russian in that turn.
+- In a Russian answer, add at most one tiny English phrase only when it is useful, and immediately explain it in Russian.
+- If the child speaks English, answer in simple English. If you correct a mistake, do it kindly and briefly.
+
+Conversation behavior:
+- First answer the child's actual message. Do not ignore it to follow a lesson plan.
+- Lead the conversation yourself, but never list menu options or say what buttons exist.
+- Keep one mini-scene for 2-4 turns before changing topic.
+- Vary activities naturally: tiny role-play, one easy choice, guess a word, mini-story, daily-life question, gentle correction.
+- Do not repeat animals/colors/story every time.
+- If the child is silent, tired, or answers with one word, make it easier and give a choice.
+
+Response length:
+- Speak in 1-2 short sentences. Maximum {max_words} words per sentence.
+- Ask at most one question.
+- Finish the thought. Do not leave a sentence hanging.
+- No markdown, no emoji, no lists, no "Say:" or "Repeat:" commands.
+
+Audio behavior:
+- Wait until the child finishes before answering.
+- Do not interrupt yourself or restart your own sentence.
+- Use natural pronunciation. If you say an English word inside Russian, pronounce that word in clean English, then continue Russian naturally.
+
+Safety:
+Child-safe topics only. Avoid scary, adult, violent, political, or inappropriate content."""
+    context = dict(prompt_context or {})
     context["mode"] = "voice"
     age_group = _normalize_realtime_age_group(context.get("age_group", "default"), context.get("age"))
     context["age_group"] = age_group
@@ -694,6 +757,7 @@ def build_realtime_session_config(
         "type": "realtime",
         "model": OPENAI_REALTIME_MODEL,
         "instructions": build_voice_realtime_instructions(user_name, age_label, prompt_context),
+        "reasoning": {"effort": OPENAI_REALTIME_REASONING_EFFORT},
         "audio": {
             "output": {
                 "voice": profile["voice"],
@@ -705,23 +769,31 @@ def build_realtime_session_config(
 
     session_config["output_modalities"] = ["audio"]
     session_config["max_output_tokens"] = profile["max_output_tokens"]
+    turn_detection = {
+        "type": profile.get("vad_type", "server_vad"),
+        "create_response": True,
+        "interrupt_response": profile["interrupt_response"],
+    }
+    if turn_detection["type"] == "semantic_vad":
+        turn_detection["eagerness"] = profile.get("semantic_eagerness", "low")
+    else:
+        turn_detection.update({
+            "threshold": profile["vad_threshold"],
+            "prefix_padding_ms": profile["prefix_padding_ms"],
+            "silence_duration_ms": profile["silence_duration_ms"],
+            "idle_timeout_ms": profile["idle_timeout_ms"],
+        })
+
     session_config["audio"]["input"] = {
         "noise_reduction": {"type": "near_field"},
         "transcription": {
             "model": OPENAI_REALTIME_TRANSCRIBE_MODEL,
             "prompt": _transcription_hint(prompt_context),
         },
-        "turn_detection": {
-            "type": "server_vad",
-            "threshold": profile["vad_threshold"],
-            "prefix_padding_ms": profile["prefix_padding_ms"],
-            "silence_duration_ms": profile["silence_duration_ms"],
-            "create_response": True,
-            "interrupt_response": profile["interrupt_response"],
-            "idle_timeout_ms": profile["idle_timeout_ms"],
-        },
+        "turn_detection": turn_detection,
     }
-    session_config["audio"]["output"]["speed"] = profile["speed"]
+    if profile.get("speed") and profile["speed"] != 1.0:
+        session_config["audio"]["output"]["speed"] = profile["speed"]
     return session_config
 
 
@@ -740,6 +812,8 @@ def _session_log_summary(session_config: dict, age_group: str) -> dict:
         "voice": audio_output.get("voice"),
         "speed": audio_output.get("speed"),
         "max_tokens": session_config.get("max_output_tokens"),
+        "vad_type": turn_detection.get("type"),
+        "eagerness": turn_detection.get("eagerness"),
         "silence_ms": turn_detection.get("silence_duration_ms"),
         "idle_ms": turn_detection.get("idle_timeout_ms"),
         "instructions_len": len(session_config.get("instructions", "")),
