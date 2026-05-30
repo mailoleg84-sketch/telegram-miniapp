@@ -401,8 +401,29 @@ def _runtime_instructions(
 
 def _get_realtime_profile(prompt_context: dict | None) -> dict:
     """Возвращает возрастной профиль для Realtime сессии."""
-    age_group = (prompt_context or {}).get("age_group", "default")
+    age_group = _normalize_realtime_age_group((prompt_context or {}).get("age_group", "default"), (prompt_context or {}).get("age"))
     return REALTIME_AGE_PROFILES.get(age_group, REALTIME_AGE_PROFILES["default"])
+
+
+def _normalize_realtime_age_group(age_group: str | None, age: str | int | None = None) -> str:
+    raw = str(age_group or "").strip()
+    try:
+        child_age = int(str(age or "").split()[0])
+    except (TypeError, ValueError, IndexError):
+        child_age = 0
+    if 5 <= child_age <= 7:
+        return "5_7"
+    if 8 <= child_age <= 10:
+        return "8_10"
+    if 11 <= child_age <= 13:
+        return "11_13"
+    if 14 <= child_age <= 18:
+        return "14_18"
+    if raw in {"under_12", "under12", "under_10", "до_12", "child", "kids", "default", ""}:
+        return "8_10"
+    if raw in {"5_7", "8_10", "11_13", "14_18"}:
+        return raw
+    return "default"
 
 
 # ── Блочные промпт-билдеры для Realtime WebRTC ──────────────────────────────
@@ -462,6 +483,7 @@ def _rt_pedagogy_block(profile: dict, level: str, goal: str) -> str:
         "3) RESPOND — react to what they said with genuine interest, then gently model/elicit again. "
         "Never lecture. Keep the student talking more than you. "
         "One task at a time. One question at a time. Never sound like a quiz."
+        " If the child asks for a story, give a tiny story, not a full tale: 1-2 short sentences, then one simple question."
     )
 
 
@@ -514,24 +536,35 @@ def _rt_correction_block(profile: dict) -> str:
 
 
 def _rt_language_block(age_group: str) -> str:
-    if age_group in ("5_7", "8_10"):
-        return (
-            "LANGUAGE RULES: The student's native language is Russian. "
-            "If the student speaks Russian, respond in Russian warmly, and add ONE very simple English phrase to try. "
-            "If the student speaks English, respond in simple English and praise every attempt. "
-            "If they say 'не понимаю', 'что?', 'переведи' — switch to Russian immediately, help calmly. "
-            "Gradually encourage more English — celebrate every English word loudly. "
-            "When you use an English word inside Russian, immediately give the meaning: 'good — хорошо'."
+    if age_group in ("5_7", "8_10", "under_12", "under_10", "default"):
+        extra = (
+            "For this child, Russian is the safe base language. "
+            "Use English only as a tiny learning sprinkle, not as the main language unless the child clearly speaks English first."
+        )
+    elif age_group == "11_13":
+        extra = (
+            "For this age, you may use a little more English, but never force English after a Russian question. "
+            "First answer in Russian, then add one useful English phrase only if it fits."
         )
     else:
-        return (
-            "LANGUAGE RULES: The student's native language is Russian. "
-            "Respond primarily in English. "
-            "If they speak Russian, gently prompt: 'Try saying that in English — I believe in you!' "
-            "Only use Russian for brief clarifications of crucial misunderstandings. "
-            "If they say 'не понимаю' or seem stuck, explain briefly in Russian, then give the English phrase. "
-            "When correcting, explain the rule briefly in Russian if needed."
+        extra = (
+            "For teenagers, still mirror the student's language. "
+            "If they choose Russian, keep the answer in Russian and add English only when it helps the learning goal."
         )
+    return (
+        "HARD LANGUAGE RULES, highest priority: The student's native language is Russian. "
+        "Mirror the language of the student's latest message. "
+        "If the student speaks Russian, respond in Russian. Do not switch to English just because this is an English lesson. "
+        "If the student asks 'по-русски', 'без английского', 'не надо английский', answer entirely in Russian with no English words in that turn. "
+        "If the student says 'не понимаю', 'что?', 'переведи', 'помоги', 'говори медленнее', or sounds unsure, answer entirely in Russian in that turn. "
+        "If the student speaks English, respond in simple English and praise the attempt. "
+        "In a normal Russian answer, use at most ONE short English word or phrase, and only when it is useful right now. "
+        "After confusion, tiredness, or a request for Russian, use ZERO English words. "
+        "Do not end a Russian answer with an English question unless the student asked for English practice in that message. "
+        "When you use an English word inside Russian, immediately give the meaning: 'good — хорошо'. "
+        "Do not ask the child to translate their Russian message into English unless they explicitly want a challenge. "
+        f"{extra}"
+    )
 
 
 def _rt_safety_block() -> str:
@@ -548,13 +581,16 @@ def _rt_webrtc_rules_block(age_group: str) -> str:
     base = (
         "LIVE VOICE RULES: You are in a live WebRTC voice call. "
         "Respond like a real person on a phone call — no processing delays, no long introductions. "
-        "Speak in short bursts of 3-7 seconds. If a thought is longer, split it across turns. "
+        "Speak slowly and clearly. Use relaxed pacing, tiny pauses, and short bursts of 3-6 seconds. If a thought is longer, split it across turns. "
         "Pronounce English words with natural English pronunciation, even inside Russian sentences. "
         "Lead the conversation yourself — suggest small next steps, but never list menu options or buttons. "
         "Vary your activities: question, mini-role-play, short story, choice, gentle correction. "
-        "If the child is silent or confused, help: 'Давай легко: скажи good или bad про свой день.' "
+        "If the child is silent or confused, help in Russian: 'Давай легко: скажи, день был хороший или так себе?' "
+        "If the child asks to speak Russian or says they do not understand, do not sprinkle English in that turn. "
+        "If the child asks for a story, tell only 1-2 short sentences and stop with one simple question. "
         "Never use markdown, asterisks, lists, or any text formatting. "
         "Never use emoji in your speech. "
+        "Never rush. It is better to say less, slower, and let the child answer. "
         "Sound like a real warm human, not a textbook."
     )
     if age_group == "5_7":
@@ -578,7 +614,8 @@ def build_voice_realtime_instructions(
     """Builds a structured, age-adaptive prompt for native speech-to-speech Realtime sessions."""
     context = dict(prompt_context or {})
     context["mode"] = "voice"
-    age_group = context.get("age_group", "default")
+    age_group = _normalize_realtime_age_group(context.get("age_group", "default"), context.get("age"))
+    context["age_group"] = age_group
     profile = _get_realtime_profile(context)
 
     name = user_name or "друг"
@@ -724,7 +761,7 @@ async def create_realtime_client_secret(
     if not OPENAI_API_KEY:
         raise RuntimeError("OPENAI_API_KEY is not configured")
 
-    age_group = (prompt_context or {}).get("age_group", "?")
+    age_group = _normalize_realtime_age_group((prompt_context or {}).get("age_group", "?"), (prompt_context or {}).get("age"))
     full_config = build_realtime_session_config(user_name, age_label, prompt_context)
     log.info("Realtime token config: %s", _session_log_summary(full_config, age_group))
     try:
@@ -751,7 +788,7 @@ async def create_realtime_call(
 
     session_config = build_realtime_session_config(user_name, age_label, prompt_context)
     session_json = json.dumps(session_config)
-    age_group = (prompt_context or {}).get("age_group", "?")
+    age_group = _normalize_realtime_age_group((prompt_context or {}).get("age_group", "?"), (prompt_context or {}).get("age"))
     log.info("Realtime call config: %s", _session_log_summary(session_config, age_group))
 
     form = aiohttp.FormData()
@@ -895,7 +932,7 @@ async def synthesize_speech(text: str, mode: str = "chat") -> bytes:
             "voice": voice,
             "input": clean_text,
             "response_format": "mp3",
-            "speed": 1.02 if mode == "voice" else 1.0,
+            "speed": 0.92 if mode == "voice" else 1.0,
         }
         if include_instructions:
             request["instructions"] = instructions

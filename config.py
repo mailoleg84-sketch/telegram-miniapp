@@ -37,7 +37,7 @@ DATABASE_URL = _env("DATABASE_URL", "")
 
 # --- Mini App (Telegram WebApp) ---
 WEBAPP_URL = _env("WEBAPP_URL", "https://telegram-miniapp-1-r0sj.onrender.com")
-APP_VERSION = _env("APP_VERSION", "20260531-kids-v32")
+APP_VERSION = _env("APP_VERSION", "20260531-kids-v33")
 
 WEBAPP_HOST = os.getenv("WEBAPP_HOST", "0.0.0.0")
 # Render задаёт порт через переменную PORT — читаем её, иначе 8080.
@@ -111,8 +111,8 @@ WORDS_PER_AGE_GROUP = {
 REALTIME_AGE_PROFILES = {
     "5_7": {
         # Аудио / модель
-        "speed": 0.88,                # медленнее — как воспитатель в детском саду
-        "max_output_tokens": 150,     # очень короткие ответы, внимание ребёнка ограничено
+        "speed": 0.80,                # медленнее — как воспитатель в детском саду
+        "max_output_tokens": 90,      # очень короткие ответы, внимание ребёнка ограничено
         "temperature": 0.9,           # теплее/креативнее = игривый тон
         "voice": OPENAI_REALTIME_VOICE,
 
@@ -125,13 +125,13 @@ REALTIME_AGE_PROFILES = {
 
         # Педагогика (используется в промпт-билдере)
         "persona": "a super-friendly kindergarten teacher",
-        "max_sentence_words": 8,
+        "max_sentence_words": 7,
         "corrections": "never",       # никогда не исправлять напрямую — только recast
         "grammar_focus": False,
     },
     "8_10": {
-        "speed": 0.94,
-        "max_output_tokens": 200,
+        "speed": 0.86,
+        "max_output_tokens": 120,
         "temperature": 0.85,
         "voice": OPENAI_REALTIME_VOICE,
 
@@ -142,13 +142,13 @@ REALTIME_AGE_PROFILES = {
         "interrupt_response": True,
 
         "persona": "a fun and encouraging primary-school English tutor",
-        "max_sentence_words": 12,
+        "max_sentence_words": 10,
         "corrections": "recast",      # повторить правильно без акцента на ошибке
         "grammar_focus": False,
     },
     "11_13": {
-        "speed": 0.99,
-        "max_output_tokens": 280,
+        "speed": 0.91,
+        "max_output_tokens": 170,
         "temperature": 0.80,
         "voice": OPENAI_REALTIME_VOICE,
 
@@ -159,13 +159,13 @@ REALTIME_AGE_PROFILES = {
         "interrupt_response": True,
 
         "persona": "a cool and supportive middle-school English tutor",
-        "max_sentence_words": 18,
+        "max_sentence_words": 15,
         "corrections": "explicit_gentle",  # "Good try! The word is actually…"
         "grammar_focus": True,
     },
     "14_18": {
-        "speed": 1.02,                # почти нативный темп
-        "max_output_tokens": 400,     # место для развёрнутых объяснений
+        "speed": 0.96,                # естественный темп без спешки
+        "max_output_tokens": 240,     # место для развёрнутых объяснений
         "temperature": 0.75,          # точнее, взрослее
         "voice": OPENAI_REALTIME_VOICE,
 
@@ -176,11 +176,13 @@ REALTIME_AGE_PROFILES = {
         "interrupt_response": True,
 
         "persona": "a knowledgeable and engaging high-school English tutor and mentor",
-        "max_sentence_words": 30,
+        "max_sentence_words": 24,
         "corrections": "explicit",    # исправлять и объяснять почему
         "grammar_focus": True,
     },
 }
 
 # Фолбэк, если age_group не определена
-REALTIME_AGE_PROFILES["default"] = REALTIME_AGE_PROFILES["11_13"]
+REALTIME_AGE_PROFILES["under_12"] = REALTIME_AGE_PROFILES["8_10"]
+REALTIME_AGE_PROFILES["under_10"] = REALTIME_AGE_PROFILES["8_10"]
+REALTIME_AGE_PROFILES["default"] = REALTIME_AGE_PROFILES["8_10"]

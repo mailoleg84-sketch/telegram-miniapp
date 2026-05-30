@@ -140,9 +140,31 @@ def _topics_for_user(user) -> str:
     return "школа, игры, спорт, путешествия, хобби, истории, повседневные ситуации"
 
 
+def _normalized_age_group_for_user(user) -> str:
+    age_group = user["age_group"] if user else ""
+    try:
+        child_age = int(user["child_age"] or 0) if user else 0
+    except (TypeError, ValueError):
+        child_age = 0
+    if age_group in {"5_7", "8_10", "11_13", "14_18"}:
+        return age_group
+    if 5 <= child_age <= 7:
+        return "5_7"
+    if 8 <= child_age <= 10:
+        return "8_10"
+    if 11 <= child_age <= 13:
+        return "11_13"
+    if 14 <= child_age <= 18:
+        return "14_18"
+    if age_group in {"under_12", "under12", "under_10"}:
+        return "8_10"
+    return "8_10"
+
+
 def _prompt_context_for_user(user) -> dict:
     return {
         "age": str(user["child_age"] or _age_label(user["age_group"])) if user else "не указан",
+        "age_group": _normalized_age_group_for_user(user),
         "level": _level_for_user(user),
         "goal": _goal_label(user["goal"]) if user else "разговорная практика",
         "style": _style_for_user(user),
@@ -782,7 +804,7 @@ async def api_realtime_call(request: web.Request):
 def _realtime_prompt_context(user, history: list[dict]) -> dict:
     prompt_context = _prompt_context_for_user(user) if user else {}
     prompt_context["mode"] = "voice"
-    prompt_context["age_group"] = user["age_group"] if user else "default"
+    prompt_context["age_group"] = _normalized_age_group_for_user(user) if user else "8_10"
     prompt_context.update(_voice_prompt_context(user, history))
     return prompt_context
 
