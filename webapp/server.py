@@ -21,7 +21,7 @@ from config import (
     WEBAPP_PORT,
 )
 from webapp.auth import verify_fallback_auth, verify_init_data
-from webapp.openai_service import chat_reply, create_realtime_call, public_openai_error, synthesize_speech, transcribe_audio
+from webapp.openai_service import chat_reply, create_realtime_call, create_realtime_client_secret, public_openai_error, synthesize_speech, transcribe_audio
 
 log = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
@@ -745,18 +745,20 @@ async def api_audio_speech(request: web.Request):
 
 async def api_realtime_call(request: web.Request):
     user_id = request["tg_user"]["id"]
-    sdp_offer = await request.text()
-    if not sdp_offer or len(sdp_offer.encode("utf-8")) > MAX_SDP_BYTES:
-        return web.json_response({"error": "Некорректный голосовой запрос"}, status=400)
+    raw_body = await request.read()
+    sdp_offer = raw_body.decode("utf-8", errors="replace").strip()
+    log.info(
+        "Realtime SDP: content_type=%s body_len=%d sdp_starts=%s",
+        request.content_type, len(raw_body), repr(sdp_offer[:40]) if sdp_offer else "EMPTY",
+    )
+    if not sdp_offer or len(raw_body) > MAX_SDP_BYTES:
+        return web.json_response({"error": f"Некорректный SDP: len={len(raw_body)}, starts={repr(sdp_offer[:30])}"}, status=400)
 
     user = await _current_user_or_404(request)
     rows = await database.get_recent_messages(user_id, limit=CHAT_HISTORY_LIMIT)
     history = [{"role": r["role"], "content": r["content"]} for r in rows]
     age_label = _age_label(user["age_group"]) if user else ""
-    prompt_context = _prompt_context_for_user(user) if user else {}
-    prompt_context["mode"] = "voice"
-    prompt_context["age_group"] = user["age_group"] if user else "default"
-    prompt_context.update(_voice_prompt_context(user, history))
+    prompt_context = _realtime_prompt_context(user, history)
 
     try:
         answer_sdp = await create_realtime_call(
@@ -775,6 +777,36 @@ async def api_realtime_call(request: web.Request):
         content_type="application/sdp",
         headers={"Cache-Control": "no-store"},
     )
+
+
+def _realtime_prompt_context(user, history: list[dict]) -> dict:
+    prompt_context = _prompt_context_for_user(user) if user else {}
+    prompt_context["mode"] = "voice"
+    prompt_context["age_group"] = user["age_group"] if user else "default"
+    prompt_context.update(_voice_prompt_context(user, history))
+    return prompt_context
+
+
+async def api_realtime_token(request: web.Request):
+    user_id = request["tg_user"]["id"]
+    user = await _current_user_or_404(request)
+    rows = await database.get_recent_messages(user_id, limit=CHAT_HISTORY_LIMIT)
+    history = [{"role": r["role"], "content": r["content"]} for r in rows]
+    age_label = _age_label(user["age_group"]) if user else ""
+    prompt_context = _realtime_prompt_context(user, history)
+
+    try:
+        token = await create_realtime_client_secret(
+            user_id=user_id,
+            user_name=user["name"] if user else "друг",
+            age_label=age_label,
+            prompt_context=prompt_context,
+        )
+    except Exception as e:
+        log.exception("Realtime token setup failed: %s", e)
+        return web.json_response({"error": f"Realtime token error: {str(e)[:300]}"}, status=502)
+
+    return web.json_response(token, headers={"Cache-Control": "no-store"})
 
 
 async def api_realtime_log(request: web.Request):
@@ -840,6 +872,7 @@ def create_app(
     app.router.add_post("/api/chat/send",              api_chat_send)
     app.router.add_post("/api/audio/transcribe",       api_audio_transcribe)
     app.router.add_post("/api/audio/speech",           api_audio_speech)
+    app.router.add_post("/api/realtime/token",         api_realtime_token)
     app.router.add_post("/api/realtime/call",          api_realtime_call)
     app.router.add_post("/api/realtime/log",           api_realtime_log)
     app.router.add_post("/api/chat/reset",             api_chat_reset)

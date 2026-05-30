@@ -93,6 +93,22 @@ async function apiSdp(path, sdp) {
   return res.text();
 }
 
+async function openaiRealtimeSdp(ephemeralKey, sdp) {
+  const res = await fetch("https://api.openai.com/v1/realtime/calls", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${ephemeralKey}`,
+      "Content-Type": "application/sdp",
+    },
+    body: sdp,
+  });
+  if (!res.ok) {
+    const raw = await res.text().catch(() => "");
+    throw new Error(raw || `OpenAI HTTP ${res.status}`);
+  }
+  return res.text();
+}
+
 function esc(value) {
   return String(value ?? "").replace(/[&<>"']/g, c => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -847,6 +863,13 @@ async function renderChat() {
       }
     }
 
+    async function getRealtimeEphemeralKey() {
+      const data = await api("/api/realtime/token", "POST", {});
+      const key = data?.value || data?.client_secret?.value || "";
+      if (!key) throw new Error("Realtime token is empty");
+      return key;
+    }
+
     async function logRealtimeMessage(role, text, key) {
       const clean = String(text || "").trim();
       const textKey = `${role}:text:${clean}`;
@@ -1499,7 +1522,15 @@ async function renderChat() {
       const offer = await realtimePc.createOffer();
       await realtimePc.setLocalDescription(offer);
       await waitForIceGatheringComplete(realtimePc);
-      const answerSdp = await apiSdp("/api/realtime/call", realtimePc.localDescription?.sdp || offer.sdp);
+      const localSdp = realtimePc.localDescription?.sdp || offer.sdp;
+      let answerSdp = "";
+      try {
+        const ephemeralKey = await getRealtimeEphemeralKey();
+        answerSdp = await openaiRealtimeSdp(ephemeralKey, localSdp);
+      } catch (directError) {
+        console.error("Direct Realtime call failed, trying server bridge:", directError);
+        answerSdp = await apiSdp("/api/realtime/call", localSdp);
+      }
       await realtimePc.setRemoteDescription({ type: "answer", sdp: answerSdp });
     }
 

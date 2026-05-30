@@ -37,7 +37,7 @@ DATABASE_URL = _env("DATABASE_URL", "")
 
 # --- Mini App (Telegram WebApp) ---
 WEBAPP_URL = _env("WEBAPP_URL", "https://telegram-miniapp-1-r0sj.onrender.com")
-APP_VERSION = _env("APP_VERSION", "20260531-kids-v31")
+APP_VERSION = _env("APP_VERSION", "20260531-kids-v32")
 
 WEBAPP_HOST = os.getenv("WEBAPP_HOST", "0.0.0.0")
 # Render задаёт порт через переменную PORT — читаем её, иначе 8080.
@@ -120,7 +120,7 @@ REALTIME_AGE_PROFILES = {
         "vad_threshold": 0.35,        # ниже = ловит тихий голос
         "silence_duration_ms": 1200,  # 1.2 сек паузы перед ответом AI — дать договорить
         "prefix_padding_ms": 400,     # захватить начало тихой речи
-        "idle_timeout_ms": 45_000,    # 45 сек тишины — дети долго думают
+        "idle_timeout_ms": 30_000,    # максимум OpenAI Realtime; дети долго думают
         "interrupt_response": False,  # не прерывать AI — малышей это путает
 
         # Педагогика (используется в промпт-билдере)
@@ -138,7 +138,7 @@ REALTIME_AGE_PROFILES = {
         "vad_threshold": 0.38,
         "silence_duration_ms": 950,
         "prefix_padding_ms": 350,
-        "idle_timeout_ms": 35_000,
+        "idle_timeout_ms": 30_000,
         "interrupt_response": True,
 
         "persona": "a fun and encouraging primary-school English tutor",

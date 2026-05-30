@@ -631,44 +631,108 @@ def build_realtime_session_config(
     user_name: str,
     age_label: str = "",
     prompt_context: dict | None = None,
+    minimal: bool = False,
 ) -> dict:
     """Session payload for OpenAI Realtime WebRTC — fully age-adaptive."""
     profile = _get_realtime_profile(prompt_context)
-
-    return {
+    session_config = {
         "type": "realtime",
         "model": OPENAI_REALTIME_MODEL,
         "instructions": build_voice_realtime_instructions(user_name, age_label, prompt_context),
-        "output_modalities": ["audio"],
-        "max_output_tokens": profile["max_output_tokens"],
         "audio": {
-            "input": {
-                "noise_reduction": {"type": "near_field"},
-                "transcription": {
-                    "model": OPENAI_REALTIME_TRANSCRIBE_MODEL,
-                    "prompt": _transcription_hint(prompt_context),
-                },
-                "turn_detection": {
-                    "type": "server_vad",
-                    "threshold": profile["vad_threshold"],
-                    "prefix_padding_ms": profile["prefix_padding_ms"],
-                    "silence_duration_ms": profile["silence_duration_ms"],
-                    "create_response": True,
-                    "interrupt_response": profile["interrupt_response"],
-                    "idle_timeout_ms": profile["idle_timeout_ms"],
-                },
-            },
             "output": {
                 "voice": profile["voice"],
-                "speed": profile["speed"],
             },
         },
     }
+    if minimal:
+        return session_config
+
+    session_config["output_modalities"] = ["audio"]
+    session_config["max_output_tokens"] = profile["max_output_tokens"]
+    session_config["audio"]["input"] = {
+        "noise_reduction": {"type": "near_field"},
+        "transcription": {
+            "model": OPENAI_REALTIME_TRANSCRIBE_MODEL,
+            "prompt": _transcription_hint(prompt_context),
+        },
+        "turn_detection": {
+            "type": "server_vad",
+            "threshold": profile["vad_threshold"],
+            "prefix_padding_ms": profile["prefix_padding_ms"],
+            "silence_duration_ms": profile["silence_duration_ms"],
+            "create_response": True,
+            "interrupt_response": profile["interrupt_response"],
+            "idle_timeout_ms": profile["idle_timeout_ms"],
+        },
+    }
+    session_config["audio"]["output"]["speed"] = profile["speed"]
+    return session_config
 
 
 def _safety_identifier(user_id: int | str) -> str:
     raw = f"telegram-miniapp:{user_id}".encode("utf-8")
     return hashlib.sha256(raw).hexdigest()[:32]
+
+
+def _session_log_summary(session_config: dict, age_group: str) -> dict:
+    audio = session_config.get("audio", {})
+    audio_input = audio.get("input", {})
+    turn_detection = audio_input.get("turn_detection", {})
+    audio_output = audio.get("output", {})
+    return {
+        "age_group": age_group,
+        "voice": audio_output.get("voice"),
+        "speed": audio_output.get("speed"),
+        "max_tokens": session_config.get("max_output_tokens"),
+        "silence_ms": turn_detection.get("silence_duration_ms"),
+        "idle_ms": turn_detection.get("idle_timeout_ms"),
+        "instructions_len": len(session_config.get("instructions", "")),
+        "minimal": "input" not in audio,
+    }
+
+
+async def _post_realtime_client_secret(session_config: dict, user_id: int | str) -> dict:
+    timeout = aiohttp.ClientTimeout(total=25)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.post(
+            "https://api.openai.com/v1/realtime/client_secrets",
+            headers={
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+                "Content-Type": "application/json",
+                "OpenAI-Safety-Identifier": _safety_identifier(user_id),
+            },
+            json={"session": session_config},
+        ) as response:
+            try:
+                data = await response.json()
+            except Exception:
+                data = {"raw": await response.text()}
+            if response.status >= 400:
+                log.error("Realtime token FAILED: HTTP %s body=%s", response.status, str(data)[:800])
+                raise RuntimeError(f"HTTP {response.status}: {str(data)[:400]}")
+            return data
+
+
+async def create_realtime_client_secret(
+    user_id: int | str,
+    user_name: str,
+    age_label: str = "",
+    prompt_context: dict | None = None,
+) -> dict:
+    """Creates an ephemeral Realtime token for browser-side WebRTC."""
+    if not OPENAI_API_KEY:
+        raise RuntimeError("OPENAI_API_KEY is not configured")
+
+    age_group = (prompt_context or {}).get("age_group", "?")
+    full_config = build_realtime_session_config(user_name, age_label, prompt_context)
+    log.info("Realtime token config: %s", _session_log_summary(full_config, age_group))
+    try:
+        return await _post_realtime_client_secret(full_config, user_id)
+    except Exception:
+        minimal_config = build_realtime_session_config(user_name, age_label, prompt_context, minimal=True)
+        log.warning("Retrying Realtime token with minimal session config")
+        return await _post_realtime_client_secret(minimal_config, user_id)
 
 
 async def create_realtime_call(
@@ -688,15 +752,7 @@ async def create_realtime_call(
     session_config = build_realtime_session_config(user_name, age_label, prompt_context)
     session_json = json.dumps(session_config)
     age_group = (prompt_context or {}).get("age_group", "?")
-    log.info(
-        "Realtime session: age_group=%s speed=%.2f max_tokens=%d silence_ms=%d idle_ms=%d instructions_len=%d",
-        age_group,
-        session_config.get("audio", {}).get("output", {}).get("speed", 0),
-        session_config.get("max_output_tokens", 0),
-        session_config.get("audio", {}).get("input", {}).get("turn_detection", {}).get("silence_duration_ms", 0),
-        session_config.get("audio", {}).get("input", {}).get("turn_detection", {}).get("idle_timeout_ms", 0),
-        len(session_config.get("instructions", "")),
-    )
+    log.info("Realtime call config: %s", _session_log_summary(session_config, age_group))
 
     form = aiohttp.FormData()
     form.add_field("sdp", clean_sdp, content_type="application/sdp")
@@ -718,7 +774,29 @@ async def create_realtime_call(
                     "Realtime call FAILED: HTTP %s body=%s session_keys=%s",
                     response.status, text[:800], list(session_config.keys()),
                 )
-                raise RuntimeError(f"HTTP {response.status}: {text[:400]}")
+                if "invalid_offer" not in text:
+                    minimal_config = build_realtime_session_config(user_name, age_label, prompt_context, minimal=True)
+                    log.warning("Retrying Realtime call with minimal session config")
+                    form = aiohttp.FormData()
+                    form.add_field("sdp", clean_sdp, content_type="application/sdp")
+                    form.add_field("session", json.dumps(minimal_config), content_type="application/json")
+                    async with session.post(
+                        "https://api.openai.com/v1/realtime/calls",
+                        headers={
+                            "Authorization": f"Bearer {OPENAI_API_KEY}",
+                            "OpenAI-Safety-Identifier": _safety_identifier(user_id),
+                        },
+                        data=form,
+                    ) as retry_response:
+                        retry_text = await retry_response.text()
+                        if retry_response.status < 400:
+                            log.info("Realtime call OK after minimal retry: SDP answer length=%d", len(retry_text))
+                            return retry_text
+                        text = retry_text
+                        response_status = retry_response.status
+                else:
+                    response_status = response.status
+                raise RuntimeError(f"HTTP {response_status}: {text[:400]}")
             log.info("Realtime call OK: SDP answer length=%d", len(text))
             return text
 
