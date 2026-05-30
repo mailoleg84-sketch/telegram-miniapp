@@ -747,12 +747,14 @@ async function renderChat() {
     let realtimeDataChannel = null;
     let realtimeStream = null;
     let realtimeAudio = null;
+    let realtimeFallbackShown = false;
+    let shortVoiceHintShown = false;
     const realtimeLogged = new Set();
     const realtimeResponseText = new Map();
 
-    const VOICE_VOLUME_THRESHOLD = 0.012;
+    const VOICE_VOLUME_THRESHOLD = 0.008;
     const VOICE_SILENCE_MS = 950;
-    const VOICE_MIN_RECORDING_MS = 900;
+    const VOICE_MIN_RECORDING_MS = 650;
     const VOICE_NO_SPEECH_MS = 5200;
     const VOICE_MAX_RECORDING_MS = 18000;
     const VOICE_RESTART_DELAY_MS = 450;
@@ -821,6 +823,22 @@ async function renderChat() {
 
     function realtimeSupported() {
       return Boolean(window.RTCPeerConnection && navigator.mediaDevices?.getUserMedia);
+    }
+
+    function waitForIceGatheringComplete(pc, timeoutMs = 5000) {
+      if (pc.iceGatheringState === "complete") return Promise.resolve();
+      return new Promise(resolve => {
+        const timeoutId = setTimeout(done, timeoutMs);
+        function done() {
+          clearTimeout(timeoutId);
+          pc.removeEventListener("icegatheringstatechange", onChange);
+          resolve();
+        }
+        function onChange() {
+          if (pc.iceGatheringState === "complete") done();
+        }
+        pc.addEventListener("icegatheringstatechange", onChange);
+      });
     }
 
     function sendRealtimeEvent(event) {
@@ -1258,8 +1276,12 @@ async function renderChat() {
       try {
         const blob = new Blob(audioChunks, { type: mimeType || "audio/webm" });
         audioChunks = [];
-        if (blob.size < 600) {
-          if (!wasAuto) tg.showAlert("Голосовое сообщение слишком короткое");
+        if (blob.size < 300) {
+          updateVoiceModeUi("Скажи чуть дольше");
+          if (!wasAuto && !shortVoiceHintShown) {
+            shortVoiceHintShown = true;
+            bubble("assistant", "Я не успел расслышать. Нажми микрофон и скажи фразу чуть дольше.");
+          }
           setFace("idle");
           if (wasAuto) scheduleVoiceListen(700);
           return;
@@ -1476,7 +1498,8 @@ async function renderChat() {
 
       const offer = await realtimePc.createOffer();
       await realtimePc.setLocalDescription(offer);
-      const answerSdp = await apiSdp("/api/realtime/call", offer.sdp);
+      await waitForIceGatheringComplete(realtimePc);
+      const answerSdp = await apiSdp("/api/realtime/call", realtimePc.localDescription?.sdp || offer.sdp);
       await realtimePc.setRemoteDescription({ type: "answer", sdp: answerSdp });
     }
 
@@ -1491,7 +1514,10 @@ async function renderChat() {
           stopRealtimeSession();
           voiceModeActive = false;
           updateVoiceModeUi("Включаю запасной режим...");
-          bubble("assistant", `Живой голос не включился: ${e.message || e}. Пробую запасной режим.`);
+          if (!realtimeFallbackShown) {
+            realtimeFallbackShown = true;
+            bubble("assistant", "Живой голос сейчас не включился, попробую запасной режим.");
+          }
           setFace("idle");
         }
       }
