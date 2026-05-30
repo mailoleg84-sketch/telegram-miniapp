@@ -768,7 +768,8 @@ def build_realtime_session_config(
         return session_config
 
     session_config["output_modalities"] = ["audio"]
-    session_config["max_output_tokens"] = profile["max_output_tokens"]
+    # Do not cap Realtime audio responses here: low token caps can cut spoken phrases mid-sentence.
+    # The live prompt keeps replies short while still letting the model finish the thought.
     turn_detection = {
         "type": profile.get("vad_type", "server_vad"),
         "create_response": True,

@@ -887,11 +887,11 @@ async function renderChat() {
 
     function estimateRealtimeSpeechMs(text) {
       const clean = String(text || "").trim();
-      if (!clean) return 1200;
+      if (!clean) return 5000;
       const words = clean.split(/\s+/).filter(Boolean).length;
-      const byWords = words * 520;
-      const byChars = clean.length * 70;
-      return Math.min(18000, Math.max(1200, Math.max(byWords, byChars)));
+      const byWords = words * 760;
+      const byChars = clean.length * 95;
+      return Math.min(26000, Math.max(3500, Math.max(byWords, byChars)));
     }
 
     function scheduleRealtimeMicResume(delayMs = 800) {
@@ -1000,7 +1000,7 @@ async function renderChat() {
         return;
       }
       if (type === "response.output_audio.done" || type === "response.audio.done") {
-        scheduleRealtimeMicResume(900);
+        scheduleRealtimeMicResume(3500);
         return;
       }
       if (type === "response.done") {
