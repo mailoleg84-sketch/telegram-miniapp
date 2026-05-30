@@ -183,6 +183,24 @@ def _interaction_mode(prompt_context: dict | None) -> str:
     return "voice" if (prompt_context or {}).get("mode") == "voice" else "chat"
 
 
+def _cut_at_sentence_boundary(text: str, max_chars: int) -> str:
+    """Keeps TTS text complete enough to avoid chopping a word or clause mid-speech."""
+    clean_text = " ".join((text or "").split())
+    if len(clean_text) <= max_chars:
+        return clean_text
+    cut = clean_text[:max_chars].rstrip()
+    boundary = max(cut.rfind("."), cut.rfind("!"), cut.rfind("?"), cut.rfind("…"))
+    if boundary >= max_chars * 0.55:
+        return cut[:boundary + 1].strip()
+    comma = max(cut.rfind(","), cut.rfind(";"), cut.rfind(":"))
+    if comma >= max_chars * 0.65:
+        return cut[:comma].strip() + "."
+    space = cut.rfind(" ")
+    if space > 0:
+        return cut[:space].strip() + "."
+    return cut.strip()
+
+
 def _needs_russian_repair(last_user_text: str, reply_text: str) -> bool:
     return _has_cyrillic(last_user_text) and bool(reply_text.strip()) and not _has_cyrillic(reply_text)
 
@@ -892,9 +910,8 @@ async def synthesize_speech(text: str, mode: str = "chat") -> bytes:
     clean_text = " ".join((text or "").split())
     if not clean_text:
         raise ValueError("Text is empty")
-    max_chars = 420 if mode == "voice" else 900
-    if len(clean_text) > max_chars:
-        clean_text = clean_text[:max_chars]
+    max_chars = 900 if mode == "voice" else 1100
+    clean_text = _cut_at_sentence_boundary(clean_text, max_chars)
 
     has_russian = _has_cyrillic(clean_text)
     has_english = _has_latin(clean_text)

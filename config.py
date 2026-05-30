@@ -37,7 +37,7 @@ DATABASE_URL = _env("DATABASE_URL", "")
 
 # --- Mini App (Telegram WebApp) ---
 WEBAPP_URL = _env("WEBAPP_URL", "https://telegram-miniapp-1-r0sj.onrender.com")
-APP_VERSION = _env("APP_VERSION", "20260531-kids-v33")
+APP_VERSION = _env("APP_VERSION", "20260531-kids-v34")
 
 WEBAPP_HOST = os.getenv("WEBAPP_HOST", "0.0.0.0")
 # Render задаёт порт через переменную PORT — читаем её, иначе 8080.
@@ -139,7 +139,7 @@ REALTIME_AGE_PROFILES = {
         "silence_duration_ms": 950,
         "prefix_padding_ms": 350,
         "idle_timeout_ms": 30_000,
-        "interrupt_response": True,
+        "interrupt_response": False,
 
         "persona": "a fun and encouraging primary-school English tutor",
         "max_sentence_words": 10,
@@ -156,7 +156,7 @@ REALTIME_AGE_PROFILES = {
         "silence_duration_ms": 750,
         "prefix_padding_ms": 320,
         "idle_timeout_ms": 28_000,
-        "interrupt_response": True,
+        "interrupt_response": False,
 
         "persona": "a cool and supportive middle-school English tutor",
         "max_sentence_words": 15,
@@ -173,7 +173,7 @@ REALTIME_AGE_PROFILES = {
         "silence_duration_ms": 600,
         "prefix_padding_ms": 300,
         "idle_timeout_ms": 22_000,
-        "interrupt_response": True,
+        "interrupt_response": False,
 
         "persona": "a knowledgeable and engaging high-school English tutor and mentor",
         "max_sentence_words": 24,
