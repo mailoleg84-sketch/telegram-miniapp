@@ -763,6 +763,9 @@ async function renderChat() {
     let realtimeDataChannel = null;
     let realtimeStream = null;
     let realtimeAudio = null;
+    let realtimeAssistantSpeaking = false;
+    let realtimeMicResumeTimer = null;
+    let realtimeMicResumeAt = 0;
     let realtimeFallbackShown = false;
     let shortVoiceHintShown = false;
     const realtimeLogged = new Set();
@@ -774,7 +777,7 @@ async function renderChat() {
     const VOICE_NO_SPEECH_MS = 5200;
     const VOICE_MAX_RECORDING_MS = 18000;
     const VOICE_RESTART_DELAY_MS = 450;
-    const VOICE_TTS_TIMEOUT_MS = 12000;
+    const VOICE_TTS_TIMEOUT_MS = 25000;
     const CHAT_TTS_TIMEOUT_MS = 7000;
     const VOICE_STARTERS = [
       "Привет! Расскажи одним словом, что тебе сегодня интересно, а я превращу это в английскую фразу.",
@@ -863,6 +866,46 @@ async function renderChat() {
       }
     }
 
+    function setRealtimeMicEnabled(enabled) {
+      realtimeStream?.getAudioTracks().forEach(track => {
+        if (track.readyState === "live") track.enabled = enabled;
+      });
+    }
+
+    function setRealtimeAssistantSpeaking(active) {
+      if (!voiceModeActive || !realtimeActive) return;
+      if (active && realtimeMicResumeTimer) {
+        clearTimeout(realtimeMicResumeTimer);
+        realtimeMicResumeTimer = null;
+        realtimeMicResumeAt = 0;
+      }
+      realtimeAssistantSpeaking = active;
+      setRealtimeMicEnabled(!active);
+      updateVoiceModeUi(active ? "Говорю..." : "Слушаю...");
+      setFace(active ? "speaking" : "listening");
+    }
+
+    function estimateRealtimeSpeechMs(text) {
+      const clean = String(text || "").trim();
+      if (!clean) return 1200;
+      const words = clean.split(/\s+/).filter(Boolean).length;
+      const byWords = words * 520;
+      const byChars = clean.length * 70;
+      return Math.min(18000, Math.max(1200, Math.max(byWords, byChars)));
+    }
+
+    function scheduleRealtimeMicResume(delayMs = 800) {
+      const resumeAt = Date.now() + delayMs;
+      if (realtimeMicResumeTimer && realtimeMicResumeAt >= resumeAt) return;
+      realtimeMicResumeAt = resumeAt;
+      if (realtimeMicResumeTimer) clearTimeout(realtimeMicResumeTimer);
+      realtimeMicResumeTimer = setTimeout(() => {
+        realtimeMicResumeTimer = null;
+        realtimeMicResumeAt = 0;
+        setRealtimeAssistantSpeaking(false);
+      }, delayMs);
+    }
+
     async function getRealtimeEphemeralKey() {
       const data = await api("/api/realtime/token", "POST", {});
       const key = data?.value || data?.client_secret?.value || "";
@@ -906,6 +949,7 @@ async function renderChat() {
         return;
       }
       if (type === "input_audio_buffer.speech_started") {
+        if (realtimeAssistantSpeaking) return;
         updateVoiceModeUi("Слушаю...");
         setFace("listening");
         return;
@@ -938,13 +982,25 @@ async function renderChat() {
           bubble("assistant", text);
           logRealtimeMessage("assistant", text, key);
         }
-        updateVoiceModeUi("Слушаю...");
-        setFace("listening");
+        scheduleRealtimeMicResume(estimateRealtimeSpeechMs(text) + 500);
         return;
       }
       if (type === "response.created") {
+        setRealtimeAssistantSpeaking(true);
         updateVoiceModeUi("Отвечаю...");
         setFace("thinking");
+        return;
+      }
+      if (
+        type === "response.output_audio.delta" ||
+        type === "response.audio.delta" ||
+        type === "response.content_part.added"
+      ) {
+        setRealtimeAssistantSpeaking(true);
+        return;
+      }
+      if (type === "response.output_audio.done" || type === "response.audio.done") {
+        scheduleRealtimeMicResume(900);
         return;
       }
       if (type === "response.done") {
@@ -955,8 +1011,7 @@ async function renderChat() {
           bubble("assistant", text);
           logRealtimeMessage("assistant", text, key);
         }
-        updateVoiceModeUi("Слушаю...");
-        setFace("listening");
+        scheduleRealtimeMicResume(estimateRealtimeSpeechMs(text) + 500);
         return;
       }
       if (type === "error") {
@@ -969,6 +1024,12 @@ async function renderChat() {
 
     function stopRealtimeSession() {
       realtimeActive = false;
+      realtimeAssistantSpeaking = false;
+      if (realtimeMicResumeTimer) {
+        clearTimeout(realtimeMicResumeTimer);
+        realtimeMicResumeTimer = null;
+      }
+      realtimeMicResumeAt = 0;
       if (realtimeDataChannel) {
         try { realtimeDataChannel.close(); } catch (_) {}
         realtimeDataChannel = null;
@@ -1458,11 +1519,10 @@ async function renderChat() {
       realtimeAudio.autoplay = true;
       realtimeAudio.playsInline = true;
       realtimeAudio.onplaying = () => {
-        updateVoiceModeUi("Говорю...");
-        setFace("speaking");
+        setRealtimeAssistantSpeaking(true);
       };
       realtimeAudio.onpause = () => {
-        if (voiceModeActive && realtimeActive) {
+        if (voiceModeActive && realtimeActive && !realtimeAssistantSpeaking) {
           updateVoiceModeUi("Слушаю...");
           setFace("listening");
         }

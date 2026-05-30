@@ -949,7 +949,7 @@ async def synthesize_speech(text: str, mode: str = "chat") -> bytes:
             "voice": voice,
             "input": clean_text,
             "response_format": "mp3",
-            "speed": 0.92 if mode == "voice" else 1.0,
+            "speed": 0.97 if mode == "voice" else 1.0,
         }
         if include_instructions:
             request["instructions"] = instructions

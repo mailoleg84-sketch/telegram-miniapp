@@ -37,7 +37,7 @@ DATABASE_URL = _env("DATABASE_URL", "")
 
 # --- Mini App (Telegram WebApp) ---
 WEBAPP_URL = _env("WEBAPP_URL", "https://telegram-miniapp-1-r0sj.onrender.com")
-APP_VERSION = _env("APP_VERSION", "20260531-kids-v34")
+APP_VERSION = _env("APP_VERSION", "20260531-kids-v35")
 
 WEBAPP_HOST = os.getenv("WEBAPP_HOST", "0.0.0.0")
 # Render задаёт порт через переменную PORT — читаем её, иначе 8080.
@@ -52,9 +52,9 @@ OPENAI_PROMPT_FOR_VOICE = _env("OPENAI_PROMPT_FOR_VOICE", "0").lower() in {"1", 
 OPENAI_TRANSCRIBE_MODEL = _env("OPENAI_TRANSCRIBE_MODEL", "whisper-1")
 OPENAI_TTS_MODEL = _env("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
 OPENAI_TTS_VOICE = _env("OPENAI_TTS_VOICE", "coral")
-OPENAI_VOICE_TTS_VOICE = _env("OPENAI_VOICE_TTS_VOICE", "marin")
-OPENAI_REALTIME_MODEL = _env("OPENAI_REALTIME_MODEL", "gpt-realtime-mini")
-OPENAI_REALTIME_VOICE = _env("OPENAI_REALTIME_VOICE", OPENAI_VOICE_TTS_VOICE or "marin")
+OPENAI_VOICE_TTS_VOICE = _env("OPENAI_VOICE_TTS_VOICE", "cedar")
+OPENAI_REALTIME_MODEL = _env("OPENAI_REALTIME_MODEL", "gpt-realtime")
+OPENAI_REALTIME_VOICE = _env("OPENAI_REALTIME_VOICE", "cedar")
 OPENAI_REALTIME_TRANSCRIBE_MODEL = _env("OPENAI_REALTIME_TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe")
 OPENAI_REASONING_EFFORT = _env("OPENAI_REASONING_EFFORT", "medium")
 OPENAI_VOICE_REASONING_EFFORT = _env("OPENAI_VOICE_REASONING_EFFORT", "low")
@@ -111,7 +111,7 @@ WORDS_PER_AGE_GROUP = {
 REALTIME_AGE_PROFILES = {
     "5_7": {
         # Аудио / модель
-        "speed": 0.80,                # медленнее — как воспитатель в детском саду
+        "speed": 0.92,                # почти естественная скорость: сильное замедление портит тембр
         "max_output_tokens": 90,      # очень короткие ответы, внимание ребёнка ограничено
         "temperature": 0.9,           # теплее/креативнее = игривый тон
         "voice": OPENAI_REALTIME_VOICE,
@@ -130,7 +130,7 @@ REALTIME_AGE_PROFILES = {
         "grammar_focus": False,
     },
     "8_10": {
-        "speed": 0.86,
+        "speed": 0.94,
         "max_output_tokens": 120,
         "temperature": 0.85,
         "voice": OPENAI_REALTIME_VOICE,
@@ -147,7 +147,7 @@ REALTIME_AGE_PROFILES = {
         "grammar_focus": False,
     },
     "11_13": {
-        "speed": 0.91,
+        "speed": 0.97,
         "max_output_tokens": 170,
         "temperature": 0.80,
         "voice": OPENAI_REALTIME_VOICE,
@@ -164,7 +164,7 @@ REALTIME_AGE_PROFILES = {
         "grammar_focus": True,
     },
     "14_18": {
-        "speed": 0.96,                # естественный темп без спешки
+        "speed": 1.0,                 # естественный темп без спешки
         "max_output_tokens": 240,     # место для развёрнутых объяснений
         "temperature": 0.75,          # точнее, взрослее
         "voice": OPENAI_REALTIME_VOICE,
