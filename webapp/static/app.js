@@ -1394,19 +1394,33 @@ async function renderChat() {
       }
     }
 
-    async function uploadVoice(blob) {
-      const form = new FormData();
-      const extension = blob.type.includes("mp4") ? "mp4" : "webm";
-      form.append("audio", blob, `voice.${extension}`);
-      const result = await apiForm("/api/audio/transcribe", form);
-      return (result.text || "").trim();
-    }
-
     async function voiceTurn(blob) {
       const form = new FormData();
       const extension = blob.type.includes("mp4") ? "mp4" : "webm";
       form.append("audio", blob, `voice.${extension}`);
       return apiForm("/api/voice/turn", form);
+    }
+
+    async function voiceTextTurn(text) {
+      return api("/api/voice/text-turn", "POST", { message: text });
+    }
+
+    async function renderVoiceTurnResult(result, wasAuto = false, showUser = true) {
+      const text = String(result.text || "").trim();
+      const reply = String(result.reply || "").trim();
+      if (box.querySelector(".chat-empty")) box.innerHTML = "";
+      if (showUser && text) bubble("user", text);
+      if (reply) bubble("assistant", reply);
+      const onDone = wasAuto ? () => scheduleVoiceListen(VOICE_RESTART_DELAY_MS) : null;
+      if (result.audio_base64) {
+        const audioBlob = base64ToBlob(result.audio_base64, result.audio_content_type || "audio/mpeg");
+        updateVoiceModeUi("Говорю...");
+        await playTutorAudioBlob(audioBlob, reply, onDone);
+      } else if (reply) {
+        await speakTutor(reply, onDone, true);
+      } else if (wasAuto) {
+        scheduleVoiceListen(900);
+      }
     }
 
     function scheduleVoiceListen(delay = 500) {
@@ -1430,21 +1444,7 @@ async function renderChat() {
       updateVoiceModeUi("Думаю...");
       setFace("thinking");
       const result = await voiceTurn(blob);
-      const text = String(result.text || "").trim();
-      const reply = String(result.reply || "").trim();
-      if (box.querySelector(".chat-empty")) box.innerHTML = "";
-      if (text) bubble("user", text);
-      if (reply) bubble("assistant", reply);
-      const onDone = wasAuto ? () => scheduleVoiceListen(VOICE_RESTART_DELAY_MS) : null;
-      if (result.audio_base64) {
-        const audioBlob = base64ToBlob(result.audio_base64, result.audio_content_type || "audio/mpeg");
-        updateVoiceModeUi("Говорю...");
-        await playTutorAudioBlob(audioBlob, reply, onDone);
-      } else if (reply) {
-        await speakTutor(reply, onDone, true);
-      } else if (wasAuto) {
-        scheduleVoiceListen(900);
-      }
+      await renderVoiceTurnResult(result, wasAuto, true);
     }
 
     async function handleRecordingStop(mimeType, wasAuto = false) {
@@ -1469,22 +1469,8 @@ async function renderChat() {
           if (wasAuto) scheduleVoiceListen(700);
           return;
         }
-        if (wasAuto) {
-          missedAutoRecordings = 0;
-          await sendStableVoiceTurn(blob, wasAuto);
-          return;
-        }
-        const text = await uploadVoice(blob);
-        if (!text) {
-          if (!wasAuto) tg.showAlert("Не удалось разобрать речь. Попробуй еще раз.");
-          updateVoiceModeUi("Не расслышал");
-          setFace("idle");
-          if (wasAuto) scheduleVoiceListen(900);
-          return;
-        }
         missedAutoRecordings = 0;
-        updateVoiceModeUi("Отвечаю...");
-        await send(text, { autoContinue: wasAuto, voice: true });
+        await sendStableVoiceTurn(blob, wasAuto);
       } catch (e) {
         if (!wasAuto) tg.showAlert(e.message);
         else {
@@ -1608,11 +1594,24 @@ async function renderChat() {
       if (!voiceModeActive) return;
       preferStableVoice(reason);
       stopRealtimeSession();
-      updateVoiceModeUi("Стабильный голос...");
+      updateVoiceModeUi("Думаю...");
       setFace("thinking");
       const spokenText = String(text || "").trim();
       if (spokenText) {
-        await send(spokenText, { autoContinue: true, voice: true, showUser: false });
+        sending = true;
+        sendButton.disabled = true;
+        mic.disabled = true;
+        try {
+          const result = await voiceTextTurn(spokenText);
+          await renderVoiceTurnResult(result, true, false);
+        } catch (e) {
+          bubble("assistant", `Ошибка голоса: ${e.message}`);
+          scheduleVoiceListen(1500);
+        } finally {
+          sending = false;
+          sendButton.disabled = false;
+          mic.disabled = voiceModeActive;
+        }
         return;
       }
       voiceModeActive = false;

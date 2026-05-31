@@ -4,6 +4,7 @@ import hashlib
 from io import BytesIO
 import json
 import logging
+import re
 
 import aiohttp
 from openai import APIConnectionError, AuthenticationError, AsyncOpenAI, BadRequestError, RateLimitError
@@ -37,6 +38,8 @@ from config import (
 )
 
 log = logging.getLogger(__name__)
+VOICE_REPLY_MAX_CHARS = 280
+_DUPLICATE_GLOSS_RE = re.compile(r"\b([A-Za-z][A-Za-z' -]{0,40}?)\s+[—-]\s+\1\s+[—-]\s+", re.IGNORECASE)
 
 _client: AsyncOpenAI | None = None
 if OPENAI_API_KEY:
@@ -209,6 +212,9 @@ def _needs_russian_repair(last_user_text: str, reply_text: str) -> bool:
 
 def _clean_voice_reply(text: str) -> str:
     cleaned = " ".join((text or "").split())
+    cleaned = _DUPLICATE_GLOSS_RE.sub(r"\1 — ", cleaned)
+    if _has_cyrillic(cleaned):
+        cleaned = cleaned.replace("Choose:", "Выбери:")
     for marker in ("🙂", "😀", "😄", "😊", "😉", "👍", "🎉", "✨"):
         cleaned = cleaned.replace(marker, "")
     for marker in ("**", "__", "`"):
@@ -275,7 +281,11 @@ def _voice_module_prompt(
 - Не используй команды “Say:” и “Repeat:”. Если исправляешь, скажи по-человечески: “лучше так: ...”
 - Русский запрос, “не понимаю”, “что?”, “переведи”, “помоги”, “?” -> отвечай по-русски. Английскую фразу вставляй не всегда, а только если она реально помогает.
 - Если в русском ответе есть английское слово, сразу дай понятный смысл рядом: “good — хорошо”, “boring — скучно”.
+- Не вставляй английский кусок криво внутрь русской грамматики: не “это in the school bag”, а “Подсказка: in the school bag — в рюкзаке”.
+- Не повторяй английскую фразу дважды в переводе: нельзя “school bag — school bag — рюкзак”, правильно “school bag — рюкзак”.
 - Английский запрос -> отвечай простым английским. Одну ошибку исправь мягко, коротко по-русски.
+- Для детей 5-10 лет, если ребенок пишет/говорит по-английски с ошибкой, не отвечай сухо "Nice try! Better:".
+  Скажи коротко по-русски: "Почти! Лучше так: ...", затем задай один очень простой английский вопрос.
 - Когда исправляешь английскую ошибку, не повторяй правильную фразу дважды.
 - Смешанный язык -> выбирай язык, на котором ребенку явно легче.
 - Не заставляй повторять фразу каждый ход. Иногда лучше просто ответить и задать живой вопрос.
@@ -296,6 +306,7 @@ def _voice_module_prompt(
 - На “давай играть” сразу начинай игру, не объясняй правила долго.
 - На одно английское слово ответь естественно и продолжи сцену.
 - На ошибку дай правильный вариант без морали.
+- Для 5-10 лет исправление должно иметь русскую опору: "Почти! Лучше так: I went to school yesterday."
 - На вопрос ребенка сначала ответь на вопрос, потом при желании добавь одно английское слово. Если вопрос “почему слово так переводится”, отвечай просто: “так это называется по-английски”.
 - На отказ повторять скажи: “Окей, без повторения. Тогда просто выбери: игра или короткая история?”
 - На просьбу “давай играть” не спрашивай, какую игру начать. Начни мини-игру сразу и дай один простой вопрос.
@@ -1096,7 +1107,7 @@ async def chat_reply(
         total_tokens = _usage_int(usage, "total_tokens") or input_tokens + output_tokens
         text = (response.output_text or "").strip() or "…"
         if mode == "voice":
-            text = _clean_voice_reply(text)
+            text = _cut_at_sentence_boundary(_clean_voice_reply(text), VOICE_REPLY_MAX_CHARS)
 
         if _needs_russian_repair(last_user_text, text):
             repair_response = await _client.responses.create(
@@ -1117,7 +1128,7 @@ async def chat_reply(
             )
             repair_text = (repair_response.output_text or "").strip()
             if mode == "voice":
-                repair_text = _clean_voice_reply(repair_text)
+                repair_text = _cut_at_sentence_boundary(_clean_voice_reply(repair_text), VOICE_REPLY_MAX_CHARS)
             if repair_text and _has_cyrillic(repair_text):
                 text = repair_text
                 repair_usage = getattr(repair_response, "usage", None)

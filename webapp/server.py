@@ -785,28 +785,7 @@ async def api_audio_speech(request: web.Request):
     )
 
 
-async def api_voice_turn(request: web.Request):
-    """Stable hybrid voice turn: transcribe, reply, and synthesize in one request."""
-    user_id = request["tg_user"]["id"]
-    try:
-        audio, filename, content_type = await _read_audio_upload(request)
-    except web.HTTPRequestEntityTooLarge as e:
-        return web.json_response({"error": e.text}, status=413)
-    except web.HTTPBadRequest as e:
-        return web.json_response({"error": e.text}, status=400)
-
-    try:
-        text = await transcribe_audio(audio, filename=filename, content_type=content_type)
-    except Exception as e:
-        log.exception("Hybrid voice transcription failed")
-        return web.json_response({"error": f"Не удалось распознать голос. {public_openai_error(e)}"}, status=502)
-
-    text = " ".join(text.split())
-    if not text:
-        return web.json_response({"error": "Не расслышал голос"}, status=400)
-    if len(text) > 1000:
-        text = text[:1000]
-
+async def _voice_text_turn_payload(user_id: int, text: str) -> dict:
     stats = await database.get_ai_usage_today(user_id)
     user = await database.get_user(user_id)
     user_name = user["name"] if user else "друг"
@@ -843,14 +822,62 @@ async def api_voice_turn(request: web.Request):
             log.exception("Hybrid voice speech synthesis failed")
             audio_error = public_openai_error(e)
 
-    return web.json_response({
+    return {
         "text": text,
         "reply": reply.text,
         "audio_base64": audio_b64,
         "audio_content_type": "audio/mpeg" if audio_b64 else "",
         "audio_error": audio_error,
         "usage": _chat_usage_payload(stats),
-    }, headers={"Cache-Control": "no-store"})
+    }
+
+
+async def api_voice_text_turn(request: web.Request):
+    """Stable hybrid turn when speech was already transcribed by Realtime."""
+    user_id = request["tg_user"]["id"]
+    body = await _safe_json(request)
+    text = " ".join((body.get("message") or body.get("text") or "").split())
+    if not text:
+        return web.json_response({"error": "empty message"}, status=400)
+    if len(text) > 1000:
+        text = text[:1000]
+
+    try:
+        payload = await _voice_text_turn_payload(user_id, text)
+    except Exception as e:
+        log.exception("Hybrid voice text turn failed")
+        return web.json_response({"error": public_openai_error(e)}, status=502)
+    return web.json_response(payload, headers={"Cache-Control": "no-store"})
+
+
+async def api_voice_turn(request: web.Request):
+    """Stable hybrid voice turn: transcribe, reply, and synthesize in one request."""
+    user_id = request["tg_user"]["id"]
+    try:
+        audio, filename, content_type = await _read_audio_upload(request)
+    except web.HTTPRequestEntityTooLarge as e:
+        return web.json_response({"error": e.text}, status=413)
+    except web.HTTPBadRequest as e:
+        return web.json_response({"error": e.text}, status=400)
+
+    try:
+        text = await transcribe_audio(audio, filename=filename, content_type=content_type)
+    except Exception as e:
+        log.exception("Hybrid voice transcription failed")
+        return web.json_response({"error": f"Не удалось распознать голос. {public_openai_error(e)}"}, status=502)
+
+    text = " ".join(text.split())
+    if not text:
+        return web.json_response({"error": "Не расслышал голос"}, status=400)
+    if len(text) > 1000:
+        text = text[:1000]
+
+    try:
+        payload = await _voice_text_turn_payload(user_id, text)
+    except Exception as e:
+        log.exception("Hybrid voice turn failed")
+        return web.json_response({"error": public_openai_error(e)}, status=502)
+    return web.json_response(payload, headers={"Cache-Control": "no-store"})
 
 
 async def api_realtime_call(request: web.Request):
@@ -982,6 +1009,7 @@ def create_app(
     app.router.add_post("/api/chat/send",              api_chat_send)
     app.router.add_post("/api/audio/transcribe",       api_audio_transcribe)
     app.router.add_post("/api/audio/speech",           api_audio_speech)
+    app.router.add_post("/api/voice/text-turn",        api_voice_text_turn)
     app.router.add_post("/api/voice/turn",             api_voice_turn)
     app.router.add_post("/api/realtime/token",         api_realtime_token)
     app.router.add_post("/api/realtime/call",          api_realtime_call)
