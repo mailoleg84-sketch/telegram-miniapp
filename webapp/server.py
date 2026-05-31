@@ -1,7 +1,9 @@
 """aiohttp-сервер: статика Mini App + JSON API."""
 import base64
+from collections import defaultdict, deque
 import logging
 import random
+import time
 from pathlib import Path
 
 from aiohttp import web
@@ -10,6 +12,8 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 import database
 from config import (
     AGE_GROUPS,
+    AI_RATE_LIMIT_PER_MINUTE,
+    API_RATE_LIMIT_PER_MINUTE,
     APP_VERSION,
     CHAT_HISTORY_LIMIT,
     DAILY_LESSON_REWARD_POINTS,
@@ -28,6 +32,39 @@ log = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
 MAX_AUDIO_BYTES = 8 * 1024 * 1024
 MAX_SDP_BYTES = 512 * 1024
+PUBLIC_API_PATHS = {"/api/me", "/api/register"}
+AI_API_PATHS = {
+    "/api/chat/send",
+    "/api/audio/transcribe",
+    "/api/audio/speech",
+    "/api/voice/text-turn",
+    "/api/voice/turn",
+    "/api/realtime/token",
+    "/api/realtime/call",
+}
+_rate_buckets: dict[tuple[int, str], deque[float]] = defaultdict(deque)
+
+
+def _rate_limit_key(path: str) -> str:
+    return "ai" if path in AI_API_PATHS else "api"
+
+
+def _rate_limit_for_key(key: str) -> int:
+    return AI_RATE_LIMIT_PER_MINUTE if key == "ai" else API_RATE_LIMIT_PER_MINUTE
+
+
+def _rate_limit_ok(user_id: int, key: str) -> bool:
+    limit = _rate_limit_for_key(key)
+    if limit <= 0:
+        return True
+    now = time.monotonic()
+    bucket = _rate_buckets[(user_id, key)]
+    while bucket and now - bucket[0] > 60:
+        bucket.popleft()
+    if len(bucket) >= limit:
+        return False
+    bucket.append(now)
+    return True
 
 
 # ---------- Middleware ----------
@@ -46,6 +83,14 @@ async def auth_middleware(request: web.Request, handler):
         return web.json_response({"error": "unauthorized"}, status=401)
 
     request["tg_user"] = parsed["user"]
+    user_id = int(parsed["user"]["id"])
+    key = _rate_limit_key(request.path)
+    if not _rate_limit_ok(user_id, key):
+        return web.json_response({
+            "error": "Слишком много запросов. Подожди минуту и попробуй снова.",
+        }, status=429)
+    if request.path not in PUBLIC_API_PATHS and not await database.user_exists(user_id):
+        return web.json_response({"error": "Сначала нужно зарегистрироваться"}, status=403)
     return await handler(request)
 
 
@@ -436,6 +481,28 @@ async def api_parent_report(request: web.Request):
             "completed_lessons": int(report["completed_lessons"] if report else 0),
             "completed_word_tests": int(report["completed_word_tests"] if report else 0),
             "avg_word_test_score": int(report["avg_word_test_score"] if report else 0),
+        },
+    })
+
+
+async def api_results_reset(request: web.Request):
+    user_id = request["tg_user"]["id"]
+    body = await _safe_json(request)
+    if body.get("confirm") != "reset_results":
+        return web.json_response({"error": "Нужно подтвердить сброс результатов"}, status=400)
+
+    await database.reset_learning_results(user_id)
+    user = await database.get_user(user_id)
+    stats = await database.get_user_stats(user_id)
+    return web.json_response({
+        "ok": True,
+        "user": {
+            "points": user["points"] if user else 0,
+        },
+        "stats": {
+            "words_learned": stats["words_learned"],
+            "total_correct": stats["total_correct"],
+            "total_wrong": stats["total_wrong"],
         },
     })
 
@@ -907,7 +974,7 @@ async def api_realtime_call(request: web.Request):
         )
     except Exception as e:
         log.exception("Realtime call setup failed: %s", e)
-        return web.json_response({"error": f"Realtime error: {str(e)[:300]}"}, status=502)
+        return web.json_response({"error": public_openai_error(e)}, status=502)
 
     return web.Response(
         text=answer_sdp,
@@ -941,7 +1008,7 @@ async def api_realtime_token(request: web.Request):
         )
     except Exception as e:
         log.exception("Realtime token setup failed: %s", e)
-        return web.json_response({"error": f"Realtime token error: {str(e)[:300]}"}, status=502)
+        return web.json_response({"error": public_openai_error(e)}, status=502)
 
     return web.json_response(token, headers={"Cache-Control": "no-store"})
 
@@ -994,6 +1061,7 @@ def create_app(
     app.router.add_get("/api/me",  api_me)
     app.router.add_get("/api/leaderboard",              api_leaderboard)
     app.router.add_get("/api/parent/report",            api_parent_report)
+    app.router.add_post("/api/results/reset",           api_results_reset)
     app.router.add_get("/api/daily/status",             api_daily_status)
     app.router.add_post("/api/daily/progress",          api_daily_progress)
     app.router.add_post("/api/register",               api_register)

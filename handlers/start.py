@@ -6,11 +6,15 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import KeyboardButton, Message, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 
-from config import APP_VERSION, WEBAPP_URL
+from config import ADMIN_USER_IDS, APP_VERSION, WEBAPP_URL
 from webapp.auth import make_fallback_auth_params
 from webapp.openai_service import openai_config_status, test_openai_connection
 
 router = Router()
+
+
+def _is_admin(user) -> bool:
+    return bool(user and user.id in ADMIN_USER_IDS)
 
 
 def _webapp_url(user=None) -> str:
@@ -19,6 +23,19 @@ def _webapp_url(user=None) -> str:
     query["v"] = APP_VERSION
     if user:
         query.update(make_fallback_auth_params(user.id, user.first_name or ""))
+    return urlunsplit((
+        parts.scheme,
+        parts.netloc,
+        parts.path,
+        urlencode(query),
+        parts.fragment,
+    ))
+
+
+def _webapp_public_url() -> str:
+    parts = urlsplit(WEBAPP_URL)
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    query["v"] = APP_VERSION
     return urlunsplit((
         parts.scheme,
         parts.netloc,
@@ -65,22 +82,21 @@ async def app_handler(message: Message) -> None:
 async def version_handler(message: Message) -> None:
     await message.answer(
         "Версия Mini App:\n"
-        f"{APP_VERSION}\n\n"
-        "URL кнопки:\n"
-        f"{_webapp_url(message.from_user)}"
+        f"{APP_VERSION}"
     )
 
 
 @router.message(Command("diag"))
 async def diag_handler(message: Message) -> None:
+    if not _is_admin(message.from_user):
+        await message.answer("Диагностика доступна только администратору.")
+        return
     openai = openai_config_status()
     await message.answer(
         "Диагностика:\n"
         f"APP_VERSION: {APP_VERSION}\n"
-        f"WEBAPP_URL: {_webapp_url(message.from_user)}\n"
+        f"WEBAPP_URL: {_webapp_public_url()}\n"
         f"OPENAI configured: {openai['configured']}\n"
-        f"OPENAI key length: {openai['length']}\n"
-        f"OPENAI key prefix: {openai['prefix']}\n"
         f"OPENAI model: {openai['model']}\n"
         f"OPENAI TTS model: {openai['tts_model']}\n"
         f"OPENAI voice TTS voice: {openai['voice_tts_voice']}\n"
@@ -97,6 +113,9 @@ async def diag_handler(message: Message) -> None:
 
 @router.message(Command("openai_test"))
 async def openai_test_handler(message: Message) -> None:
+    if not _is_admin(message.from_user):
+        await message.answer("Проверка OpenAI доступна только администратору.")
+        return
     result = await test_openai_connection()
     if result["ok"]:
         await message.answer(

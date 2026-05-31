@@ -76,6 +76,7 @@ h2 { font-size: 18px; margin: 0 0 12px; font-weight: 600; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .btn-secondary { background: var(--secondary-bg); color: var(--text); }
+.btn-danger { background: var(--red); color: #fff; }
 .btn-correct { background: var(--green) !important; color: #fff !important; }
 .btn-wrong   { background: var(--red)   !important; color: #fff !important; }
 

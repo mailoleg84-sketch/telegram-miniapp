@@ -44,11 +44,7 @@ _DUPLICATE_GLOSS_RE = re.compile(r"\b([A-Za-z][A-Za-z' -]{0,40}?)\s+[—-]\s+\1\
 _client: AsyncOpenAI | None = None
 if OPENAI_API_KEY:
     _client = AsyncOpenAI(api_key=OPENAI_API_KEY)
-    log.info(
-        "OpenAI API key configured: length=%s prefix=%s",
-        len(OPENAI_API_KEY),
-        OPENAI_API_KEY[:7],
-    )
+    log.info("OpenAI API key configured")
 else:
     log.warning("OPENAI_API_KEY не задан — режим репетитора работать не будет.")
 
@@ -57,8 +53,6 @@ def openai_config_status() -> dict:
     """Safe diagnostics without exposing the secret."""
     return {
         "configured": bool(OPENAI_API_KEY),
-        "length": len(OPENAI_API_KEY),
-        "prefix": OPENAI_API_KEY[:8] if OPENAI_API_KEY else "",
         "model": OPENAI_MODEL,
         "tts_model": OPENAI_TTS_MODEL,
         "tts_voice": OPENAI_TTS_VOICE,
@@ -208,6 +202,61 @@ def _cut_at_sentence_boundary(text: str, max_chars: int) -> str:
 
 def _needs_russian_repair(last_user_text: str, reply_text: str) -> bool:
     return _has_cyrillic(last_user_text) and bool(reply_text.strip()) and not _has_cyrillic(reply_text)
+
+
+def _safety_guard_reply(last_user_text: str) -> str | None:
+    text = " ".join((last_user_text or "").split())
+    normalized = text.lower()
+    if not normalized:
+        return None
+
+    wants_secret = (
+        ("api" in normalized and ("ключ" in normalized or "key" in normalized))
+        or "openai key" in normalized
+        or "секрет" in normalized and ("ключ" in normalized or "токен" in normalized)
+        or "token" in normalized and "openai" in normalized
+    )
+    wants_prompt = (
+        "system prompt" in normalized
+        or "системн" in normalized and "пром" in normalized
+        or "ignore previous instructions" in normalized
+        or "предыдущ" in normalized and "инструкц" in normalized
+    )
+    shares_personal_data = (
+        "мой адрес" in normalized
+        or "мой телефон" in normalized
+        or "мой номер" in normalized
+        or "my address" in normalized
+        or "my phone" in normalized
+        or re.search(r"\+?\d[\d\s().-]{7,}\d", normalized)
+    )
+    asks_adult_topic = (
+        "взрослые темы" in normalized
+        or "adult topic" in normalized
+        or "18+" in normalized
+    )
+
+    if shares_personal_data:
+        return (
+            "Не отправляй адрес, телефон или личные данные в чат. "
+            "Если это важно, покажи сообщение родителю. Давай лучше потренируем безопасную фразу: I need help — мне нужна помощь."
+        )
+    if wants_secret:
+        return (
+            "Я не могу показывать или искать API-ключи и секреты. "
+            "Такие вещи должен смотреть только взрослый владелец аккаунта. Давай вернемся к английскому."
+        )
+    if wants_prompt:
+        return (
+            "Я не раскрываю скрытые инструкции. "
+            "Я здесь, чтобы помогать с английским. Выбери: игра или короткая фраза?"
+        )
+    if asks_adult_topic:
+        return (
+            "Эту тему мы не обсуждаем. "
+            "Давай выберем безопасную тему для английского: игры, школа или еда?"
+        )
+    return None
 
 
 def _clean_voice_reply(text: str) -> str:
@@ -1079,6 +1128,11 @@ async def chat_reply(
         max_output_tokens = VOICE_MAX_TOKENS if mode == "voice" else CHAT_MAX_TOKENS
         model_history = _clean_history_for_mode(history, mode)
         runtime_instructions = _runtime_instructions(user_name, age_label, prompt_context, last_user_text)
+        safety_reply = _safety_guard_reply(last_user_text)
+        if safety_reply:
+            if mode == "voice":
+                safety_reply = _cut_at_sentence_boundary(_clean_voice_reply(safety_reply), VOICE_REPLY_MAX_CHARS)
+            return ChatReply(text=safety_reply, model="safety-guard")
         use_stored_prompt = bool(OPENAI_PROMPT_ID and (mode != "voice" or OPENAI_PROMPT_FOR_VOICE))
         request = {
             "model": OPENAI_MODEL,

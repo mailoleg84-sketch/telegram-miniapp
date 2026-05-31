@@ -16,7 +16,8 @@ tg.expand();
 
 const app = document.getElementById("app");
 const state = { me: null, back: null, vocab: null, quiz: null, answers: [] };
-const fallbackAuth = window.location.search || "";
+let fallbackAuth = window.location.search || "";
+const LOGGED_OUT_KEY = "englishTutorKidsLoggedOut";
 
 function authHeaders(contentType = "application/json") {
   const headers = {
@@ -120,6 +121,67 @@ function haptic(type = "light") {
     if (["success", "error", "warning"].includes(type)) tg.HapticFeedback?.notificationOccurred(type);
     else tg.HapticFeedback?.impactOccurred(type);
   } catch (_) {}
+}
+
+function confirmAction(message) {
+  return new Promise(resolve => {
+    try {
+      tg.showConfirm(message, ok => resolve(Boolean(ok)));
+    } catch (_) {
+      resolve(confirm(message));
+    }
+  });
+}
+
+function isLoggedOut() {
+  try {
+    return localStorage.getItem(LOGGED_OUT_KEY) === "1";
+  } catch (_) {
+    return false;
+  }
+}
+
+function clearAccountLocalState() {
+  state.me = null;
+  state.vocab = null;
+  state.quiz = null;
+  state.answers = [];
+  try {
+    localStorage.removeItem("stableVoiceUntil");
+    localStorage.removeItem("stableVoiceReason");
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i += 1) keys.push(localStorage.key(i));
+    keys.forEach(key => {
+      if (key && (key.startsWith("voiceHelpHintIndex:") || key.startsWith("voiceStarterIndex:"))) {
+        localStorage.removeItem(key);
+      }
+    });
+  } catch (_) {}
+}
+
+function stripFallbackAuthFromUrl() {
+  try {
+    const url = new URL(window.location.href);
+    ["fa_user_id", "fa_first_name", "fa_auth_date", "fa_hash"].forEach(key => url.searchParams.delete(key));
+    history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    fallbackAuth = window.location.search || "";
+  } catch (_) {}
+}
+
+function logoutFromApp() {
+  try {
+    localStorage.setItem(LOGGED_OUT_KEY, "1");
+  } catch (_) {}
+  clearAccountLocalState();
+  stripFallbackAuthFromUrl();
+  renderLoggedOut();
+}
+
+function loginAgain() {
+  try {
+    localStorage.removeItem(LOGGED_OUT_KEY);
+  } catch (_) {}
+  location.reload();
 }
 
 function setBack(handler) {
@@ -1908,15 +1970,64 @@ async function renderProfile() {
           <div class="stat-row"><span>Правильных ответов</span><b>${s.total_correct}</b></div>
           <div class="stat-row"><span>Ошибок</span><b>${s.total_wrong}</b></div>
         </div>
+        <div class="card">
+          <h2>Аккаунт и данные</h2>
+          <p class="hint">Сброс результатов обнулит баллы, выученные слова, тесты и ежедневные уроки. Профиль и чат с репетитором останутся.</p>
+          <button class="btn btn-danger" id="resetResults">Обнулить результаты</button>
+          <button class="btn btn-secondary" id="logout">Выйти из аккаунта</button>
+        </div>
         <button class="btn btn-secondary" id="profileHome">В меню</button>
       </div>`;
+    document.getElementById("resetResults").onclick = async () => {
+      haptic("warning");
+      const ok = await confirmAction("Обнулить все учебные результаты? Баллы, тесты и прогресс слов начнутся заново.");
+      if (!ok) return;
+      try {
+        const result = await api("/api/results/reset", "POST", { confirm: "reset_results" });
+        state.me.user.points = result.user.points;
+        state.me.stats = result.stats;
+        tg.showAlert("Результаты обнулены. Можно начать обучение заново.");
+        renderProfile();
+      } catch (e) {
+        renderError(e.message);
+      }
+    };
+    document.getElementById("logout").onclick = async () => {
+      haptic("warning");
+      const ok = await confirmAction("Выйти из аккаунта на этом устройстве? Для другого аккаунта переключитесь в Telegram и откройте приложение снова.");
+      if (ok) logoutFromApp();
+    };
     document.getElementById("profileHome").onclick = () => { haptic(); renderMenu(); };
   } catch (e) {
     renderError(e.message);
   }
 }
 
+function renderLoggedOut() {
+  setBack(null);
+  tg.MainButton.hide();
+  const telegramHint = tg.initData
+    ? "Чтобы войти в другой аккаунт, переключите аккаунт в Telegram и откройте приложение снова."
+    : "Чтобы войти снова, отправьте боту /start и откройте новую кнопку приложения.";
+  app.innerHTML = `
+    <div class="screen">
+      <h1>Вы вышли</h1>
+      <div class="card">
+        <p class="hint">${telegramHint}</p>
+      </div>
+      <button class="btn" id="loginAgain">Войти снова</button>
+    </div>`;
+  document.getElementById("loginAgain").onclick = () => {
+    haptic();
+    loginAgain();
+  };
+}
+
 async function start() {
+  if (isLoggedOut()) {
+    renderLoggedOut();
+    return;
+  }
   const hasFallbackAuth = /[?&]fa_hash=/.test(fallbackAuth);
   if (!tg.initData && !hasFallbackAuth) {
     app.innerHTML = `

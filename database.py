@@ -214,6 +214,16 @@ async def update_points(user_id: int, delta: int) -> None:
     )
 
 
+async def reset_learning_results(user_id: int) -> None:
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute("UPDATE users SET points = 0 WHERE user_id = $1", user_id)
+            await conn.execute("DELETE FROM user_progress WHERE user_id = $1", user_id)
+            await conn.execute("DELETE FROM daily_lessons WHERE user_id = $1", user_id)
+            await conn.execute("DELETE FROM vocabulary_sessions WHERE user_id = $1", user_id)
+
+
 # ---------- Слова ----------
 
 async def get_word_by_id(word_id: int):

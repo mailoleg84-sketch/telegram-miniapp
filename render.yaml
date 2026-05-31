@@ -13,16 +13,22 @@ services:
         sync: false        # https://<твой-сервис>.onrender.com
       - key: BOT_RUN_MODE
         value: webhook     # на Render команды /start приходят через webhook
+      - key: ADMIN_USER_IDS
+        sync: false        # Telegram user_id админов через запятую для /diag и /openai_test
       - key: OPENAI_API_KEY
         sync: false        # ключ OpenAI API из platform.openai.com
       - key: OPENAI_MODEL
-        value: gpt-5-nano  # можно заменить на gpt-5-mini для качества выше
+        value: gpt-5.4-mini # оптимальный баланс качества и цены для репетитора
       - key: AI_DAILY_MESSAGE_LIMIT
         value: "0"         # 0 = без дневного лимита сообщений
+      - key: API_RATE_LIMIT_PER_MINUTE
+        value: "120"       # базовая защита API от спама
+      - key: AI_RATE_LIMIT_PER_MINUTE
+        value: "30"        # защита OpenAI/голосовых endpoint'ов от спама и расходов
       - key: OPENAI_INPUT_COST_PER_1M
-        value: "0.05"      # USD за 1M input tokens для gpt-5-nano
+        value: "0.75"      # USD за 1M input tokens для выбранной модели
       - key: OPENAI_OUTPUT_COST_PER_1M
-        value: "0.40"      # USD за 1M output tokens для gpt-5-nano
+        value: "4.50"      # USD за 1M output tokens для выбранной модели
       - key: DAILY_LESSON_REWARD_POINTS
         value: "25"
       - key: DATABASE_URL

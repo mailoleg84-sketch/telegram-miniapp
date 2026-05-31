@@ -30,6 +30,11 @@ BOT_TOKEN = _env("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 BOT_RUN_MODE = _env("BOT_RUN_MODE", "webhook" if (os.getenv("RENDER") or os.getenv("PORT")) else "polling")
 WEBHOOK_PATH = _env("WEBHOOK_PATH", "/telegram/webhook")
 TELEGRAM_WEBHOOK_SECRET = _env("TELEGRAM_WEBHOOK_SECRET", "")
+ADMIN_USER_IDS = {
+    int(part)
+    for part in _env("ADMIN_USER_IDS", "").replace(";", ",").split(",")
+    if part.strip().isdigit()
+}
 
 # --- База данных (PostgreSQL / Neon) ---
 # Строка подключения вида: postgresql://user:pass@host/dbname?sslmode=require
@@ -37,7 +42,7 @@ DATABASE_URL = _env("DATABASE_URL", "")
 
 # --- Mini App (Telegram WebApp) ---
 WEBAPP_URL = _env("WEBAPP_URL", "https://telegram-miniapp-1-r0sj.onrender.com")
-APP_VERSION = _env("APP_VERSION", "20260531-kids-v41")
+APP_VERSION = _env("APP_VERSION", "20260531-kids-v44")
 
 WEBAPP_HOST = os.getenv("WEBAPP_HOST", "0.0.0.0")
 # Render задаёт порт через переменную PORT — читаем её, иначе 8080.
@@ -66,6 +71,8 @@ CHAT_HISTORY_LIMIT = int(os.getenv("CHAT_HISTORY_LIMIT", "8"))
 CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "240"))
 VOICE_MAX_TOKENS = int(os.getenv("VOICE_MAX_TOKENS", "260"))
 AI_DAILY_MESSAGE_LIMIT = int(os.getenv("AI_DAILY_MESSAGE_LIMIT", "0"))
+API_RATE_LIMIT_PER_MINUTE = int(os.getenv("API_RATE_LIMIT_PER_MINUTE", "120"))
+AI_RATE_LIMIT_PER_MINUTE = int(os.getenv("AI_RATE_LIMIT_PER_MINUTE", "30"))
 OPENAI_INPUT_COST_PER_1M = float(os.getenv("OPENAI_INPUT_COST_PER_1M", "0.75"))
 OPENAI_OUTPUT_COST_PER_1M = float(os.getenv("OPENAI_OUTPUT_COST_PER_1M", "4.50"))
 

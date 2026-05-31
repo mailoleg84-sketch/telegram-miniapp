@@ -12,6 +12,7 @@ __pycache__/
 # Локальные секреты
 .env
 .env.*
+!.env.example
 
 # Локальный запуск и логи
 run.log
