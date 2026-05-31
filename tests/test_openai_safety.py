@@ -41,6 +41,7 @@ class OpenAISafetyTests(unittest.TestCase):
 
         self.assertIn("Не просто болтай", prompt)
         self.assertIn("учебный шаг", prompt)
+        self.assertIn("Не меняй тему", prompt)
 
 
 if __name__ == "__main__":

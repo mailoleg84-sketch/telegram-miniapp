@@ -915,6 +915,10 @@ async function renderChat() {
       box.scrollTop = box.scrollHeight;
     }
 
+    function hasLessonHistory() {
+      return Boolean(box.querySelector(".bubble"));
+    }
+
     function setFace(mode) {
       face.className = `tutor-face ${mode}`;
     }
@@ -1457,7 +1461,9 @@ async function renderChat() {
           stopRecording();
           if (missedAutoRecordings <= 2) {
             const ageGroup = voiceAgeGroup();
-            const hint = nextRotatingItem(`voiceHelpHintIndex:${ageGroup}`, ageItems(VOICE_HELP_HINTS_BY_AGE, VOICE_HELP_HINTS));
+            const hint = hasLessonHistory()
+              ? "Продолжаем эту же тему. Скажи: дальше, проще или повтори."
+              : nextRotatingItem(`voiceHelpHintIndex:${ageGroup}`, ageItems(VOICE_HELP_HINTS_BY_AGE, VOICE_HELP_HINTS));
             bubble("assistant", hint);
             speakTutor(hint, () => scheduleVoiceListen(VOICE_RESTART_DELAY_MS), true);
             return;
@@ -1824,6 +1830,7 @@ async function renderChat() {
         setFace("listening");
         const ageGroup = state.me?.user?.age_group || "default";
         const childName = state.me?.user?.child_name || "друг";
+        const continueCurrentLesson = hasLessonHistory();
         const ageGreetings = {
           "5_7": `Поздоровайся с ${childName} по-русски, очень медленно и тепло. Сразу начни суперлегкий английский мини-урок: дай один выбор с двумя словами, например cat — кошка или dog — собака. Один вопрос.`,
           "8_10": `Поздоровайся с ${childName} по-русски, дружелюбно и не быстро. Сразу начни мини-урок английского: дай одну короткую фразу или выбор из двух тем, например game или food. Один вопрос.`,
@@ -1832,7 +1839,9 @@ async function renderChat() {
           "under_12": `Поздоровайся с ${childName} по-русски, дружелюбно и не быстро. Сразу начни мини-урок английского: дай одну короткую фразу или выбор из двух тем. Один вопрос.`,
           "default": `Начни по-русски: поздоровайся с ${childName} тепло, затем сразу дай маленький английский шаг и один легкий вопрос.`,
         };
-        const greeting = ageGreetings[ageGroup] || ageGreetings["default"];
+        const greeting = continueCurrentLesson
+          ? `Не здоровайся заново и не начинай новую тему. Коротко продолжи текущий урок с ${childName} по последней теме из истории. Дай один маленький учебный шаг и один вопрос.`
+          : (ageGreetings[ageGroup] || ageGreetings["default"]);
         sendRealtimeEvent({
           type: "response.create",
           response: {

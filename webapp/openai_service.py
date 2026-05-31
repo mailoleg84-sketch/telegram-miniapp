@@ -311,6 +311,7 @@ def _voice_module_prompt(
     recent_assistant_messages: str,
     last_user_text: str,
     language: str,
+    lesson_focus: str,
     activity_menu: str,
     lesson_loop: str,
 ) -> str:
@@ -318,6 +319,7 @@ def _voice_module_prompt(
 
 Контекст: имя {user_name or "друг"}; возраст {age}; уровень {level}; цель {goal}; интересы {topics}; свежие темы {topic_suggestions}; язык последней реплики {language}.
 Последняя реплика ребенка: {last_user_text or "пусто"}.
+Текущая линия урока: {lesson_focus}.
 Недавно ребенок говорил: {recent_user_messages}. Ты отвечал: {recent_assistant_messages}.
 
 Главный принцип:
@@ -327,6 +329,7 @@ def _voice_module_prompt(
 - 1-3 короткие фразы, максимум 240 символов. Без markdown, списков, анализа и лекций.
 - Сначала ответь на реальный смысл последней реплики. Не уводи в заготовленную тему.
 - Не просто болтай. В каждом ответе должен быть учебный шаг: model, correction, practice, choice или review. Исключение: ребенок явно просит “по-русски без английского” или говорит, что не понимает — тогда сначала объясни по-русски, но все равно мягко верни к обучению следующим ходом.
+- Не меняй тему сам по времени. Продолжай текущую линию урока и мини-сцену, пока ребенок сам не попросит другую тему, не устанет или не закончит задание.
 - Не используй markdown: никаких **звездочек**, списков, заголовков, кавычек-оформлений.
 - Не используй команды “Say:” и “Repeat:”. Если исправляешь, скажи по-человечески: “лучше так: ...”
 - Русский запрос -> отвечай по-русски и дай один маленький учебный шаг по английскому, если ребенок не просил “без английского”.
@@ -348,7 +351,7 @@ def _voice_module_prompt(
 - Если ребенок говорит “не хочу повторять”, “не хочу”, “устал”, не предлагай повторить снова. Уважай это и предложи другой легкий ход.
 - Темы только безопасные детские. {avoid_topics}
 
-Стиль: как репетитор рядом, который реально слушает: живо, спокойно, с поддержкой, без официоза. Реагируй конкретно на слова ребенка. Для 5-10 лет больше игры и выбора из двух простых вариантов; для подростков — реальные ситуации и диалоги.
+Стиль: как репетитор рядом, который реально слушает: живо, спокойно, с поддержкой, без официоза. Реагируй конкретно на слова ребенка и держи одну учебную линию. Для 5-10 лет больше игры и выбора из двух простых вариантов; для подростков — реальные ситуации и диалоги.
 
 Методика: {lesson_loop}. Форматы меняй: {activity_menu}. Веди мини-сцену 2-5 ходов, если ребенок не просит сменить тему. В каждом ходе сохраняй учебную пользу: фраза, слово, исправление или практика. Иногда верни одно старое слово для повторения, но без ощущения экзамена.
 
@@ -389,6 +392,7 @@ def _runtime_instructions(
     avoid_topics = context.get("avoid_topics") or "Не повторяй одну и ту же тему подряд."
     recent_user_messages = context.get("recent_user_messages") or "нет"
     recent_assistant_messages = context.get("recent_assistant_messages") or "нет"
+    lesson_focus = context.get("lesson_focus") or "урок только начинается"
     if mode == "voice" and _looks_like_legacy_voice_template(str(recent_assistant_messages)):
         recent_assistant_messages = "в истории есть старые шаблонные ответы; не копируй их стиль"
     conversation_plan = context.get("conversation_plan") or (
@@ -416,6 +420,7 @@ def _runtime_instructions(
             recent_assistant_messages=str(recent_assistant_messages),
             last_user_text=str(last_user_text or ""),
             language=language,
+            lesson_focus=str(lesson_focus),
             activity_menu=str(activity_menu),
             lesson_loop=str(lesson_loop),
         )
@@ -436,6 +441,7 @@ def _runtime_instructions(
 Последняя реплика ученика: {last_user_text or "пусто"}.
 Определенный язык последней реплики: {language}.
 Свежие темы на выбор, если ребенок сам не задал тему: {topic_suggestions}.
+Текущая линия урока: {lesson_focus}.
 Недавние реплики ученика: {recent_user_messages}.
 Недавние ответы репетитора: {recent_assistant_messages}.
 
@@ -465,6 +471,7 @@ def _runtime_instructions(
 Как слушать и вести диалог:
 - Сначала отвечай на то, что ребенок реально спросил или попросил. Не уводи разговор в заготовленную тему.
 - Если ребенок выбрал тему, продолжай ее 2-4 реплики как мини-сцену, а не сбрасывай разговор каждый раз.
+- Не меняй тему сам по времени. Новые темы используй только если ребенок попросил сменить тему, явно устал, молчит или текущая мини-сцена закончена.
 - Если ребенок задает вопрос не по уроку, коротко ответь на вопрос и мягко привяжи к английскому.
 - Если ребенок отвечает одним словом, развивай это слово в простую фразу.
 - Если ребенок ошибся, исправь только одну главную ошибку и дай правильный вариант.
@@ -708,6 +715,7 @@ def build_voice_realtime_instructions(
     level = context.get("level") or TUTOR_DEFAULT_LEVEL
     goal = context.get("goal") or "разговорная практика"
     topics = context.get("topic_suggestions") or context.get("topics") or TUTOR_DEFAULT_TOPICS
+    lesson_focus = context.get("lesson_focus") or "lesson is just starting"
     recent_user = context.get("recent_user_messages") or "none"
     recent_assistant = context.get("recent_assistant_messages") or "none"
 
@@ -728,6 +736,7 @@ def build_voice_realtime_instructions(
 
     return f"""You are Alex, a live voice English tutor for a child.
 Student: {name}. Age: {age}. Level: {level}. Goal: {goal}. Fresh topics: {topics}.
+Current lesson thread: {lesson_focus}.
 Recent student messages: {recent_user}.
 Recent tutor messages: {recent_assistant}.
 
@@ -743,6 +752,8 @@ Hard language rule:
 
 Conversation behavior:
 - First answer the child's actual message. Do not ignore it to follow a lesson plan.
+- Keep the current lesson thread. Do not jump to a new topic because time passed or a new response starts.
+- Change topic only if the child asks, seems tired, stays silent, or the current mini-scene is clearly finished.
 - Every turn must teach English in a tiny way: model one phrase, correct one error, ask one practice question, give one word choice, or review one previous word.
 - Do not just chat. Plain conversation is allowed only as the bridge into the learning step.
 - Lead the conversation yourself, but never list menu options or say what buttons exist.
