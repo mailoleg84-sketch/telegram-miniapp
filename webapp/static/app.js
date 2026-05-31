@@ -829,6 +829,8 @@ async function renderChat() {
     let realtimeMicResumeTimer = null;
     let realtimeMicResumeAt = 0;
     let realtimeResponseTimer = null;
+    let realtimeResponseNudgeTimer = null;
+    let realtimeAwaitingResponse = false;
     let realtimeLastUserText = "";
     let realtimeAudioStarted = false;
     let realtimeFallbackShown = false;
@@ -990,6 +992,13 @@ async function renderChat() {
       }
     }
 
+    function clearRealtimeResponseNudgeTimer() {
+      if (realtimeResponseNudgeTimer) {
+        clearTimeout(realtimeResponseNudgeTimer);
+        realtimeResponseNudgeTimer = null;
+      }
+    }
+
     function armRealtimeResponseTimer() {
       clearRealtimeResponseTimer();
       realtimeAudioStarted = false;
@@ -998,6 +1007,20 @@ async function renderChat() {
         if (!voiceModeActive || !realtimeActive || realtimeAudioStarted) return;
         switchToStableVoice("realtime_first_audio_timeout", realtimeLastUserText).catch(console.error);
       }, REALTIME_FIRST_AUDIO_TIMEOUT_MS);
+    }
+
+    function armRealtimeResponseNudge(delayMs = 1200) {
+      clearRealtimeResponseNudgeTimer();
+      realtimeResponseNudgeTimer = setTimeout(() => {
+        realtimeResponseNudgeTimer = null;
+        if (!voiceModeActive || !realtimeActive || !realtimeAwaitingResponse || realtimeAssistantSpeaking) return;
+        sendRealtimeEvent({
+          type: "response.create",
+          response: {
+            instructions: "Ответь на последнюю реплику ребенка сразу. Сначала по смыслу, затем маленький учебный шаг: одно английское слово, короткая фраза или мягкое исправление. Один вопрос максимум.",
+          },
+        });
+      }, delayMs);
     }
 
     function waitForIceGatheringComplete(pc, timeoutMs = 5000) {
@@ -1115,9 +1138,11 @@ async function renderChat() {
         return;
       }
       if (type === "input_audio_buffer.speech_stopped") {
+        realtimeAwaitingResponse = true;
         updateVoiceModeUi("Думаю...");
         setFace("thinking");
         armRealtimeResponseTimer();
+        armRealtimeResponseNudge(1400);
         return;
       }
       if (type === "conversation.item.input_audio_transcription.completed") {
@@ -1128,6 +1153,7 @@ async function renderChat() {
           bubble("user", text);
           logRealtimeMessage("user", text, key);
         }
+        if (realtimeAwaitingResponse) armRealtimeResponseNudge(350);
         return;
       }
       if (type === "response.output_audio_transcript.delta" || type === "response.audio_transcript.delta") {
@@ -1144,10 +1170,12 @@ async function renderChat() {
           bubble("assistant", text);
           logRealtimeMessage("assistant", text, key);
         }
-        scheduleRealtimeMicResume(estimateRealtimeSpeechMs(text) + 500);
+        scheduleRealtimeMicResume(900);
         return;
       }
       if (type === "response.created") {
+        realtimeAwaitingResponse = false;
+        clearRealtimeResponseNudgeTimer();
         setRealtimeAssistantSpeaking(true);
         updateVoiceModeUi("Отвечаю...");
         setFace("thinking");
@@ -1162,10 +1190,12 @@ async function renderChat() {
         return;
       }
       if (type === "response.output_audio.done" || type === "response.audio.done") {
-        scheduleRealtimeMicResume(3500);
+        scheduleRealtimeMicResume(700);
         return;
       }
       if (type === "response.done") {
+        realtimeAwaitingResponse = false;
+        clearRealtimeResponseNudgeTimer();
         clearRealtimeResponseTimer();
         const text = extractRealtimeTextFromResponse(event.response);
         const id = event.response?.id || event.event_id || "done";
@@ -1174,7 +1204,7 @@ async function renderChat() {
           bubble("assistant", text);
           logRealtimeMessage("assistant", text, key);
         }
-        scheduleRealtimeMicResume(estimateRealtimeSpeechMs(text) + 500);
+        scheduleRealtimeMicResume(900);
         return;
       }
       if (type === "error") {
@@ -1188,8 +1218,10 @@ async function renderChat() {
       realtimeActive = false;
       realtimeAssistantSpeaking = false;
       clearRealtimeResponseTimer();
+      clearRealtimeResponseNudgeTimer();
       realtimeLastUserText = "";
       realtimeAudioStarted = false;
+      realtimeAwaitingResponse = false;
       if (realtimeMicResumeTimer) {
         clearTimeout(realtimeMicResumeTimer);
         realtimeMicResumeTimer = null;
@@ -1793,12 +1825,12 @@ async function renderChat() {
         const ageGroup = state.me?.user?.age_group || "default";
         const childName = state.me?.user?.child_name || "друг";
         const ageGreetings = {
-          "5_7": `Поздоровайся с ${childName} по-русски, очень медленно и тепло. Одно короткое предложение и один суперлёгкий вопрос. Английский не добавляй, пока ребёнок сам не попросит.`,
-          "8_10": `Поздоровайся с ${childName} по-русски, дружелюбно и не быстро. Одно короткое предложение, потом один весёлый вопрос. Английский добавляй только если ребёнок сам начал по-английски.`,
-          "11_13": `Скажи привет ${childName} естественно и по-дружески — как будто начинаешь обычный разговор, а не урок. Одно приветствие, потом один интересный вопрос про их день или что-то, что им нравится.`,
-          "14_18": `Поздоровайся с ${childName} естественно и тепло, потом задай один интересный вопрос — что-то, что заставит задуматься, например "What's something you've been curious about lately?" или "How's your day going so far?"`,
-          "under_12": `Поздоровайся с ${childName} по-русски, дружелюбно и не быстро. Одно короткое предложение, потом один весёлый вопрос. Английский добавляй только если ребёнок сам начал по-английски.`,
-          "default": `Начни разговор по-русски: поздоровайся с ${childName} тепло в одном предложении, потом задай один лёгкий вопрос.`,
+          "5_7": `Поздоровайся с ${childName} по-русски, очень медленно и тепло. Сразу начни суперлегкий английский мини-урок: дай один выбор с двумя словами, например cat — кошка или dog — собака. Один вопрос.`,
+          "8_10": `Поздоровайся с ${childName} по-русски, дружелюбно и не быстро. Сразу начни мини-урок английского: дай одну короткую фразу или выбор из двух тем, например game или food. Один вопрос.`,
+          "11_13": `Поздоровайся с ${childName} естественно и по-дружески. Сразу начни короткую английскую практику: одна полезная фраза и один вопрос про день, хобби или школу.`,
+          "14_18": `Поздоровайся с ${childName} естественно и тепло. Сразу начни разговорную практику английского: дай один короткий English starter и один интересный вопрос про день, учебу или интересы.`,
+          "under_12": `Поздоровайся с ${childName} по-русски, дружелюбно и не быстро. Сразу начни мини-урок английского: дай одну короткую фразу или выбор из двух тем. Один вопрос.`,
+          "default": `Начни по-русски: поздоровайся с ${childName} тепло, затем сразу дай маленький английский шаг и один легкий вопрос.`,
         };
         const greeting = ageGreetings[ageGroup] || ageGreetings["default"];
         sendRealtimeEvent({

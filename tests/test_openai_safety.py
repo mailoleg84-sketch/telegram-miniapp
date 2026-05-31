@@ -1,6 +1,6 @@
 import unittest
 
-from webapp.openai_service import _safety_guard_reply, openai_config_status
+from webapp.openai_service import _runtime_instructions, _safety_guard_reply, openai_config_status
 
 
 class OpenAISafetyTests(unittest.TestCase):
@@ -30,6 +30,17 @@ class OpenAISafetyTests(unittest.TestCase):
 
         self.assertIsNotNone(reply)
         self.assertIn("API-ключ", reply)
+
+    def test_voice_prompt_requires_teaching_step(self):
+        prompt = _runtime_instructions(
+            user_name="Миша",
+            age_label="10 лет",
+            prompt_context={"mode": "voice", "age": 10, "level": "beginner"},
+            last_user_text="Давай поговорим",
+        )
+
+        self.assertIn("Не просто болтай", prompt)
+        self.assertIn("учебный шаг", prompt)
 
 
 if __name__ == "__main__":

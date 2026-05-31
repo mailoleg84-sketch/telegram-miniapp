@@ -1,7 +1,7 @@
 # QA Report: AI English Tutor Kids
 
 Дата проверки: 2026-05-31
-Версия кода после безопасных исправлений: `20260531-kids-v44`
+Версия кода после безопасных исправлений: `20260531-kids-v45`
 Проект: Telegram Mini App + aiohttp backend + PostgreSQL/Neon + OpenAI Responses/Audio/Realtime.
 
 ## Итоговый вердикт
