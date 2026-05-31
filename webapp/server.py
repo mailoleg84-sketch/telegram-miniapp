@@ -1,4 +1,5 @@
 """aiohttp-сервер: статика Mini App + JSON API."""
+import base64
 import logging
 import random
 from pathlib import Path
@@ -70,6 +71,42 @@ async def _safe_json(request: web.Request) -> dict:
         except Exception:
             return {}
     return {}
+
+
+async def _read_audio_upload(request: web.Request) -> tuple[bytes, str, str]:
+    try:
+        reader = await request.multipart()
+        field = await reader.next()
+    except Exception as exc:
+        raise web.HTTPBadRequest(text="Нужно отправить аудиофайл") from exc
+
+    if not field or field.name != "audio":
+        raise web.HTTPBadRequest(text="Поле audio не найдено")
+
+    chunks = []
+    total = 0
+    while True:
+        chunk = await field.read_chunk(size=64 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > MAX_AUDIO_BYTES:
+            raise web.HTTPRequestEntityTooLarge(
+                max_size=MAX_AUDIO_BYTES,
+                actual_size=total,
+                text="Голосовое сообщение слишком большое",
+            )
+        chunks.append(chunk)
+
+    audio = b"".join(chunks)
+    if not audio:
+        raise web.HTTPBadRequest(text="Пустое голосовое сообщение")
+
+    return (
+        audio,
+        field.filename or "voice.webm",
+        field.headers.get("Content-Type", "audio/webm"),
+    )
 
 
 def _chat_usage_payload(stats) -> dict:
@@ -705,34 +742,17 @@ async def api_chat_send(request: web.Request):
 
 async def api_audio_transcribe(request: web.Request):
     try:
-        reader = await request.multipart()
-        field = await reader.next()
-    except Exception:
-        return web.json_response({"error": "Нужно отправить аудиофайл"}, status=400)
-
-    if not field or field.name != "audio":
-        return web.json_response({"error": "Поле audio не найдено"}, status=400)
-
-    chunks = []
-    total = 0
-    while True:
-        chunk = await field.read_chunk(size=64 * 1024)
-        if not chunk:
-            break
-        total += len(chunk)
-        if total > MAX_AUDIO_BYTES:
-            return web.json_response({"error": "Голосовое сообщение слишком большое"}, status=413)
-        chunks.append(chunk)
-
-    audio = b"".join(chunks)
-    if not audio:
-        return web.json_response({"error": "Пустое голосовое сообщение"}, status=400)
+        audio, filename, content_type = await _read_audio_upload(request)
+    except web.HTTPRequestEntityTooLarge as e:
+        return web.json_response({"error": e.text}, status=413)
+    except web.HTTPBadRequest as e:
+        return web.json_response({"error": e.text}, status=400)
 
     try:
         text = await transcribe_audio(
             audio,
-            filename=field.filename or "voice.webm",
-            content_type=field.headers.get("Content-Type", "audio/webm"),
+            filename=filename,
+            content_type=content_type,
         )
     except Exception as e:
         log.exception("Audio transcription failed")
@@ -763,6 +783,74 @@ async def api_audio_speech(request: web.Request):
             "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
         },
     )
+
+
+async def api_voice_turn(request: web.Request):
+    """Stable hybrid voice turn: transcribe, reply, and synthesize in one request."""
+    user_id = request["tg_user"]["id"]
+    try:
+        audio, filename, content_type = await _read_audio_upload(request)
+    except web.HTTPRequestEntityTooLarge as e:
+        return web.json_response({"error": e.text}, status=413)
+    except web.HTTPBadRequest as e:
+        return web.json_response({"error": e.text}, status=400)
+
+    try:
+        text = await transcribe_audio(audio, filename=filename, content_type=content_type)
+    except Exception as e:
+        log.exception("Hybrid voice transcription failed")
+        return web.json_response({"error": f"Не удалось распознать голос. {public_openai_error(e)}"}, status=502)
+
+    text = " ".join(text.split())
+    if not text:
+        return web.json_response({"error": "Не расслышал голос"}, status=400)
+    if len(text) > 1000:
+        text = text[:1000]
+
+    stats = await database.get_ai_usage_today(user_id)
+    user = await database.get_user(user_id)
+    user_name = user["name"] if user else "друг"
+
+    await database.add_message(user_id, "user", text)
+    rows = await database.get_recent_messages(user_id, limit=CHAT_HISTORY_LIMIT)
+    history = [{"role": r["role"], "content": r["content"]} for r in rows]
+
+    age_label = _age_label(user["age_group"]) if user else ""
+    prompt_context = _prompt_context_for_user(user) if user else {}
+    prompt_context["mode"] = "voice"
+    prompt_context.update(_voice_prompt_context(user, history))
+
+    reply = await chat_reply(history, user_name, age_label, prompt_context)
+    await database.add_message(user_id, "assistant", reply.text)
+    if reply.total_tokens > 0:
+        await database.add_ai_usage(
+            user_id=user_id,
+            model=reply.model,
+            input_tokens=reply.input_tokens,
+            output_tokens=reply.output_tokens,
+            total_tokens=reply.total_tokens,
+            cost_usd=reply.cost_usd,
+        )
+        stats = await database.get_ai_usage_today(user_id)
+
+    audio_b64 = ""
+    audio_error = ""
+    if not reply.text.startswith("Ошибка:") and not reply.text.startswith("⚠️"):
+        try:
+            speech = await synthesize_speech(reply.text, mode="voice")
+            audio_b64 = base64.b64encode(speech).decode("ascii")
+        except Exception as e:
+            log.exception("Hybrid voice speech synthesis failed")
+            audio_error = public_openai_error(e)
+
+    return web.json_response({
+        "text": text,
+        "reply": reply.text,
+        "audio_base64": audio_b64,
+        "audio_content_type": "audio/mpeg" if audio_b64 else "",
+        "audio_error": audio_error,
+        "usage": _chat_usage_payload(stats),
+    }, headers={"Cache-Control": "no-store"})
 
 
 async def api_realtime_call(request: web.Request):
@@ -894,6 +982,7 @@ def create_app(
     app.router.add_post("/api/chat/send",              api_chat_send)
     app.router.add_post("/api/audio/transcribe",       api_audio_transcribe)
     app.router.add_post("/api/audio/speech",           api_audio_speech)
+    app.router.add_post("/api/voice/turn",             api_voice_turn)
     app.router.add_post("/api/realtime/token",         api_realtime_token)
     app.router.add_post("/api/realtime/call",          api_realtime_call)
     app.router.add_post("/api/realtime/log",           api_realtime_log)

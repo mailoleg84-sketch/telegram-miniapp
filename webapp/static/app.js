@@ -766,6 +766,9 @@ async function renderChat() {
     let realtimeAssistantSpeaking = false;
     let realtimeMicResumeTimer = null;
     let realtimeMicResumeAt = 0;
+    let realtimeResponseTimer = null;
+    let realtimeLastUserText = "";
+    let realtimeAudioStarted = false;
     let realtimeFallbackShown = false;
     let shortVoiceHintShown = false;
     const realtimeLogged = new Set();
@@ -779,6 +782,8 @@ async function renderChat() {
     const VOICE_RESTART_DELAY_MS = 450;
     const VOICE_TTS_TIMEOUT_MS = 25000;
     const CHAT_TTS_TIMEOUT_MS = 7000;
+    const REALTIME_FIRST_AUDIO_TIMEOUT_MS = 7000;
+    const STABLE_VOICE_COOLDOWN_MS = 10 * 60 * 1000;
     const VOICE_STARTERS = [
       "Привет! Расскажи одним словом, что тебе сегодня интересно, а я превращу это в английскую фразу.",
       "Я слушаю. Можно говорить по-русски или по-английски. Начнем с маленькой сценки?",
@@ -844,6 +849,42 @@ async function renderChat() {
       return Boolean(window.RTCPeerConnection && navigator.mediaDevices?.getUserMedia);
     }
 
+    function stableVoiceUntil() {
+      try {
+        return Number(localStorage.getItem("stableVoiceUntil") || "0");
+      } catch (_) {
+        return 0;
+      }
+    }
+
+    function preferStableVoice(reason = "") {
+      try {
+        localStorage.setItem("stableVoiceUntil", String(Date.now() + STABLE_VOICE_COOLDOWN_MS));
+        if (reason) localStorage.setItem("stableVoiceReason", reason);
+      } catch (_) {}
+    }
+
+    function shouldUseStableVoice() {
+      return Date.now() < stableVoiceUntil();
+    }
+
+    function clearRealtimeResponseTimer() {
+      if (realtimeResponseTimer) {
+        clearTimeout(realtimeResponseTimer);
+        realtimeResponseTimer = null;
+      }
+    }
+
+    function armRealtimeResponseTimer() {
+      clearRealtimeResponseTimer();
+      realtimeAudioStarted = false;
+      realtimeResponseTimer = setTimeout(() => {
+        realtimeResponseTimer = null;
+        if (!voiceModeActive || !realtimeActive || realtimeAudioStarted) return;
+        switchToStableVoice("realtime_first_audio_timeout", realtimeLastUserText).catch(console.error);
+      }, REALTIME_FIRST_AUDIO_TIMEOUT_MS);
+    }
+
     function waitForIceGatheringComplete(pc, timeoutMs = 5000) {
       if (pc.iceGatheringState === "complete") return Promise.resolve();
       return new Promise(resolve => {
@@ -878,6 +919,10 @@ async function renderChat() {
         clearTimeout(realtimeMicResumeTimer);
         realtimeMicResumeTimer = null;
         realtimeMicResumeAt = 0;
+      }
+      if (active) {
+        realtimeAudioStarted = true;
+        clearRealtimeResponseTimer();
       }
       realtimeAssistantSpeaking = active;
       setRealtimeMicEnabled(!active);
@@ -957,10 +1002,12 @@ async function renderChat() {
       if (type === "input_audio_buffer.speech_stopped") {
         updateVoiceModeUi("Думаю...");
         setFace("thinking");
+        armRealtimeResponseTimer();
         return;
       }
       if (type === "conversation.item.input_audio_transcription.completed") {
         const text = String(event.transcript || event.text || "").trim();
+        realtimeLastUserText = text;
         const key = `user:${event.item_id || event.event_id || text}`;
         if (text && !realtimeLogged.has(key) && !realtimeLogged.has(`user:text:${text}`)) {
           bubble("user", text);
@@ -1004,6 +1051,7 @@ async function renderChat() {
         return;
       }
       if (type === "response.done") {
+        clearRealtimeResponseTimer();
         const text = extractRealtimeTextFromResponse(event.response);
         const id = event.response?.id || event.event_id || "done";
         const key = `assistant:${id}:${text}`;
@@ -1016,15 +1064,17 @@ async function renderChat() {
       }
       if (type === "error") {
         const message = event.error?.message || "Ошибка живого голоса";
-        bubble("assistant", `Ошибка голоса: ${message}`);
-        updateVoiceModeUi("Ошибка голоса");
-        setFace("idle");
+        console.error("Realtime voice error:", message);
+        switchToStableVoice("realtime_error", realtimeLastUserText).catch(console.error);
       }
     }
 
     function stopRealtimeSession() {
       realtimeActive = false;
       realtimeAssistantSpeaking = false;
+      clearRealtimeResponseTimer();
+      realtimeLastUserText = "";
+      realtimeAudioStarted = false;
       if (realtimeMicResumeTimer) {
         clearTimeout(realtimeMicResumeTimer);
         realtimeMicResumeTimer = null;
@@ -1151,22 +1201,42 @@ async function renderChat() {
           { text, mode: voice ? "voice" : "chat" },
           voice ? VOICE_TTS_TIMEOUT_MS : CHAT_TTS_TIMEOUT_MS,
         );
-        tutorAudioUrl = URL.createObjectURL(audioBlob);
-        tutorAudio = new Audio(tutorAudioUrl);
-        tutorAudio.onplaying = () => setFace("speaking");
-        tutorAudio.onended = () => {
-          stopTutorSpeech();
-          finishTutorSpeech(onDone);
-        };
-        tutorAudio.onerror = () => {
-          stopTutorSpeech();
-          speakTutorFallback(text, onDone);
-        };
+        await playTutorAudioBlob(audioBlob, text, onDone);
+      } catch (_) {
+        stopTutorSpeech();
+        speakTutorFallback(text, onDone);
+      }
+    }
+
+    async function playTutorAudioBlob(audioBlob, text, onDone = null) {
+      stopTutorSpeech();
+      tutorAudioUrl = URL.createObjectURL(audioBlob);
+      tutorAudio = new Audio(tutorAudioUrl);
+      tutorAudio.preload = "auto";
+      tutorAudio.onplaying = () => setFace("speaking");
+      tutorAudio.onended = () => {
+        stopTutorSpeech();
+        finishTutorSpeech(onDone);
+      };
+      tutorAudio.onerror = () => {
+        stopTutorSpeech();
+        speakTutorFallback(text, onDone);
+      };
+      try {
         await tutorAudio.play();
       } catch (_) {
         stopTutorSpeech();
         speakTutorFallback(text, onDone);
       }
+    }
+
+    function base64ToBlob(base64, contentType = "audio/mpeg") {
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return new Blob([bytes], { type: contentType });
     }
 
     function preferredMimeType() {
@@ -1296,7 +1366,7 @@ async function renderChat() {
       mic.disabled = true;
       if (box.querySelector(".chat-empty")) box.innerHTML = "";
       input.value = "";
-      bubble("user", text);
+      if (options.showUser !== false) bubble("user", text);
       const typing = typingBubble();
       setFace("thinking");
       try {
@@ -1332,6 +1402,13 @@ async function renderChat() {
       return (result.text || "").trim();
     }
 
+    async function voiceTurn(blob) {
+      const form = new FormData();
+      const extension = blob.type.includes("mp4") ? "mp4" : "webm";
+      form.append("audio", blob, `voice.${extension}`);
+      return apiForm("/api/voice/turn", form);
+    }
+
     function scheduleVoiceListen(delay = 500) {
       clearVoiceModeTimer();
       if (!voiceModeActive) return;
@@ -1346,6 +1423,28 @@ async function renderChat() {
           setFace("idle");
         });
       }, delay);
+    }
+
+    async function sendStableVoiceTurn(blob, wasAuto = false) {
+      sending = true;
+      updateVoiceModeUi("Думаю...");
+      setFace("thinking");
+      const result = await voiceTurn(blob);
+      const text = String(result.text || "").trim();
+      const reply = String(result.reply || "").trim();
+      if (box.querySelector(".chat-empty")) box.innerHTML = "";
+      if (text) bubble("user", text);
+      if (reply) bubble("assistant", reply);
+      const onDone = wasAuto ? () => scheduleVoiceListen(VOICE_RESTART_DELAY_MS) : null;
+      if (result.audio_base64) {
+        const audioBlob = base64ToBlob(result.audio_base64, result.audio_content_type || "audio/mpeg");
+        updateVoiceModeUi("Говорю...");
+        await playTutorAudioBlob(audioBlob, reply, onDone);
+      } else if (reply) {
+        await speakTutor(reply, onDone, true);
+      } else if (wasAuto) {
+        scheduleVoiceListen(900);
+      }
     }
 
     async function handleRecordingStop(mimeType, wasAuto = false) {
@@ -1370,6 +1469,11 @@ async function renderChat() {
           if (wasAuto) scheduleVoiceListen(700);
           return;
         }
+        if (wasAuto) {
+          missedAutoRecordings = 0;
+          await sendStableVoiceTurn(blob, wasAuto);
+          return;
+        }
         const text = await uploadVoice(blob);
         if (!text) {
           if (!wasAuto) tg.showAlert("Не удалось разобрать речь. Попробуй еще раз.");
@@ -1390,6 +1494,7 @@ async function renderChat() {
         setFace("idle");
         if (wasAuto) scheduleVoiceListen(1500);
       } finally {
+        sending = false;
         mic.disabled = voiceModeActive;
         if (!sending) sendButton.disabled = false;
       }
@@ -1499,6 +1604,21 @@ async function renderChat() {
       await startRecording(true);
     }
 
+    async function switchToStableVoice(reason = "", text = "") {
+      if (!voiceModeActive) return;
+      preferStableVoice(reason);
+      stopRealtimeSession();
+      updateVoiceModeUi("Стабильный голос...");
+      setFace("thinking");
+      const spokenText = String(text || "").trim();
+      if (spokenText) {
+        await send(spokenText, { autoContinue: true, voice: true, showUser: false });
+        return;
+      }
+      voiceModeActive = false;
+      await startLegacyVoiceMode();
+    }
+
     async function startRealtimeVoiceMode() {
       if (!realtimeSupported()) {
         throw new Error("WebRTC не поддерживается на этом устройстве");
@@ -1533,8 +1653,7 @@ async function renderChat() {
       realtimePc.onconnectionstatechange = () => {
         if (!voiceModeActive || !realtimeActive) return;
         if (["failed", "disconnected", "closed"].includes(realtimePc.connectionState)) {
-          updateVoiceModeUi("Связь прервалась");
-          setFace("idle");
+          switchToStableVoice(`realtime_${realtimePc.connectionState}`, realtimeLastUserText).catch(console.error);
         }
       };
 
@@ -1575,8 +1694,7 @@ async function renderChat() {
       };
       realtimeDataChannel.onclose = () => {
         if (voiceModeActive && realtimeActive) {
-          updateVoiceModeUi("Голос остановлен");
-          setFace("idle");
+          switchToStableVoice("realtime_data_channel_closed", realtimeLastUserText).catch(console.error);
         }
       };
 
@@ -1597,12 +1715,13 @@ async function renderChat() {
 
     async function startVoiceMode() {
       if (voiceModeActive || sending) return;
-      if (realtimeSupported()) {
+      if (!shouldUseStableVoice() && realtimeSupported()) {
         try {
           await startRealtimeVoiceMode();
           return;
         } catch (e) {
           console.error("Realtime voice failed:", e);
+          preferStableVoice("realtime_start_failed");
           stopRealtimeSession();
           voiceModeActive = false;
           updateVoiceModeUi("Включаю запасной режим...");
