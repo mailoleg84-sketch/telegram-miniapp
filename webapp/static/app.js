@@ -792,12 +792,56 @@ async function renderChat() {
       "Начнем с твоего слова. Скажи то, о чем хочется поговорить, и я подстроюсь.",
       "Я рядом. Если не знаешь, что сказать, просто скажи: помоги мне начать.",
     ];
+    const VOICE_STARTERS_BY_AGE = {
+      "5_7": [
+        "Привет! Давай очень легко: cat — кошка или dog — собака?",
+        "Я слушаю. Скажи одно слово: еда, игра или школа.",
+        "Начнем с игры. Выбери: red — красный или blue — синий?",
+      ],
+      "8_10": [
+        "Привет! Скажи одно слово, и я сделаю из него маленькую английскую фразу.",
+        "Давай легко: game, food или school? Выбери одно.",
+        "Я слушаю. Можно по-русски. Начнем с короткой игры?",
+      ],
+      "11_13": [
+        "Привет! Можем сделать мини-диалог, сцену в кафе или разговор про твой день.",
+        "Скажи тему одним словом, а я начну живой английский диалог.",
+        "Можно по-русски или по-английски. Что потренируем: school, hobbies или games?",
+      ],
+      "14_18": [
+        "Привет! Можем потренировать speaking, экзаменационный ответ или обычный разговор.",
+        "Скажи тему, а я помогу сделать английский ответ естественнее.",
+        "Можно начать по-русски. Что нужно: grammar, speaking или exam answer?",
+      ],
+    };
     const VOICE_HELP_HINTS = [
       "Я рядом. Скажи одно слово по-русски, и я помогу сделать английскую фразу.",
       "Можно совсем просто: помоги мне начать.",
       "Давай с одного слова: school, game или food.",
       "Если устал, скажи: проще. Я дам очень легкий вопрос.",
     ];
+    const VOICE_HELP_HINTS_BY_AGE = {
+      "5_7": [
+        "Скажи одно слово: кот, собака или еда.",
+        "Можно просто сказать: помоги.",
+        "Если устал, скажи: проще.",
+      ],
+      "8_10": [
+        "Скажи одно слово по-русски, и я помогу.",
+        "Можно выбрать: game, food или school.",
+        "Если сложно, скажи: проще.",
+      ],
+      "11_13": [
+        "Скажи тему одним словом: school, hobby или movie.",
+        "Можно попросить: объясни по-русски.",
+        "Если хочешь легче, скажи: проще.",
+      ],
+      "14_18": [
+        "Скажи, что нужно: speaking, grammar или exam.",
+        "Можно попросить готовую фразу для ответа.",
+        "Если темп быстрый, скажи: проще и медленнее.",
+      ],
+    };
 
     function bubble(role, text) {
       const div = document.createElement("div");
@@ -836,6 +880,15 @@ async function renderChat() {
       } catch (_) {
         return items[Math.floor(Math.random() * items.length)];
       }
+    }
+
+    function voiceAgeGroup() {
+      return state.me?.user?.age_group || "default";
+    }
+
+    function ageItems(map, fallback) {
+      const ageGroup = voiceAgeGroup();
+      return map[ageGroup] || fallback;
     }
 
     function clearVoiceModeTimer() {
@@ -1309,7 +1362,8 @@ async function renderChat() {
           skipUploadOnStop = true;
           stopRecording();
           if (missedAutoRecordings <= 2) {
-            const hint = nextRotatingItem("voiceHelpHintIndex", VOICE_HELP_HINTS);
+            const ageGroup = voiceAgeGroup();
+            const hint = nextRotatingItem(`voiceHelpHintIndex:${ageGroup}`, ageItems(VOICE_HELP_HINTS_BY_AGE, VOICE_HELP_HINTS));
             bubble("assistant", hint);
             speakTutor(hint, () => scheduleVoiceListen(VOICE_RESTART_DELAY_MS), true);
             return;
@@ -1582,7 +1636,8 @@ async function renderChat() {
       if (!voiceIntroPlayed && box.querySelector(".chat-empty")) {
         voiceIntroPlayed = true;
         box.innerHTML = "";
-        const intro = nextRotatingItem("voiceStarterIndex", VOICE_STARTERS);
+        const ageGroup = voiceAgeGroup();
+        const intro = nextRotatingItem(`voiceStarterIndex:${ageGroup}`, ageItems(VOICE_STARTERS_BY_AGE, VOICE_STARTERS));
         bubble("assistant", intro);
         speakTutor(intro, () => scheduleVoiceListen(VOICE_RESTART_DELAY_MS), true);
         return;
