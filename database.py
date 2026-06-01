@@ -365,6 +365,104 @@ async def get_practice_word(user_id: int, exclude_id: int | None = None):
     """, user_id, exclude_id)
 
 
+async def get_review_word(user_id: int, exclude_id: int | None = None):
+    pool = await _get_pool()
+    return await pool.fetchrow("""
+        SELECT w.*
+        FROM user_progress up
+        JOIN words w ON w.id = up.word_id
+        WHERE up.user_id = $1
+          AND ($2::INTEGER IS NULL OR w.id != $2)
+          AND (
+            COALESCE(up.wrong_count, 0) > 0
+            OR up.last_seen < NOW() - (
+                INTERVAL '1 hour' * POWER(2, LEAST(COALESCE(up.correct_count, 0), 8))
+            )
+          )
+        ORDER BY
+            CASE
+                WHEN COALESCE(up.wrong_count, 0) > COALESCE(up.correct_count, 0) THEN 3
+                WHEN COALESCE(up.wrong_count, 0) > 0 THEN 2
+                ELSE 1
+            END DESC,
+            COALESCE(up.wrong_count, 0) DESC,
+            up.last_seen ASC,
+            RANDOM()
+        LIMIT 1
+    """, user_id, exclude_id)
+
+
+async def get_user_dictionary(user_id: int, filter_mode: str = "all", limit: int = 80):
+    pool = await _get_pool()
+    filter_sql = ""
+    if filter_mode == "review":
+        filter_sql = """
+          AND (
+            COALESCE(up.wrong_count, 0) > 0
+            OR up.last_seen < NOW() - (
+                INTERVAL '1 hour' * POWER(2, LEAST(COALESCE(up.correct_count, 0), 8))
+            )
+          )
+        """
+    elif filter_mode == "mastered":
+        filter_sql = """
+          AND COALESCE(up.correct_count, 0) >= 3
+          AND COALESCE(up.correct_count, 0) >= COALESCE(up.wrong_count, 0) + 2
+        """
+    return await pool.fetch(f"""
+        SELECT
+            w.id,
+            w.word,
+            w.translation,
+            w.example,
+            w.topic,
+            w.age_group,
+            COALESCE(up.correct_count, 0)::INT AS correct_count,
+            COALESCE(up.wrong_count, 0)::INT AS wrong_count,
+            up.last_seen,
+            (
+              COALESCE(up.wrong_count, 0) > 0
+              OR up.last_seen < NOW() - (
+                  INTERVAL '1 hour' * POWER(2, LEAST(COALESCE(up.correct_count, 0), 8))
+              )
+            ) AS needs_review,
+            (
+              COALESCE(up.correct_count, 0) >= 3
+              AND COALESCE(up.correct_count, 0) >= COALESCE(up.wrong_count, 0) + 2
+            ) AS mastered
+        FROM user_progress up
+        JOIN words w ON w.id = up.word_id
+        WHERE up.user_id = $1
+        {filter_sql}
+        ORDER BY
+            needs_review DESC,
+            mastered ASC,
+            COALESCE(up.wrong_count, 0) DESC,
+            up.last_seen DESC
+        LIMIT $2
+    """, user_id, limit)
+
+
+async def get_dictionary_summary(user_id: int):
+    pool = await _get_pool()
+    return await pool.fetchrow("""
+        SELECT
+            COUNT(*)::INT AS total_words,
+            COUNT(*) FILTER (
+              WHERE COALESCE(correct_count, 0) >= 3
+                AND COALESCE(correct_count, 0) >= COALESCE(wrong_count, 0) + 2
+            )::INT AS mastered_words,
+            COUNT(*) FILTER (
+              WHERE COALESCE(wrong_count, 0) > 0
+                 OR last_seen < NOW() - (
+                    INTERVAL '1 hour' * POWER(2, LEAST(COALESCE(correct_count, 0), 8))
+                 )
+            )::INT AS review_words
+        FROM user_progress
+        WHERE user_id = $1
+    """, user_id)
+
+
 # ---------- Словарные сессии ----------
 
 async def create_vocabulary_session(user_id: int, age_group: str, topic: str | None, word_ids: list[int]):

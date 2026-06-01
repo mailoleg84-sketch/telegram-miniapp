@@ -1,7 +1,7 @@
 import unittest
 
 from webapp.openai_service import _runtime_instructions, _safety_guard_reply, openai_config_status
-from webapp.server import _level_from_score, _level_label
+from webapp.server import _dictionary_word_dict, _level_from_score, _level_label
 
 
 class OpenAISafetyTests(unittest.TestCase):
@@ -51,6 +51,26 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertEqual(_level_from_score("8_10", 5, 6), "elementary")
         self.assertEqual(_level_from_score("14_18", 7, 8), "pre_intermediate")
         self.assertIn("A1", _level_label("beginner"))
+
+    def test_dictionary_word_status_labels_review_items(self):
+        row = {
+            "id": 1,
+            "word": "apple",
+            "translation": "яблоко",
+            "example": "I like apples.",
+            "topic": "food",
+            "age_group": "8_10",
+            "correct_count": 1,
+            "wrong_count": 2,
+            "needs_review": True,
+            "mastered": False,
+        }
+
+        payload = _dictionary_word_dict(row)
+
+        self.assertEqual(payload["status"], "review")
+        self.assertEqual(payload["status_label"], "повторить")
+        self.assertEqual(payload["wrong_count"], 2)
 
 
 if __name__ == "__main__":

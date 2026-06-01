@@ -15,7 +15,15 @@ tg.ready();
 tg.expand();
 
 const app = document.getElementById("app");
-const state = { me: null, back: null, vocab: null, quiz: null, answers: [], levelTest: null };
+const state = {
+  me: null,
+  back: null,
+  vocab: null,
+  quiz: null,
+  answers: [],
+  levelTest: null,
+  dictionaryFilter: "all",
+};
 let fallbackAuth = window.location.search || "";
 const LOGGED_OUT_KEY = "englishTutorKidsLoggedOut";
 
@@ -147,6 +155,7 @@ function clearAccountLocalState() {
   state.quiz = null;
   state.answers = [];
   state.levelTest = null;
+  state.dictionaryFilter = "all";
   try {
     localStorage.removeItem("stableVoiceUntil");
     localStorage.removeItem("stableVoiceReason");
@@ -321,6 +330,7 @@ function renderMenu() {
       <button class="btn" id="vocab">Новые слова + тест</button>
       <button class="btn" id="daily">Ежедневный урок</button>
       <button class="btn" id="training">Тренировка слов</button>
+      <button class="btn" id="dictionary">Словарь и повторение</button>
       <button class="btn" id="chat">Поговорить с репетитором</button>
       <button class="btn btn-secondary" id="report">Отчет для родителя</button>
       <button class="btn btn-secondary" id="leaderboard">Рейтинг</button>
@@ -331,6 +341,7 @@ function renderMenu() {
   document.getElementById("vocab").onclick = () => { haptic(); renderVocabStart(); };
   document.getElementById("daily").onclick = () => { haptic(); renderDailyLesson(); };
   document.getElementById("training").onclick = () => { haptic(); renderTrainingMenu(); };
+  document.getElementById("dictionary").onclick = () => { haptic(); renderDictionary(); };
   document.getElementById("chat").onclick = () => { haptic(); renderChat(); };
   document.getElementById("report").onclick = () => { haptic(); renderParentReport(); };
   document.getElementById("leaderboard").onclick = () => { haptic(); renderLeaderboard(); };
@@ -523,31 +534,98 @@ async function finishVocabQuiz() {
   }
 }
 
-async function renderTrainingMenu() {
+async function renderDictionary(filter = state.dictionaryFilter || "all") {
   setBack(renderMenu);
+  loading();
+  try {
+    state.dictionaryFilter = filter;
+    const data = await api(`/api/dictionary?filter=${encodeURIComponent(filter)}`, "GET");
+    const summary = data.summary || {};
+    const words = data.words || [];
+    const filterButton = (value, label) => `
+      <button class="btn ${filter === value ? "" : "btn-secondary"} dictionary-filter" data-filter="${value}">${label}</button>
+    `;
+    app.innerHTML = `
+      <div class="screen">
+        <h1>Словарь</h1>
+        <div class="card">
+          <div class="stat-row"><span>Всего слов</span><b>${summary.total_words || 0}</b></div>
+          <div class="stat-row"><span>Нужно повторить</span><b>${summary.review_words || 0}</b></div>
+          <div class="stat-row"><span>Выучено</span><b>${summary.mastered_words || 0}</b></div>
+        </div>
+        <div class="dictionary-filters">
+          ${filterButton("all", "Все")}
+          ${filterButton("review", "Повторить")}
+          ${filterButton("mastered", "Выучено")}
+        </div>
+        ${words.length ? `
+          <div class="card dictionary-list">
+            ${words.map(word => `
+              <div class="dictionary-row ${word.status}">
+                <div class="dictionary-main">
+                  <b>${esc(word.word)}</b>
+                  <span>${esc(word.translation)}</span>
+                  ${word.example ? `<small>${esc(word.example)}</small>` : ""}
+                </div>
+                <div class="dictionary-side">
+                  <span class="word-status ${word.status}">${esc(word.status_label)}</span>
+                  <small>${word.correct_count || 0}✓ · ${word.wrong_count || 0}×</small>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        ` : `
+          <div class="card center">
+            <b>${filter === "all" ? "Словарь пока пуст" : "Здесь пока нет слов"}</b>
+            <p class="hint">${filter === "all" ? "Пройди набор новых слов или ежедневный урок, и слова появятся здесь." : "Когда появятся ошибки или выученные слова, они будут показаны в этом разделе."}</p>
+          </div>
+        `}
+        <button class="btn" id="reviewWords" ${summary.review_words ? "" : "disabled"}>Повторить ошибки</button>
+        <button class="btn btn-secondary" id="allTraining">Тренировать все слова</button>
+        <button class="btn btn-secondary" id="dictionaryNewWords">Новые слова + тест</button>
+      </div>`;
+    document.querySelectorAll(".dictionary-filter").forEach(button => {
+      button.onclick = () => { haptic(); renderDictionary(button.dataset.filter); };
+    });
+    document.getElementById("reviewWords").onclick = () => { haptic(); renderTrainingMenu("review"); };
+    document.getElementById("allTraining").onclick = () => { haptic(); renderTrainingMenu("all"); };
+    document.getElementById("dictionaryNewWords").onclick = () => { haptic(); renderVocabStart(); };
+  } catch (e) {
+    renderError(e.message);
+  }
+}
+
+async function renderTrainingMenu(focus = "all") {
+  setBack(renderMenu);
+  const reviewMode = focus === "review";
   app.innerHTML = `
     <div class="screen">
-      <h1>Тренировка слов</h1>
+      <h1>${reviewMode ? "Повторение ошибок" : "Тренировка слов"}</h1>
       <div class="card">
-        <p class="hint">Короткая практика без длинного теста: выбери перевод или напиши слово по-английски.</p>
+        <p class="hint">${reviewMode
+          ? "Сейчас будут слова, в которых были ошибки или которые пора освежить."
+          : "Короткая практика без длинного теста: выбери перевод или напиши слово по-английски."}</p>
       </div>
       <button class="btn" id="choiceTraining">Выбрать перевод</button>
       <button class="btn" id="inputTraining">Написать слово</button>
+      <button class="btn btn-secondary" id="trainingDictionary">Словарь</button>
       <button class="btn btn-secondary" id="trainingHome">В меню</button>
     </div>`;
-  document.getElementById("choiceTraining").onclick = () => { haptic(); renderChoiceTraining(); };
-  document.getElementById("inputTraining").onclick = () => { haptic(); renderInputTraining(); };
+  document.getElementById("choiceTraining").onclick = () => { haptic(); renderChoiceTraining(focus); };
+  document.getElementById("inputTraining").onclick = () => { haptic(); renderInputTraining(focus); };
+  document.getElementById("trainingDictionary").onclick = () => { haptic(); renderDictionary(reviewMode ? "review" : "all"); };
   document.getElementById("trainingHome").onclick = () => { haptic(); renderMenu(); };
 }
 
-async function renderChoiceTraining() {
-  setBack(renderTrainingMenu);
+async function renderChoiceTraining(focus = "all") {
+  setBack(() => renderTrainingMenu(focus));
   loading();
   try {
-    const task = await api("/api/training/choice/next", "POST", {});
+    const task = await api("/api/training/choice/next", "POST", { focus });
     app.innerHTML = `
       <div class="screen">
         <h1>Выбери перевод</h1>
+        ${task.review_empty ? `<div class="card"><p class="hint">Ошибок для повторения пока нет, поэтому даю обычное слово.</p></div>` : ""}
         <div class="card center">
           <div class="big">${esc(task.word)}</div>
           <p class="hint mt-12">Как переводится это слово?</p>
@@ -574,7 +652,8 @@ async function renderChoiceTraining() {
             text: `${result.word} — ${result.translation}`,
             delta: result.delta,
             points: result.points,
-            next: renderChoiceTraining,
+            next: () => renderChoiceTraining(focus),
+            focus,
           });
         } catch (e) {
           renderError(e.message);
@@ -586,14 +665,15 @@ async function renderChoiceTraining() {
   }
 }
 
-async function renderInputTraining() {
-  setBack(renderTrainingMenu);
+async function renderInputTraining(focus = "all") {
+  setBack(() => renderTrainingMenu(focus));
   loading();
   try {
-    const task = await api("/api/training/input/next", "POST", {});
+    const task = await api("/api/training/input/next", "POST", { focus });
     app.innerHTML = `
       <div class="screen">
         <h1>Напиши слово</h1>
+        ${task.review_empty ? `<div class="card"><p class="hint">Ошибок для повторения пока нет, поэтому даю обычное слово.</p></div>` : ""}
         <div class="card center">
           <p class="hint">Напиши по-английски:</p>
           <div class="big-sub">${esc(task.translation)}</div>
@@ -619,7 +699,8 @@ async function renderInputTraining() {
           text: `${result.translation} — ${result.word}`,
           delta: result.delta,
           points: result.points,
-          next: renderInputTraining,
+          next: () => renderInputTraining(focus),
+          focus,
         });
       } catch (e) {
         renderError(e.message);
@@ -633,8 +714,9 @@ async function renderInputTraining() {
   }
 }
 
-function renderTrainingResult({ correct, title, text, delta, points, next }) {
-  setBack(renderTrainingMenu);
+function renderTrainingResult({ correct, title, text, delta, points, next, focus = "all" }) {
+  setBack(() => renderTrainingMenu(focus));
+  const reviewMode = focus === "review";
   haptic(correct ? "success" : "error");
   app.innerHTML = `
     <div class="screen">
@@ -643,12 +725,14 @@ function renderTrainingResult({ correct, title, text, delta, points, next }) {
         <p>${esc(text)}</p>
         <p><b>${delta >= 0 ? "+" : ""}${delta} 💎</b> · всего: ${points}</p>
       </div>
-      <button class="btn" id="trainingNext">Еще слово</button>
+      <button class="btn" id="trainingNext">${reviewMode ? "Еще на повторение" : "Еще слово"}</button>
       <button class="btn btn-secondary" id="trainingModes">Другой режим</button>
+      <button class="btn btn-secondary" id="trainingDictionary">Словарь</button>
       <button class="btn btn-secondary" id="trainingMenu">В меню</button>
     </div>`;
   document.getElementById("trainingNext").onclick = () => { haptic(); next(); };
-  document.getElementById("trainingModes").onclick = () => { haptic(); renderTrainingMenu(); };
+  document.getElementById("trainingModes").onclick = () => { haptic(); renderTrainingMenu(focus); };
+  document.getElementById("trainingDictionary").onclick = () => { haptic(); renderDictionary(reviewMode ? "review" : "all"); };
   document.getElementById("trainingMenu").onclick = () => { haptic(); renderMenu(); };
 }
 

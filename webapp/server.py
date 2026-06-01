@@ -111,6 +111,32 @@ def _word_dict(word) -> dict:
     }
 
 
+def _dictionary_word_dict(word) -> dict:
+    data = _word_dict(word)
+    correct_count = int(word["correct_count"] or 0)
+    wrong_count = int(word["wrong_count"] or 0)
+    mastered = bool(word["mastered"])
+    needs_review = bool(word["needs_review"])
+    if mastered:
+        status = "mastered"
+        status_label = "выучено"
+    elif needs_review:
+        status = "review"
+        status_label = "повторить"
+    else:
+        status = "learning"
+        status_label = "учим"
+    data.update({
+        "correct_count": correct_count,
+        "wrong_count": wrong_count,
+        "needs_review": needs_review,
+        "mastered": mastered,
+        "status": status,
+        "status_label": status_label,
+    })
+    return data
+
+
 async def _safe_json(request: web.Request) -> dict:
     if request.body_exists:
         try:
@@ -881,6 +907,30 @@ async def api_learn_next(request: web.Request):
     return web.json_response(_word_dict(word))
 
 
+async def api_dictionary(request: web.Request):
+    user_id = request["tg_user"]["id"]
+    filter_mode = (request.query.get("filter") or "all").strip()
+    if filter_mode not in {"all", "review", "mastered"}:
+        filter_mode = "all"
+    try:
+        limit = int(request.query.get("limit") or 80)
+    except (TypeError, ValueError):
+        limit = 80
+    limit = max(10, min(limit, 120))
+
+    rows = await database.get_user_dictionary(user_id, filter_mode=filter_mode, limit=limit)
+    summary = await database.get_dictionary_summary(user_id)
+    return web.json_response({
+        "filter": filter_mode,
+        "summary": {
+            "total_words": int(summary["total_words"] if summary else 0),
+            "mastered_words": int(summary["mastered_words"] if summary else 0),
+            "review_words": int(summary["review_words"] if summary else 0),
+        },
+        "words": [_dictionary_word_dict(row) for row in rows],
+    })
+
+
 async def api_vocab_start(request: web.Request):
     user_id = request["tg_user"]["id"]
     user = await _current_user_or_404(request)
@@ -991,7 +1041,12 @@ async def api_vocab_finish(request: web.Request):
 
 async def api_choice_next(request: web.Request):
     user_id = request["tg_user"]["id"]
-    correct = await database.get_practice_word(user_id)
+    body = await _safe_json(request)
+    focus = "review" if body.get("focus") == "review" else "all"
+    correct = await database.get_review_word(user_id) if focus == "review" else None
+    review_empty = focus == "review" and not correct
+    if not correct:
+        correct = await database.get_practice_word(user_id)
     if not correct:
         return web.json_response({"error": "Нет слов"}, status=500)
 
@@ -1004,6 +1059,8 @@ async def api_choice_next(request: web.Request):
         "word":    correct["word"],
         "word_id": correct["id"],
         "options": options,
+        "focus": focus,
+        "review_empty": review_empty,
     })
 
 
@@ -1037,12 +1094,19 @@ async def api_choice_answer(request: web.Request):
 
 async def api_input_next(request: web.Request):
     user_id = request["tg_user"]["id"]
-    word = await database.get_practice_word(user_id)
+    body = await _safe_json(request)
+    focus = "review" if body.get("focus") == "review" else "all"
+    word = await database.get_review_word(user_id) if focus == "review" else None
+    review_empty = focus == "review" and not word
+    if not word:
+        word = await database.get_practice_word(user_id)
     if not word:
         return web.json_response({"error": "Нет слов"}, status=500)
     return web.json_response({
         "word_id":     word["id"],
         "translation": word["translation"],
+        "focus": focus,
+        "review_empty": review_empty,
     })
 
 
@@ -1395,6 +1459,7 @@ def create_app(
     app.router.add_get("/api/daily/status",             api_daily_status)
     app.router.add_post("/api/daily/progress",          api_daily_progress)
     app.router.add_post("/api/register",               api_register)
+    app.router.add_get("/api/dictionary",              api_dictionary)
     app.router.add_post("/api/learn/next",             api_learn_next)
     app.router.add_post("/api/vocab/start",            api_vocab_start)
     app.router.add_post("/api/vocab/quiz",             api_vocab_quiz)
