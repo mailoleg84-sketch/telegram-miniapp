@@ -1,7 +1,7 @@
 import unittest
 
 from webapp.openai_service import _runtime_instructions, _safety_guard_reply, openai_config_status
-from webapp.server import _dictionary_word_dict, _level_from_score, _level_label
+from webapp.server import _activity_event_dict, _dictionary_word_dict, _level_from_score, _level_label
 
 
 class OpenAISafetyTests(unittest.TestCase):
@@ -71,6 +71,26 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertEqual(payload["status"], "review")
         self.assertEqual(payload["status_label"], "повторить")
         self.assertEqual(payload["wrong_count"], 2)
+
+    def test_activity_event_formats_word_test(self):
+        row = {
+            "event_type": "word_test",
+            "event_at": "2026-06-01T10:00:00",
+            "event_date": "2026-06-01",
+            "completed": True,
+            "completed_steps": None,
+            "score": 75,
+            "correct_count": 3,
+            "wrong_count": 1,
+            "word_count": 4,
+            "rewarded": False,
+        }
+
+        payload = _activity_event_dict(row)
+
+        self.assertEqual(payload["title"], "Тест по словам")
+        self.assertEqual(payload["description"], "3 правильно из 4")
+        self.assertEqual(payload["points_delta"], 27)
 
 
 if __name__ == "__main__":

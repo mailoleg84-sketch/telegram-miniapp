@@ -241,6 +241,52 @@ input[type="text"]:focus { border-color: var(--button); }
   color: #fff;
 }
 
+.activity-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.activity-card {
+  margin-bottom: 0;
+}
+.activity-card.open {
+  box-shadow: inset 0 0 0 1.5px rgba(255, 149, 0, 0.35);
+}
+.activity-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.activity-head b,
+.activity-head span {
+  display: block;
+}
+.activity-head span {
+  margin-top: 3px;
+  color: var(--hint);
+  font-size: 13px;
+}
+.activity-head strong {
+  flex: 0 0 auto;
+  color: var(--button);
+  font-size: 22px;
+}
+.activity-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.activity-meta span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--hint);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .daily-badge {
   display: inline-flex;
   align-items: center;

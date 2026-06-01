@@ -209,6 +209,50 @@ def _daily_lesson_payload(status, reward_points: int = 0, points: int | None = N
     }
 
 
+def _date_text(value) -> str:
+    if not value:
+        return ""
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def _activity_event_dict(row) -> dict:
+    event_type = row["event_type"]
+    completed = bool(row["completed"])
+    if event_type == "daily_lesson":
+        steps = int(row["completed_steps"] or 0)
+        title = "Ежедневный урок"
+        description = "Урок завершен" if completed else f"Пройдено шагов: {steps}/{DAILY_LESSON_STEPS}"
+        points_delta = DAILY_LESSON_REWARD_POINTS if row["rewarded"] else 0
+    else:
+        correct_count = int(row["correct_count"] or 0)
+        wrong_count = int(row["wrong_count"] or 0)
+        word_count = int(row["word_count"] or 0)
+        title = "Тест по словам"
+        description = (
+            f"{correct_count} правильно из {correct_count + wrong_count}"
+            if completed else f"Начат набор: {word_count} слов"
+        )
+        points_delta = correct_count * POINTS_CORRECT + wrong_count * POINTS_WRONG if completed else 0
+
+    return {
+        "type": event_type,
+        "date": row["event_date"] or "",
+        "event_at": _date_text(row["event_at"]),
+        "title": title,
+        "description": description,
+        "completed": completed,
+        "completed_steps": int(row["completed_steps"] or 0),
+        "total_steps": DAILY_LESSON_STEPS if event_type == "daily_lesson" else None,
+        "score": row["score"],
+        "correct_count": row["correct_count"],
+        "wrong_count": row["wrong_count"],
+        "word_count": row["word_count"],
+        "points_delta": points_delta,
+    }
+
+
 def _age_label(age_group: str) -> str:
     return next((label for label, value in AGE_GROUPS if value == age_group), age_group)
 
@@ -861,6 +905,24 @@ async def api_results_reset(request: web.Request):
     })
 
 
+async def api_activity_history(request: web.Request):
+    user_id = request["tg_user"]["id"]
+    try:
+        limit = int(request.query.get("limit") or 30)
+    except (TypeError, ValueError):
+        limit = 30
+    limit = max(5, min(limit, 80))
+    rows = await database.get_activity_history(user_id, limit=limit)
+    events = [_activity_event_dict(row) for row in rows]
+    return web.json_response({
+        "events": events,
+        "summary": {
+            "total_events": len(events),
+            "completed_events": sum(1 for event in events if event["completed"]),
+        },
+    })
+
+
 # ---------- API: ежедневный урок ----------
 
 async def api_daily_status(request: web.Request):
@@ -1454,6 +1516,7 @@ def create_app(
     app.router.add_get("/api/leaderboard",              api_leaderboard)
     app.router.add_get("/api/parent/report",            api_parent_report)
     app.router.add_post("/api/results/reset",           api_results_reset)
+    app.router.add_get("/api/activity/history",         api_activity_history)
     app.router.add_get("/api/level/test",               api_level_test)
     app.router.add_post("/api/level/submit",            api_level_submit)
     app.router.add_get("/api/daily/status",             api_daily_status)

@@ -332,6 +332,7 @@ function renderMenu() {
       <button class="btn" id="training">Тренировка слов</button>
       <button class="btn" id="dictionary">Словарь и повторение</button>
       <button class="btn" id="chat">Поговорить с репетитором</button>
+      <button class="btn btn-secondary" id="history">История занятий</button>
       <button class="btn btn-secondary" id="report">Отчет для родителя</button>
       <button class="btn btn-secondary" id="leaderboard">Рейтинг</button>
       <button class="btn btn-secondary" id="profile">Профиль</button>
@@ -343,6 +344,7 @@ function renderMenu() {
   document.getElementById("training").onclick = () => { haptic(); renderTrainingMenu(); };
   document.getElementById("dictionary").onclick = () => { haptic(); renderDictionary(); };
   document.getElementById("chat").onclick = () => { haptic(); renderChat(); };
+  document.getElementById("history").onclick = () => { haptic(); renderActivityHistory(); };
   document.getElementById("report").onclick = () => { haptic(); renderParentReport(); };
   document.getElementById("leaderboard").onclick = () => { haptic(); renderLeaderboard(); };
   document.getElementById("profile").onclick = () => { haptic(); renderProfile(); };
@@ -2127,9 +2129,73 @@ async function renderParentReport() {
           <div class="stat-row"><span>Правильных ответов</span><b>${r.total_correct}</b></div>
           <div class="stat-row"><span>Ошибок</span><b>${r.total_wrong}</b></div>
         </div>
+        <button class="btn" id="reportHistory">История занятий</button>
         <button class="btn btn-secondary" id="reportHome">В меню</button>
       </div>`;
+    document.getElementById("reportHistory").onclick = () => { haptic(); renderActivityHistory(); };
     document.getElementById("reportHome").onclick = () => { haptic(); renderMenu(); };
+  } catch (e) {
+    renderError(e.message);
+  }
+}
+
+function formatEventDate(value) {
+  if (!value) return "";
+  try {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString("ru-RU", { day: "2-digit", month: "short" });
+  } catch (_) {
+    return value;
+  }
+}
+
+async function renderActivityHistory() {
+  setBack(renderMenu);
+  loading();
+  try {
+    const data = await api("/api/activity/history", "GET");
+    const events = data.events || [];
+    app.innerHTML = `
+      <div class="screen">
+        <h1>История занятий</h1>
+        <div class="card">
+          <div class="stat-row"><span>Записей</span><b>${data.summary?.total_events || 0}</b></div>
+          <div class="stat-row"><span>Завершено</span><b>${data.summary?.completed_events || 0}</b></div>
+        </div>
+        ${events.length ? `
+          <div class="activity-list">
+            ${events.map(event => `
+              <div class="card activity-card ${event.completed ? "done" : "open"}">
+                <div class="activity-head">
+                  <div>
+                    <b>${esc(event.title)}</b>
+                    <span>${esc(formatEventDate(event.event_at || event.date))}</span>
+                  </div>
+                  ${event.score === null || event.score === undefined ? "" : `<strong>${event.score}%</strong>`}
+                </div>
+                <p class="hint mt-8">${esc(event.description)}</p>
+                <div class="activity-meta">
+                  ${event.word_count ? `<span>${event.word_count} слов</span>` : ""}
+                  ${event.points_delta ? `<span>${event.points_delta > 0 ? "+" : ""}${event.points_delta} 💎</span>` : ""}
+                  ${event.completed_steps && event.total_steps ? `<span>${event.completed_steps}/${event.total_steps} шагов</span>` : ""}
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        ` : `
+          <div class="card center">
+            <b>История пока пустая</b>
+            <p class="hint">Пройди ежедневный урок или тест по словам, и здесь появятся первые записи.</p>
+          </div>
+        `}
+        <button class="btn" id="historyDaily">Начать урок</button>
+        <button class="btn btn-secondary" id="historyVocab">Новые слова + тест</button>
+        <button class="btn btn-secondary" id="historyHome">В меню</button>
+      </div>`;
+    document.getElementById("historyDaily").onclick = () => { haptic(); renderDailyLesson(); };
+    document.getElementById("historyVocab").onclick = () => { haptic(); renderVocabStart(); };
+    document.getElementById("historyHome").onclick = () => { haptic(); renderMenu(); };
   } catch (e) {
     renderError(e.message);
   }

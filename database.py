@@ -590,6 +590,52 @@ async def get_parent_report(user_id: int):
     """, user_id)
 
 
+async def get_activity_history(user_id: int, limit: int = 30):
+    pool = await _get_pool()
+    return await pool.fetch("""
+        SELECT *
+        FROM (
+            SELECT
+                'daily_lesson'::TEXT AS event_type,
+                COALESCE(completed_at, updated_at, created_at) AS event_at,
+                lesson_date::TEXT AS event_date,
+                completed,
+                completed_steps::INT AS completed_steps,
+                NULL::INT AS score,
+                NULL::INT AS correct_count,
+                NULL::INT AS wrong_count,
+                NULL::INT AS word_count,
+                rewarded_at IS NOT NULL AS rewarded
+            FROM daily_lessons
+            WHERE user_id = $1
+              AND (completed = TRUE OR completed_steps > 0)
+
+            UNION ALL
+
+            SELECT
+                'word_test'::TEXT AS event_type,
+                COALESCE(completed_at, created_at) AS event_at,
+                created_at::DATE::TEXT AS event_date,
+                completed,
+                NULL::INT AS completed_steps,
+                CASE
+                    WHEN (correct_count + wrong_count) > 0
+                    THEN ROUND(correct_count::NUMERIC / (correct_count + wrong_count) * 100)::INT
+                    ELSE NULL::INT
+                END AS score,
+                correct_count::INT,
+                wrong_count::INT,
+                CARDINALITY(word_ids)::INT AS word_count,
+                FALSE AS rewarded
+            FROM vocabulary_sessions
+            WHERE user_id = $1
+              AND (completed = TRUE OR CARDINALITY(word_ids) > 0)
+        ) events
+        ORDER BY event_at DESC
+        LIMIT $2
+    """, user_id, limit)
+
+
 async def get_leaderboard(limit: int = 10):
     pool = await _get_pool()
     return await pool.fetch("""
