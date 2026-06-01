@@ -158,11 +158,14 @@ class OpenAISafetyTests(unittest.TestCase):
 
     def test_initial_word_bank_has_5000_unique_age_balanced_items(self):
         by_age = {}
-        for word, _translation, _example, _topic, age_group in INITIAL_WORDS:
+        for word, _translation, _example, _topic, age_group, transcription in INITIAL_WORDS:
             by_age[age_group] = by_age.get(age_group, 0) + 1
+            self.assertTrue(transcription.startswith("/"), word)
+            self.assertTrue(transcription.endswith("/"), word)
 
         self.assertEqual(len(INITIAL_WORDS), 5000)
         self.assertEqual(len({item[0] for item in INITIAL_WORDS}), 5000)
+        self.assertEqual(len({item[5] for item in INITIAL_WORDS}), 5000)
         self.assertEqual(by_age, {"5_7": 1250, "8_10": 1250, "11_13": 1250, "14_18": 1250})
 
 

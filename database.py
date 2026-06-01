@@ -85,11 +85,13 @@ async def init_db() -> None:
                 id           SERIAL PRIMARY KEY,
                 word         TEXT NOT NULL UNIQUE,
                 translation  TEXT NOT NULL,
+                transcription TEXT,
                 example      TEXT,
                 topic        TEXT DEFAULT 'basic',
                 age_group    TEXT DEFAULT '8_10'
             )
         """)
+        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS transcription TEXT")
         await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS topic TEXT DEFAULT 'basic'")
         await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS age_group TEXT DEFAULT '8_10'")
         await conn.execute("""
@@ -182,11 +184,12 @@ async def init_db() -> None:
 async def _seed_words(conn) -> None:
     await conn.executemany(
         """
-        INSERT INTO words (word, translation, example, topic, age_group)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO words (word, translation, example, topic, age_group, transcription)
+        VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT (word)
         DO UPDATE SET
             translation = EXCLUDED.translation,
+            transcription = EXCLUDED.transcription,
             example = EXCLUDED.example,
             topic = EXCLUDED.topic,
             age_group = EXCLUDED.age_group
@@ -433,6 +436,7 @@ async def get_user_dictionary(user_id: int, filter_mode: str = "all", limit: int
             w.id,
             w.word,
             w.translation,
+            w.transcription,
             w.example,
             w.topic,
             w.age_group,
@@ -489,6 +493,7 @@ async def get_problem_words(user_id: int, limit: int = 6):
             w.id,
             w.word,
             w.translation,
+            w.transcription,
             w.example,
             w.topic,
             w.age_group,

@@ -12,6 +12,9 @@
 from __future__ import annotations
 
 from collections import Counter
+import re
+
+import pronouncing
 
 
 TARGET_WORD_COUNT = 5000
@@ -23,7 +26,67 @@ TARGET_PER_AGE_GROUP = {
 }
 
 
-CORE_WORDS = [
+Entry5 = tuple[str, str, str, str, str]
+Entry6 = tuple[str, str, str, str, str, str]
+
+
+ARPABET_TO_IPA = {
+    "AA": "ɑ", "AE": "æ", "AH": "ə", "AO": "ɔ", "AW": "aʊ", "AY": "aɪ",
+    "B": "b", "CH": "tʃ", "D": "d", "DH": "ð", "EH": "ɛ", "ER": "ɝ",
+    "EY": "eɪ", "F": "f", "G": "ɡ", "HH": "h", "IH": "ɪ", "IY": "i",
+    "JH": "dʒ", "K": "k", "L": "l", "M": "m", "N": "n", "NG": "ŋ",
+    "OW": "oʊ", "OY": "ɔɪ", "P": "p", "R": "ɹ", "S": "s", "SH": "ʃ",
+    "T": "t", "TH": "θ", "UH": "ʊ", "UW": "u", "V": "v", "W": "w",
+    "Y": "j", "Z": "z", "ZH": "ʒ",
+}
+
+PHONETIC_OVERRIDES = {
+    "mom": "mɑm",
+    "dad": "dæd",
+    "grandma": "ˈɡrænˌmɑ",
+    "grandpa": "ˈɡrænˌpɑ",
+}
+
+_IPA_CACHE: dict[str, str] = {}
+
+
+def _arpabet_to_ipa(phones: str) -> str:
+    raw_phones = phones.split()
+    parts = []
+    for raw_phone in raw_phones:
+        phone = raw_phone
+        if raw_phone[-1:] in {"0", "1", "2"}:
+            phone = raw_phone[:-1]
+        if phone == "AH" and raw_phone[-1:] in {"1", "2"}:
+            ipa = "ʌ"
+        elif phone == "ER" and raw_phone[-1:] == "0":
+            ipa = "ɚ"
+        else:
+            ipa = ARPABET_TO_IPA.get(phone, phone.lower())
+        parts.append(ipa)
+    return "".join(parts)
+
+
+def _ipa_token(token: str) -> str:
+    token = token.lower()
+    if token in _IPA_CACHE:
+        return _IPA_CACHE[token]
+    if token in PHONETIC_OVERRIDES:
+        _IPA_CACHE[token] = PHONETIC_OVERRIDES[token]
+        return _IPA_CACHE[token]
+    phones = pronouncing.phones_for_word(token)
+    _IPA_CACHE[token] = _arpabet_to_ipa(phones[0]) if phones else token
+    return _IPA_CACHE[token]
+
+
+def _transcription(text: str) -> str:
+    tokens = re.findall(r"[a-z]+", text.lower())
+    if not tokens:
+        return ""
+    return "/" + " ".join(_ipa_token(token) for token in tokens) + "/"
+
+
+CORE_WORDS: list[Entry5] = [
     # 5-7
     ("cat", "кошка", "The cat is cute.", "animals", "5_7"),
     ("dog", "собака", "The dog is happy.", "animals", "5_7"),
@@ -275,7 +338,7 @@ VERBS = [
 ]
 
 
-def _add(entries: list[tuple[str, str, str, str, str]], seen: set[str], item: tuple[str, str, str, str, str]) -> bool:
+def _add(entries: list[Entry5], seen: set[str], item: Entry5) -> bool:
     word = item[0].strip().lower()
     if not word or word in seen:
         return False
@@ -284,11 +347,11 @@ def _add(entries: list[tuple[str, str, str, str, str]], seen: set[str], item: tu
     return True
 
 
-def _age_count(entries: list[tuple[str, str, str, str, str]], age_group: str) -> int:
+def _age_count(entries: list[Entry5], age_group: str) -> int:
     return sum(1 for item in entries if item[4] == age_group)
 
 
-def _add_base_words(entries: list[tuple[str, str, str, str, str]], seen: set[str]) -> None:
+def _add_base_words(entries: list[Entry5], seen: set[str]) -> None:
     for word, translation, example, topic, age_group in CORE_WORDS:
         _add(entries, seen, (word, translation, example, topic, age_group))
 
@@ -300,7 +363,7 @@ def _add_base_words(entries: list[tuple[str, str, str, str, str]], seen: set[str
         _add(entries, seen, (word, translation, f"I can {word}.", topic, age_group))
 
 
-def _fill_age_group(entries: list[tuple[str, str, str, str, str]], seen: set[str], age_group: str) -> None:
+def _fill_age_group(entries: list[Entry5], seen: set[str], age_group: str) -> None:
     target = TARGET_PER_AGE_GROUP[age_group]
     nouns = [item for item in NOUNS if item[3] == age_group]
     adjectives = [item for item in ADJECTIVES if item[3] == age_group]
@@ -362,8 +425,8 @@ def _fill_age_group(entries: list[tuple[str, str, str, str, str]], seen: set[str
         raise RuntimeError(f"Not enough generated words for {age_group}")
 
 
-def _build_initial_words() -> list[tuple[str, str, str, str, str]]:
-    entries: list[tuple[str, str, str, str, str]] = []
+def _build_base_words() -> list[Entry5]:
+    entries: list[Entry5] = []
     seen: set[str] = set()
     _add_base_words(entries, seen)
     for age_group in TARGET_PER_AGE_GROUP:
@@ -380,4 +443,11 @@ def _build_initial_words() -> list[tuple[str, str, str, str, str]]:
     return entries
 
 
-INITIAL_WORDS = _build_initial_words()
+def _with_transcriptions(entries: list[Entry5]) -> list[Entry6]:
+    return [
+        (word, translation, example, topic, age_group, _transcription(word))
+        for word, translation, example, topic, age_group in entries
+    ]
+
+
+INITIAL_WORDS = _with_transcriptions(_build_base_words())

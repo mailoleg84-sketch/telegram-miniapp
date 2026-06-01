@@ -86,6 +86,57 @@ async function apiBlob(path, body, timeoutMs = 0) {
   }
 }
 
+let wordAudio = null;
+let wordAudioUrl = "";
+
+function stopWordAudio() {
+  if (wordAudio) {
+    wordAudio.pause();
+    wordAudio = null;
+  }
+  if (wordAudioUrl) {
+    URL.revokeObjectURL(wordAudioUrl);
+    wordAudioUrl = "";
+  }
+}
+
+async function playWordAudio(text, button = null) {
+  const word = String(text || "").trim();
+  if (!word) return;
+  stopWordAudio();
+  const oldText = button?.textContent;
+  if (button) {
+    button.disabled = true;
+    button.textContent = "…";
+  }
+  try {
+    const audioBlob = await apiBlob("/api/audio/speech", { text: word, mode: "word" }, 60000);
+    wordAudioUrl = URL.createObjectURL(audioBlob);
+    wordAudio = new Audio(wordAudioUrl);
+    wordAudio.onended = stopWordAudio;
+    wordAudio.onerror = stopWordAudio;
+    await wordAudio.play();
+  } catch (e) {
+    tg.showAlert(e.message || "Не удалось озвучить слово");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = oldText || "🔊";
+    }
+  }
+}
+
+function bindPronunciationButtons(root = document) {
+  root.querySelectorAll(".pronounce-btn").forEach(button => {
+    button.onclick = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      haptic();
+      playWordAudio(button.dataset.word, button);
+    };
+  });
+}
+
 async function apiSdp(path, sdp) {
   const res = await fetch(path, {
     method: "POST",
@@ -530,6 +581,10 @@ async function renderVocabStart() {
           <div class="card word-card">
             <div class="daily-badge">Слово ${index + 1}</div>
             <div class="big mt-12">${esc(w.word)}</div>
+            <div class="word-pronunciation">
+              <span>${esc(w.transcription || "")}</span>
+              <button type="button" class="pronounce-btn" data-word="${esc(w.word)}">🔊</button>
+            </div>
             <div class="big-sub">${esc(w.translation)}</div>
             <p class="hint mt-12">${esc(w.example)}</p>
           </div>
@@ -537,6 +592,7 @@ async function renderVocabStart() {
         <button class="btn" id="startQuiz">Начать тест</button>
       </div>`;
     document.getElementById("startQuiz").onclick = () => { haptic(); renderVocabQuiz(); };
+    bindPronunciationButtons();
   } catch (e) {
     renderError(e.message);
   }
@@ -564,6 +620,10 @@ function renderQuizQuestion(index) {
       <div class="card center">
         <div class="daily-badge">${progress}</div>
         <div class="big mt-12">${esc(q.word)}</div>
+        <div class="word-pronunciation">
+          <span>${esc(q.transcription || "")}</span>
+          <button type="button" class="pronounce-btn" data-word="${esc(q.word)}">🔊</button>
+        </div>
         <p class="hint mt-12">${esc(q.prompt)}</p>
       </div>
       ${q.options.map(o => `
@@ -582,6 +642,7 @@ function renderQuizQuestion(index) {
       setTimeout(() => renderQuizQuestion(index + 1), 650);
     };
   });
+  bindPronunciationButtons();
 }
 
 async function finishVocabQuiz() {
@@ -604,7 +665,12 @@ async function finishVocabQuiz() {
         ${mistakes.length ? `
           <div class="card">
             <h2>Повторить</h2>
-            ${mistakes.map(m => `<div class="stat-row"><span>${esc(m.word)}</span><b>${esc(m.translation)}</b></div>`).join("")}
+            ${mistakes.map(m => `
+              <div class="stat-row">
+                <span>${esc(m.word)}${m.transcription ? `<small class="transcription">${esc(m.transcription)}</small>` : ""}</span>
+                <b>${esc(m.translation)} <button type="button" class="pronounce-btn small" data-word="${esc(m.word)}">🔊</button></b>
+              </div>
+            `).join("")}
           </div>
         ` : `<div class="card center"><b>Отлично!</b><p class="hint">Все слова запомнились.</p></div>`}
         <button class="btn" id="again">Еще набор слов</button>
@@ -612,6 +678,7 @@ async function finishVocabQuiz() {
       </div>`;
     document.getElementById("again").onclick = () => { haptic(); renderVocabStart(); };
     document.getElementById("home").onclick = () => { haptic(); renderMenu(); };
+    bindPronunciationButtons();
   } catch (e) {
     renderError(e.message);
   }
@@ -713,7 +780,12 @@ async function finishWordHunt() {
         ${mistakes.length ? `
           <div class="card">
             <h2>Потренировать еще</h2>
-            ${mistakes.map(item => `<div class="stat-row"><span>${esc(item.translation)}</span><b>${esc(item.word)}</b></div>`).join("")}
+            ${mistakes.map(item => `
+              <div class="stat-row">
+                <span>${esc(item.translation)}${item.transcription ? `<small class="transcription">${esc(item.transcription)}</small>` : ""}</span>
+                <b>${esc(item.word)} <button type="button" class="pronounce-btn small" data-word="${esc(item.word)}">🔊</button></b>
+              </div>
+            `).join("")}
           </div>
         ` : `<div class="card center"><b>Отличная охота!</b><p class="hint">Все слова пойманы правильно.</p></div>`}
         <button class="btn" id="gameAgain">Играть еще</button>
@@ -723,6 +795,7 @@ async function finishWordHunt() {
     document.getElementById("gameAgain").onclick = () => { haptic(); startWordHunt(); };
     document.getElementById("gameReview").onclick = () => { haptic(); renderTrainingMenu(mistakes.length ? "review" : "all"); };
     document.getElementById("gameHome").onclick = () => { haptic(); renderMenu(); };
+    bindPronunciationButtons();
   } catch (e) {
     renderError(e.message);
   }
@@ -758,10 +831,12 @@ async function renderDictionary(filter = state.dictionaryFilter || "all") {
               <div class="dictionary-row ${word.status}">
                 <div class="dictionary-main">
                   <b>${esc(word.word)}</b>
+                  ${word.transcription ? `<small class="transcription">${esc(word.transcription)}</small>` : ""}
                   <span>${esc(word.translation)}</span>
                   ${word.example ? `<small>${esc(word.example)}</small>` : ""}
                 </div>
                 <div class="dictionary-side">
+                  <button type="button" class="pronounce-btn small" data-word="${esc(word.word)}">🔊</button>
                   <span class="word-status ${word.status}">${esc(word.status_label)}</span>
                   <small>${word.correct_count || 0}✓ · ${word.wrong_count || 0}×</small>
                 </div>
@@ -784,6 +859,7 @@ async function renderDictionary(filter = state.dictionaryFilter || "all") {
     document.getElementById("reviewWords").onclick = () => { haptic(); renderTrainingMenu("review"); };
     document.getElementById("allTraining").onclick = () => { haptic(); renderTrainingMenu("all"); };
     document.getElementById("dictionaryNewWords").onclick = () => { haptic(); renderVocabStart(); };
+    bindPronunciationButtons();
   } catch (e) {
     renderError(e.message);
   }
@@ -822,6 +898,10 @@ async function renderChoiceTraining(focus = "all") {
         ${task.review_empty ? `<div class="card"><p class="hint">Ошибок для повторения пока нет, поэтому даю обычное слово.</p></div>` : ""}
         <div class="card center">
           <div class="big">${esc(task.word)}</div>
+          <div class="word-pronunciation">
+            <span>${esc(task.transcription || "")}</span>
+            <button type="button" class="pronounce-btn" data-word="${esc(task.word)}">🔊</button>
+          </div>
           <p class="hint mt-12">Как переводится это слово?</p>
         </div>
         ${task.options.map(option => `
@@ -844,6 +924,8 @@ async function renderChoiceTraining(focus = "all") {
             correct: result.correct,
             title: result.correct ? "Верно!" : "Почти",
             text: `${result.word} — ${result.translation}`,
+            pronounceWord: result.word,
+            transcription: result.transcription,
             delta: result.delta,
             points: result.points,
             next: () => renderChoiceTraining(focus),
@@ -854,6 +936,7 @@ async function renderChoiceTraining(focus = "all") {
         }
       };
     });
+    bindPronunciationButtons();
   } catch (e) {
     renderError(e.message);
   }
@@ -891,6 +974,8 @@ async function renderInputTraining(focus = "all") {
           correct: result.correct,
           title: result.correct ? "Верно!" : "Запомни правильный вариант",
           text: `${result.translation} — ${result.word}`,
+          pronounceWord: result.word,
+          transcription: result.transcription,
           delta: result.delta,
           points: result.points,
           next: () => renderInputTraining(focus),
@@ -908,7 +993,7 @@ async function renderInputTraining(focus = "all") {
   }
 }
 
-function renderTrainingResult({ correct, title, text, delta, points, next, focus = "all" }) {
+function renderTrainingResult({ correct, title, text, pronounceWord = "", transcription = "", delta, points, next, focus = "all" }) {
   setBack(() => renderTrainingMenu(focus));
   const reviewMode = focus === "review";
   haptic(correct ? "success" : "error");
@@ -917,6 +1002,12 @@ function renderTrainingResult({ correct, title, text, delta, points, next, focus
       <div class="result-card ${correct ? "correct" : "wrong"}">
         <h1>${esc(title)}</h1>
         <p>${esc(text)}</p>
+        ${pronounceWord ? `
+          <div class="word-pronunciation result">
+            <span>${esc(transcription || "")}</span>
+            <button type="button" class="pronounce-btn" data-word="${esc(pronounceWord)}">🔊</button>
+          </div>
+        ` : ""}
         <p><b>${delta >= 0 ? "+" : ""}${delta} 💎</b> · всего: ${points}</p>
       </div>
       <button class="btn" id="trainingNext">${reviewMode ? "Еще на повторение" : "Еще слово"}</button>
@@ -928,6 +1019,7 @@ function renderTrainingResult({ correct, title, text, delta, points, next, focus
   document.getElementById("trainingModes").onclick = () => { haptic(); renderTrainingMenu(focus); };
   document.getElementById("trainingDictionary").onclick = () => { haptic(); renderDictionary(reviewMode ? "review" : "all"); };
   document.getElementById("trainingMenu").onclick = () => { haptic(); renderMenu(); };
+  bindPronunciationButtons();
 }
 
 async function updateDailyProgress(completedSteps) {
@@ -985,6 +1077,10 @@ async function renderDailyWords() {
           <div class="card word-card">
             <div class="daily-badge">Слово ${index + 1}</div>
             <div class="big mt-12">${esc(w.word)}</div>
+            <div class="word-pronunciation">
+              <span>${esc(w.transcription || "")}</span>
+              <button type="button" class="pronounce-btn" data-word="${esc(w.word)}">🔊</button>
+            </div>
             <div class="big-sub">${esc(w.translation)}</div>
             <p class="hint mt-12">${esc(w.example)}</p>
           </div>
@@ -1001,6 +1097,7 @@ async function renderDailyWords() {
         renderError(e.message);
       }
     };
+    bindPronunciationButtons();
   } catch (e) {
     renderError(e.message);
   }
@@ -1028,6 +1125,10 @@ function renderDailyQuizQuestion(index) {
       <div class="card center">
         <div class="daily-badge">Шаг 2 из 4 · ${index + 1}/${state.dailyQuiz.questions.length}</div>
         <div class="big mt-12">${esc(q.word)}</div>
+        <div class="word-pronunciation">
+          <span>${esc(q.transcription || "")}</span>
+          <button type="button" class="pronounce-btn" data-word="${esc(q.word)}">🔊</button>
+        </div>
         <p class="hint mt-12">Выбери перевод</p>
       </div>
       ${q.options.map(o => `
@@ -1046,6 +1147,7 @@ function renderDailyQuizQuestion(index) {
       setTimeout(() => renderDailyQuizQuestion(index + 1), 650);
     };
   });
+  bindPronunciationButtons();
 }
 
 async function finishDailyQuiz() {

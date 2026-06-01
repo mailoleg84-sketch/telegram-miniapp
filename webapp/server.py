@@ -103,10 +103,15 @@ async def auth_middleware(request: web.Request, handler):
 def _word_dict(word) -> dict:
     if not word:
         return {}
+    try:
+        transcription = word["transcription"] or ""
+    except (KeyError, IndexError, TypeError):
+        transcription = ""
     return {
         "id": word["id"],
         "word": word["word"],
         "translation": word["translation"],
+        "transcription": transcription,
         "example": word["example"] or "",
         "topic": word["topic"] or "basic",
         "age_group": word["age_group"] or "",
@@ -144,6 +149,7 @@ def _problem_word_dict(word) -> dict:
         "id": word["id"],
         "word": word["word"],
         "translation": word["translation"],
+        "transcription": _word_dict(word).get("transcription", ""),
         "example": word["example"] or "",
         "correct_count": int(word["correct_count"] or 0),
         "wrong_count": int(word["wrong_count"] or 0),
@@ -562,6 +568,7 @@ async def _build_vocab_question(word, age_group: str) -> dict:
         "word_id": word["id"],
         "word": word["word"],
         "translation": word["translation"],
+        "transcription": word["transcription"] or "",
         "example": word["example"] or "",
         "type": "picture" if age_group == "5_7" else "translation",
         "prompt": "Выбери перевод",
@@ -577,6 +584,7 @@ async def _build_word_hunt_round(word, age_group: str) -> dict:
     return {
         "word_id": word["id"],
         "translation": word["translation"],
+        "transcription": word["transcription"] or "",
         "example": word["example"] or "",
         "prompt": f"Поймай английское слово для: {word['translation']}",
         "options": options,
@@ -1307,6 +1315,7 @@ async def api_vocab_finish(request: web.Request):
             "word_id": word_id,
             "word": word["word"],
             "translation": word["translation"],
+            "transcription": word["transcription"] or "",
             "correct": correct,
         })
 
@@ -1395,6 +1404,7 @@ async def api_word_hunt_finish(request: web.Request):
             "word_id": word_id,
             "word": word["word"],
             "translation": word["translation"],
+            "transcription": word["transcription"] or "",
             "selected_id": selected_id,
             "correct": correct,
         })
@@ -1436,6 +1446,7 @@ async def api_choice_next(request: web.Request):
     return web.json_response({
         "word":    correct["word"],
         "word_id": correct["id"],
+        "transcription": correct["transcription"] or "",
         "options": options,
         "focus": focus,
         "review_empty": review_empty,
@@ -1465,6 +1476,7 @@ async def api_choice_answer(request: web.Request):
         "correct":     correct,
         "word":        word["word"],
         "translation": word["translation"],
+        "transcription": word["transcription"] or "",
         "delta":       delta,
         "points":      user["points"],
     })
@@ -1483,6 +1495,7 @@ async def api_input_next(request: web.Request):
     return web.json_response({
         "word_id":     word["id"],
         "translation": word["translation"],
+        "transcription": word["transcription"] or "",
         "focus": focus,
         "review_empty": review_empty,
     })
@@ -1512,6 +1525,7 @@ async def api_input_answer(request: web.Request):
         "correct":     correct,
         "word":        word["word"],
         "translation": word["translation"],
+        "transcription": word["transcription"] or "",
         "delta":       delta,
         "points":      user["points"],
     })
@@ -1601,7 +1615,7 @@ async def api_audio_transcribe(request: web.Request):
 async def api_audio_speech(request: web.Request):
     body = await _safe_json(request)
     text = (body.get("text") or "").strip()
-    mode = "voice" if body.get("mode") == "voice" else "chat"
+    mode = body.get("mode") if body.get("mode") in {"voice", "word"} else "chat"
     if not text:
         return web.json_response({"error": "Нет текста для озвучки"}, status=400)
     if len(text) > 1200:

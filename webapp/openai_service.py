@@ -1068,12 +1068,18 @@ async def synthesize_speech(text: str, mode: str = "chat") -> bytes:
     clean_text = " ".join((text or "").split())
     if not clean_text:
         raise ValueError("Text is empty")
-    max_chars = 900 if mode == "voice" else 1100
+    max_chars = 160 if mode == "word" else 900 if mode == "voice" else 1100
     clean_text = _cut_at_sentence_boundary(clean_text, max_chars)
 
     has_russian = _has_cyrillic(clean_text)
     has_english = _has_latin(clean_text)
-    if has_russian and has_english:
+    if mode == "word":
+        instructions = (
+            "Pronounce only the given English word or short phrase for a child learning English. "
+            "Use clear natural English pronunciation, a warm friendly tone, and a slightly slower pace. "
+            "Do not add explanations, translations, or extra words."
+        )
+    elif has_russian and has_english:
         instructions = (
             "Sound like a warm, expressive real person tutoring a child, not an announcer and not a robot. "
             "The text mixes Russian and English. Speak Russian naturally and conversationally. "
@@ -1107,7 +1113,7 @@ async def synthesize_speech(text: str, mode: str = "chat") -> bytes:
             "voice": voice,
             "input": clean_text,
             "response_format": "mp3",
-            "speed": 0.97 if mode == "voice" else 1.0,
+            "speed": 0.92 if mode == "word" else 0.97 if mode == "voice" else 1.0,
         }
         if include_instructions:
             request["instructions"] = instructions
