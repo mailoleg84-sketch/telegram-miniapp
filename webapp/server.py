@@ -795,6 +795,104 @@ def _level_result_message(level: str) -> str:
     return messages.get(level, "Репетитор подстроит задания под этот уровень.")
 
 
+def _path_step(step_id: str, title: str, text: str, action: str, status: str) -> dict:
+    return {
+        "id": step_id,
+        "title": title,
+        "text": text,
+        "action": action,
+        "status": status,
+    }
+
+
+def _learning_path_payload(user, daily_status, stats, dictionary_summary, report) -> dict:
+    level_done = bool(_record_value(user, "level_test_completed_at"))
+    daily_steps = int(_record_value(daily_status, "completed_steps", 0) or 0)
+    daily_done = bool(_record_value(daily_status, "completed", False))
+    words_learned = int(_record_value(stats, "words_learned", 0) or 0)
+    review_words = int(_record_value(dictionary_summary, "review_words", 0) or 0)
+    completed_games = int(_record_value(report, "completed_games", 0) or 0)
+
+    if not level_done:
+        next_action = "level"
+        next_title = "Сначала узнаем уровень"
+        next_text = "Короткий тест поможет давать задания не слишком легкие и не слишком сложные."
+    elif not daily_done:
+        next_action = "daily"
+        next_title = f"Продолжить урок: шаг {min(daily_steps + 1, DAILY_LESSON_STEPS)} из {DAILY_LESSON_STEPS}"
+        next_text = "Сегодняшний маршрут: слова, мини-тест, фраза и награда."
+    elif words_learned == 0:
+        next_action = "vocab"
+        next_title = "Добавить первые слова"
+        next_text = "Небольшой набор слов даст основу для игр и разговора с репетитором."
+    elif review_words > 0:
+        next_action = "review"
+        next_title = f"Повторить {review_words} слов"
+        next_text = "Лучше закрепить ошибки короткой тренировкой, пока они свежие."
+    elif completed_games == 0:
+        next_action = "game"
+        next_title = "Закрепить слова в игре"
+        next_text = "Словесная охота повторит новые слова без ощущения контрольной."
+    else:
+        next_action = "chat"
+        next_title = "Поговорить с репетитором"
+        next_text = "Теперь можно применить слова в коротком живом диалоге."
+
+    steps = [
+        _path_step(
+            "level",
+            "Уровень",
+            _level_label(_level_for_user(user)),
+            "level",
+            "done" if level_done else "current",
+        ),
+        _path_step(
+            "daily",
+            "Урок дня",
+            f"{daily_steps}/{DAILY_LESSON_STEPS} шагов",
+            "daily",
+            "done" if daily_done else ("current" if level_done else "ready"),
+        ),
+        _path_step(
+            "vocab",
+            "Слова",
+            f"{words_learned} в словаре",
+            "vocab",
+            "done" if words_learned > 0 else ("current" if daily_done else "ready"),
+        ),
+        _path_step(
+            "review",
+            "Повторение",
+            f"{review_words} слов ждут",
+            "review",
+            "current" if review_words > 0 else ("done" if words_learned > 0 else "ready"),
+        ),
+        _path_step(
+            "game",
+            "Игра",
+            f"{completed_games} пройдено",
+            "game",
+            "done" if completed_games > 0 else ("current" if words_learned > 0 and review_words == 0 else "ready"),
+        ),
+        _path_step(
+            "chat",
+            "Разговор",
+            "короткая практика",
+            "chat",
+            "current" if next_action == "chat" else "ready",
+        ),
+    ]
+    done_count = sum(1 for step in steps if step["status"] == "done")
+    return {
+        "title": "Маршрут дня",
+        "next_action": next_action,
+        "next_title": next_title,
+        "next_text": next_text,
+        "progress_percent": round(done_count / len(steps) * 100),
+        "steps": steps,
+    }
+
+
 # ---------- API: профиль и регистрация ----------
 
 async def api_me(request: web.Request):
@@ -858,6 +956,18 @@ async def api_leaderboard(request: web.Request):
         })
 
     return web.json_response({"leaders": leaders})
+
+
+async def api_learning_path(request: web.Request):
+    user_id = request["tg_user"]["id"]
+    user = await _current_user_or_404(request)
+    daily_status = await database.get_daily_lesson_status(user_id)
+    stats = await database.get_user_stats(user_id)
+    dictionary_summary = await database.get_dictionary_summary(user_id)
+    report = await database.get_parent_report(user_id)
+    return web.json_response(
+        _learning_path_payload(user, daily_status, stats, dictionary_summary, report)
+    )
 
 
 async def api_register(request: web.Request):
@@ -1720,6 +1830,7 @@ def create_app(
     app.router.add_get("/",        index_handler)
     app.router.add_get("/api/me",  api_me)
     app.router.add_get("/api/leaderboard",              api_leaderboard)
+    app.router.add_get("/api/learning/path",            api_learning_path)
     app.router.add_get("/api/parent/report",            api_parent_report)
     app.router.add_post("/api/results/reset",           api_results_reset)
     app.router.add_get("/api/activity/history",         api_activity_history)

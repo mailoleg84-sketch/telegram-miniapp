@@ -22,6 +22,7 @@ const state = {
   quiz: null,
   answers: [],
   game: null,
+  learningPath: null,
   levelTest: null,
   dictionaryFilter: "all",
 };
@@ -156,6 +157,7 @@ function clearAccountLocalState() {
   state.quiz = null;
   state.answers = [];
   state.game = null;
+  state.learningPath = null;
   state.levelTest = null;
   state.dictionaryFilter = "all";
   try {
@@ -233,6 +235,76 @@ function ageToGroup(age) {
   if (age >= 11 && age <= 13) return "11_13";
   if (age >= 14 && age <= 18) return "14_18";
   return "";
+}
+
+function routeLearningAction(action) {
+  if (action === "level") return renderLevelTestIntro();
+  if (action === "daily") return renderDailyLesson();
+  if (action === "vocab") return renderVocabStart();
+  if (action === "game") return renderGamesMenu();
+  if (action === "review") return renderTrainingMenu("review");
+  if (action === "dictionary") return renderDictionary("review");
+  if (action === "chat") return renderChat();
+  return renderMenu();
+}
+
+function learningPathHtml(data) {
+  const steps = data.steps || [];
+  const action = data.next_action || "daily";
+  const statusIcon = status => {
+    if (status === "done") return "✓";
+    if (status === "current") return "●";
+    return "○";
+  };
+  return `
+    <div class="learning-path-head">
+      <div>
+        <div class="daily-badge">${esc(data.title || "Маршрут дня")}</div>
+        <h2>${esc(data.next_title || "Продолжить обучение")}</h2>
+      </div>
+      <strong>${data.progress_percent || 0}%</strong>
+    </div>
+    <p class="hint">${esc(data.next_text || "Выбери следующий шаг.")}</p>
+    <div class="path-progress"><span style="width:${Math.max(0, Math.min(100, Number(data.progress_percent) || 0))}%"></span></div>
+    <div class="path-steps">
+      ${steps.map(step => `
+        <button class="path-step ${esc(step.status)}" data-action="${esc(step.action)}">
+          <span>${statusIcon(step.status)}</span>
+          <b>${esc(step.title)}</b>
+          <small>${esc(step.text)}</small>
+        </button>
+      `).join("")}
+    </div>
+    <button class="btn mt-12" id="learningPathNext" data-action="${esc(action)}">Продолжить</button>`;
+}
+
+async function loadLearningPath() {
+  const box = document.getElementById("learningPath");
+  if (!box) return;
+  box.innerHTML = `<div class="hint">Подбираю следующий шаг...</div>`;
+  try {
+    const data = await api("/api/learning/path", "GET");
+    state.learningPath = data;
+    box.innerHTML = learningPathHtml(data);
+    box.querySelectorAll("[data-action]").forEach(button => {
+      button.onclick = () => {
+        haptic();
+        routeLearningAction(button.dataset.action);
+      };
+    });
+  } catch (_) {
+    box.innerHTML = `
+      <div class="learning-path-head">
+        <div>
+          <div class="daily-badge">Маршрут дня</div>
+          <h2>Начать короткий урок</h2>
+        </div>
+      </div>
+      <p class="hint">Не удалось обновить маршрут, но урок доступен.</p>
+      <button class="btn mt-12" id="learningPathFallback">Открыть урок</button>`;
+    const fallback = document.getElementById("learningPathFallback");
+    if (fallback) fallback.onclick = () => { haptic(); renderDailyLesson(); };
+  }
 }
 
 function renderRegistration() {
@@ -328,6 +400,10 @@ function renderMenu() {
         ${u.level_test_completed ? "" : `<p class="hint mt-12">Пройди короткий тест, чтобы репетитор точнее выбирал задания.</p>`}
       </div>
 
+      <div class="card learning-path" id="learningPath">
+        <div class="hint">Подбираю следующий шаг...</div>
+      </div>
+
       <button class="btn ${u.level_test_completed ? "btn-secondary" : ""}" id="levelTest">${u.level_test_completed ? "Обновить уровень" : "Пройти тест уровня"}</button>
       <button class="btn" id="vocab">Новые слова + тест</button>
       <button class="btn" id="daily">Ежедневный урок</button>
@@ -352,6 +428,7 @@ function renderMenu() {
   document.getElementById("report").onclick = () => { haptic(); renderParentReport(); };
   document.getElementById("leaderboard").onclick = () => { haptic(); renderLeaderboard(); };
   document.getElementById("profile").onclick = () => { haptic(); renderProfile(); };
+  loadLearningPath();
 }
 
 async function renderLevelTestIntro({ afterRegistration = false } = {}) {

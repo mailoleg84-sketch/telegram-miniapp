@@ -5,6 +5,7 @@ from webapp.openai_service import _runtime_instructions, _safety_guard_reply, op
 from webapp.server import (
     _activity_event_dict,
     _dictionary_word_dict,
+    _learning_path_payload,
     _level_from_score,
     _level_label,
     _parent_recommendations,
@@ -135,6 +136,24 @@ class OpenAISafetyTests(unittest.TestCase):
 
         self.assertTrue(any(item["action"] == "review" for item in recommendations))
         self.assertTrue(any("apple" in item["text"] for item in recommendations))
+
+    def test_learning_path_prioritizes_review_after_daily_lesson(self):
+        payload = _learning_path_payload(
+            user={
+                "age_group": "8_10",
+                "goal": "speaking",
+                "english_level": "beginner",
+                "level_test_completed_at": "2026-06-01T10:00:00",
+            },
+            daily_status={"completed_steps": 4, "completed": True},
+            stats={"words_learned": 7, "total_correct": 5, "total_wrong": 2},
+            dictionary_summary={"total_words": 7, "mastered_words": 2, "review_words": 3},
+            report={"completed_games": 1, "avg_game_score": 80},
+        )
+
+        self.assertEqual(payload["next_action"], "review")
+        self.assertIn("Повторить", payload["next_title"])
+        self.assertTrue(any(step["id"] == "review" and step["status"] == "current" for step in payload["steps"]))
 
 
 if __name__ == "__main__":
