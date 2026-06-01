@@ -2114,6 +2114,9 @@ async function renderParentReport() {
   try {
     const data = await api("/api/parent/report", "GET");
     const r = data.report;
+    const d = data.dictionary || {};
+    const recommendations = data.recommendations || [];
+    const problemWords = data.problem_words || [];
     app.innerHTML = `
       <div class="screen">
         <h1>Отчет для родителя</h1>
@@ -2129,10 +2132,52 @@ async function renderParentReport() {
           <div class="stat-row"><span>Правильных ответов</span><b>${r.total_correct}</b></div>
           <div class="stat-row"><span>Ошибок</span><b>${r.total_wrong}</b></div>
         </div>
+        <div class="card">
+          <h2>Словарь</h2>
+          <div class="stat-row"><span>Всего слов</span><b>${d.total_words || 0}</b></div>
+          <div class="stat-row"><span>Нужно повторить</span><b>${d.review_words || 0}</b></div>
+          <div class="stat-row"><span>Выучено</span><b>${d.mastered_words || 0}</b></div>
+        </div>
+        ${recommendations.length ? `
+          <div class="card report-recommendations">
+            <h2>Что делать дальше</h2>
+            ${recommendations.map(item => `
+              <div class="recommendation-row">
+                <b>${esc(item.title)}</b>
+                <p>${esc(item.text)}</p>
+                <button class="btn btn-secondary report-action" data-action="${esc(item.action)}">Открыть</button>
+              </div>
+            `).join("")}
+          </div>
+        ` : ""}
+        ${problemWords.length ? `
+          <div class="card">
+            <h2>Слова для внимания</h2>
+            ${problemWords.map(word => `
+              <div class="stat-row">
+                <span>${esc(word.word)} · ${esc(word.translation)}</span>
+                <b>${word.correct_count}✓ / ${word.wrong_count}×</b>
+              </div>
+            `).join("")}
+          </div>
+        ` : ""}
         <button class="btn" id="reportHistory">История занятий</button>
+        <button class="btn btn-secondary" id="reportDictionary">Словарь</button>
         <button class="btn btn-secondary" id="reportHome">В меню</button>
       </div>`;
+    document.querySelectorAll(".report-action").forEach(button => {
+      button.onclick = () => {
+        haptic();
+        const action = button.dataset.action;
+        if (action === "daily") return renderDailyLesson();
+        if (action === "vocab") return renderVocabStart();
+        if (action === "review") return renderTrainingMenu("review");
+        if (action === "dictionary") return renderDictionary("review");
+        return renderMenu();
+      };
+    });
     document.getElementById("reportHistory").onclick = () => { haptic(); renderActivityHistory(); };
+    document.getElementById("reportDictionary").onclick = () => { haptic(); renderDictionary(); };
     document.getElementById("reportHome").onclick = () => { haptic(); renderMenu(); };
   } catch (e) {
     renderError(e.message);

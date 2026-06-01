@@ -463,6 +463,31 @@ async def get_dictionary_summary(user_id: int):
     """, user_id)
 
 
+async def get_problem_words(user_id: int, limit: int = 6):
+    pool = await _get_pool()
+    return await pool.fetch("""
+        SELECT
+            w.id,
+            w.word,
+            w.translation,
+            w.example,
+            w.topic,
+            w.age_group,
+            COALESCE(up.correct_count, 0)::INT AS correct_count,
+            COALESCE(up.wrong_count, 0)::INT AS wrong_count,
+            up.last_seen
+        FROM user_progress up
+        JOIN words w ON w.id = up.word_id
+        WHERE up.user_id = $1
+          AND COALESCE(up.wrong_count, 0) > 0
+        ORDER BY
+            COALESCE(up.wrong_count, 0) DESC,
+            (COALESCE(up.wrong_count, 0) - COALESCE(up.correct_count, 0)) DESC,
+            up.last_seen DESC
+        LIMIT $2
+    """, user_id, limit)
+
+
 # ---------- Словарные сессии ----------
 
 async def create_vocabulary_session(user_id: int, age_group: str, topic: str | None, word_ids: list[int]):

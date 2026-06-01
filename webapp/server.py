@@ -137,6 +137,17 @@ def _dictionary_word_dict(word) -> dict:
     return data
 
 
+def _problem_word_dict(word) -> dict:
+    return {
+        "id": word["id"],
+        "word": word["word"],
+        "translation": word["translation"],
+        "example": word["example"] or "",
+        "correct_count": int(word["correct_count"] or 0),
+        "wrong_count": int(word["wrong_count"] or 0),
+    }
+
+
 async def _safe_json(request: web.Request) -> dict:
     if request.body_exists:
         try:
@@ -251,6 +262,55 @@ def _activity_event_dict(row) -> dict:
         "word_count": row["word_count"],
         "points_delta": points_delta,
     }
+
+
+def _parent_recommendations(report: dict, dictionary_summary: dict, problem_words: list[dict]) -> list[dict]:
+    words_learned = int(report.get("words_learned") or 0)
+    completed_lessons = int(report.get("completed_lessons") or 0)
+    completed_word_tests = int(report.get("completed_word_tests") or 0)
+    avg_score = int(report.get("avg_word_test_score") or 0)
+    total_wrong = int(report.get("total_wrong") or 0)
+    review_words = int((dictionary_summary or {}).get("review_words") or 0)
+    recommendations = []
+
+    if completed_lessons == 0:
+        recommendations.append({
+            "title": "Начать с короткого урока",
+            "text": "Пусть ребенок пройдет ежедневный урок на 5 минут: слова, мини-тест и простая фраза.",
+            "action": "daily",
+        })
+    if words_learned == 0:
+        recommendations.append({
+            "title": "Добавить первые слова",
+            "text": "Запустите набор новых слов с тестом, чтобы появился базовый словарь и первые результаты.",
+            "action": "vocab",
+        })
+    if review_words > 0:
+        recommendations.append({
+            "title": "Повторить слабые слова",
+            "text": f"В словаре есть {review_words} слов на повторение. Лучше закрепить их до новых тем.",
+            "action": "review",
+        })
+    if completed_word_tests > 0 and avg_score < 70:
+        recommendations.append({
+            "title": "Снизить сложность на один шаг",
+            "text": "Средний результат тестов ниже 70%. Дайте больше повторения и короткие задания без спешки.",
+            "action": "review",
+        })
+    if problem_words and total_wrong > 0:
+        sample = ", ".join(word["word"] for word in problem_words[:3])
+        recommendations.append({
+            "title": "Фокус на конкретных словах",
+            "text": f"Чаще всего ошибается в словах: {sample}. Их стоит повторить в игре или голосовом диалоге.",
+            "action": "dictionary",
+        })
+    if not recommendations:
+        recommendations.append({
+            "title": "Продолжать текущий темп",
+            "text": "Прогресс выглядит ровно. Достаточно 5-10 минут в день: урок, повторение и короткий разговор.",
+            "action": "daily",
+        })
+    return recommendations[:4]
 
 
 def _age_label(age_group: str) -> str:
@@ -862,7 +922,18 @@ async def api_parent_report(request: web.Request):
     user = await _current_user_or_404(request)
     report = await database.get_parent_report(user_id)
     stats = await database.get_user_stats(user_id)
+    dictionary_summary = await database.get_dictionary_summary(user_id)
+    problem_word_rows = await database.get_problem_words(user_id, limit=6)
+    problem_words = [_problem_word_dict(row) for row in problem_word_rows]
     level = _level_for_user(user)
+    report_payload = {
+        "words_learned": int((report or stats)["words_learned"] or 0),
+        "total_correct": int((report or stats)["total_correct"] or 0),
+        "total_wrong": int((report or stats)["total_wrong"] or 0),
+        "completed_lessons": int(report["completed_lessons"] if report else 0),
+        "completed_word_tests": int(report["completed_word_tests"] if report else 0),
+        "avg_word_test_score": int(report["avg_word_test_score"] if report else 0),
+    }
     return web.json_response({
         "child": {
             "name": user["name"],
@@ -872,14 +943,14 @@ async def api_parent_report(request: web.Request):
             "level_label": _level_label(level),
             "points": user["points"],
         },
-        "report": {
-            "words_learned": int((report or stats)["words_learned"] or 0),
-            "total_correct": int((report or stats)["total_correct"] or 0),
-            "total_wrong": int((report or stats)["total_wrong"] or 0),
-            "completed_lessons": int(report["completed_lessons"] if report else 0),
-            "completed_word_tests": int(report["completed_word_tests"] if report else 0),
-            "avg_word_test_score": int(report["avg_word_test_score"] if report else 0),
+        "report": report_payload,
+        "dictionary": {
+            "total_words": int(dictionary_summary["total_words"] if dictionary_summary else 0),
+            "mastered_words": int(dictionary_summary["mastered_words"] if dictionary_summary else 0),
+            "review_words": int(dictionary_summary["review_words"] if dictionary_summary else 0),
         },
+        "problem_words": problem_words,
+        "recommendations": _parent_recommendations(report_payload, dictionary_summary, problem_words),
     })
 
 

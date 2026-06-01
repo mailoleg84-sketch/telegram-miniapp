@@ -1,7 +1,13 @@
 import unittest
 
 from webapp.openai_service import _runtime_instructions, _safety_guard_reply, openai_config_status
-from webapp.server import _activity_event_dict, _dictionary_word_dict, _level_from_score, _level_label
+from webapp.server import (
+    _activity_event_dict,
+    _dictionary_word_dict,
+    _level_from_score,
+    _level_label,
+    _parent_recommendations,
+)
 
 
 class OpenAISafetyTests(unittest.TestCase):
@@ -91,6 +97,22 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertEqual(payload["title"], "Тест по словам")
         self.assertEqual(payload["description"], "3 правильно из 4")
         self.assertEqual(payload["points_delta"], 27)
+
+    def test_parent_recommendations_prioritize_review(self):
+        report = {
+            "words_learned": 8,
+            "completed_lessons": 2,
+            "completed_word_tests": 1,
+            "avg_word_test_score": 60,
+            "total_wrong": 4,
+        }
+        dictionary = {"review_words": 3}
+        problem_words = [{"word": "apple"}, {"word": "school"}]
+
+        recommendations = _parent_recommendations(report, dictionary, problem_words)
+
+        self.assertTrue(any(item["action"] == "review" for item in recommendations))
+        self.assertTrue(any("apple" in item["text"] for item in recommendations))
 
 
 if __name__ == "__main__":
