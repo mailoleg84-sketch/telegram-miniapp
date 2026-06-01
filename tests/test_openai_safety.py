@@ -1,6 +1,7 @@
 import unittest
 
 from config import GAME_PERFECT_BONUS_POINTS, GAME_POINTS_CORRECT
+from data.words import INITIAL_WORDS
 from webapp.openai_service import _runtime_instructions, _safety_guard_reply, openai_config_status
 from webapp.server import (
     _activity_event_dict,
@@ -154,6 +155,15 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertEqual(payload["next_action"], "review")
         self.assertIn("Повторить", payload["next_title"])
         self.assertTrue(any(step["id"] == "review" and step["status"] == "current" for step in payload["steps"]))
+
+    def test_initial_word_bank_has_5000_unique_age_balanced_items(self):
+        by_age = {}
+        for word, _translation, _example, _topic, age_group in INITIAL_WORDS:
+            by_age[age_group] = by_age.get(age_group, 0) + 1
+
+        self.assertEqual(len(INITIAL_WORDS), 5000)
+        self.assertEqual(len({item[0] for item in INITIAL_WORDS}), 5000)
+        self.assertEqual(by_age, {"5_7": 1250, "8_10": 1250, "11_13": 1250, "14_18": 1250})
 
 
 if __name__ == "__main__":
