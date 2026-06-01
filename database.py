@@ -4,6 +4,7 @@
 Используется единый пул соединений на всё приложение.
 """
 import ssl
+from datetime import timedelta
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import asyncpg
@@ -864,6 +865,47 @@ async def get_daily_lesson_status(user_id: int):
             WHERE user_id = $1
               AND lesson_date = CURRENT_DATE
         """, user_id)
+
+
+async def get_learning_streak(user_id: int) -> dict:
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        today = await conn.fetchval("SELECT CURRENT_DATE")
+        rows = await conn.fetch("""
+            SELECT lesson_date
+            FROM daily_lessons
+            WHERE user_id = $1
+              AND completed = TRUE
+            ORDER BY lesson_date DESC
+        """, user_id)
+
+    completed_dates = [row["lesson_date"] for row in rows]
+    completed_set = set(completed_dates)
+
+    current_streak = 0
+    cursor = today if today in completed_set else today - timedelta(days=1)
+    while cursor in completed_set:
+        current_streak += 1
+        cursor -= timedelta(days=1)
+
+    longest_streak = 0
+    run = 0
+    previous = None
+    for lesson_date in sorted(completed_set):
+        if previous is not None and lesson_date == previous + timedelta(days=1):
+            run += 1
+        else:
+            run = 1
+        longest_streak = max(longest_streak, run)
+        previous = lesson_date
+
+    return {
+        "current_streak": current_streak,
+        "longest_streak": longest_streak,
+        "completed_days": len(completed_set),
+        "today_completed": today in completed_set,
+        "last_completed_date": completed_dates[0].isoformat() if completed_dates else "",
+    }
 
 
 async def update_daily_lesson_progress(user_id: int, completed_steps: int, total_steps: int):

@@ -901,6 +901,115 @@ def _learning_path_payload(user, daily_status, stats, dictionary_summary, report
     }
 
 
+def _motivation_badge(
+    badge_id: str,
+    title: str,
+    text: str,
+    value: int,
+    target: int,
+    action: str,
+) -> dict:
+    target = max(1, target)
+    value = max(0, value)
+    return {
+        "id": badge_id,
+        "title": title,
+        "text": text,
+        "value": value,
+        "target": target,
+        "progress_percent": min(100, round(value / target * 100)),
+        "unlocked": value >= target,
+        "action": action,
+    }
+
+
+def _motivation_payload(user, stats, dictionary_summary, report, streak) -> dict:
+    words_learned = int(_record_value(stats, "words_learned", 0) or 0)
+    total_correct = int(_record_value(stats, "total_correct", 0) or 0)
+    total_wrong = int(_record_value(stats, "total_wrong", 0) or 0)
+    review_words = int(_record_value(dictionary_summary, "review_words", 0) or 0)
+    completed_lessons = int(_record_value(report, "completed_lessons", 0) or 0)
+    completed_word_tests = int(_record_value(report, "completed_word_tests", 0) or 0)
+    completed_games = int(_record_value(report, "completed_games", 0) or 0)
+    current_streak = int((streak or {}).get("current_streak") or 0)
+    longest_streak = int((streak or {}).get("longest_streak") or 0)
+    completed_days = int((streak or {}).get("completed_days") or 0)
+    today_completed = bool((streak or {}).get("today_completed"))
+
+    badges = [
+        _motivation_badge("first_lesson", "Первый урок", "Завершить один ежедневный урок.", completed_lessons, 1, "daily"),
+        _motivation_badge("three_day_streak", "Три дня подряд", "Учиться три дня без перерыва.", current_streak, 3, "daily"),
+        _motivation_badge("seven_day_streak", "Неделя английского", "Собрать серию из семи дней.", current_streak, 7, "daily"),
+        _motivation_badge("word_collector", "10 слов", "Добавить первые десять слов в обучение.", words_learned, 10, "vocab"),
+        _motivation_badge("word_builder", "50 слов", "Уверенно расширять словарь.", words_learned, 50, "vocab"),
+        _motivation_badge("test_starter", "Первый тест", "Пройти тест по новым словам.", completed_word_tests, 1, "vocab"),
+        _motivation_badge("game_player", "Игрок слов", "Закрепить слова в трех играх.", completed_games, 3, "game"),
+        _motivation_badge("careful_answer", "30 верных ответов", "Набрать 30 правильных ответов.", total_correct, 30, "training"),
+    ]
+    unlocked_count = sum(1 for badge in badges if badge["unlocked"])
+
+    if not today_completed:
+        next_action = "daily"
+        next_title = "Сделать урок дня"
+        next_text = "Короткий урок сохранит серию и даст новые слова без перегруза."
+    elif review_words > 0:
+        next_action = "review"
+        next_title = f"Повторить {review_words} слов"
+        next_text = "Лучше закрепить свежие ошибки сразу, пока они хорошо помнятся."
+    elif words_learned < 10:
+        next_action = "vocab"
+        next_title = "Собрать первые 10 слов"
+        next_text = "Небольшой словарь даст материал для игр и разговоров."
+    elif current_streak < 3:
+        next_action = "daily"
+        next_title = "Дойти до серии 3 дня"
+        next_text = "Завтра приложение продолжит цепочку с короткого задания."
+    elif completed_games < 3:
+        next_action = "game"
+        next_title = "Открыть игру со словами"
+        next_text = "Игра закрепляет слова легче, чем обычный тест."
+    elif completed_word_tests < 3:
+        next_action = "vocab"
+        next_title = "Пройти еще один тест"
+        next_text = "Мини-тест покажет, какие слова уже стали уверенными."
+    else:
+        next_action = "chat"
+        next_title = "Поговорить с репетитором"
+        next_text = "Попроси репетитора использовать новые слова в коротком диалоге."
+
+    accuracy_total = total_correct + total_wrong
+    accuracy = round(total_correct / accuracy_total * 100) if accuracy_total else 0
+    coach_message = (
+        "Сегодня урок уже засчитан. Можно сделать легкое повторение или короткий разговор."
+        if today_completed else
+        "Лучший темп для ребенка: 5 минут сегодня, без длинной теории."
+    )
+
+    return {
+        "title": "Достижения",
+        "coach_message": coach_message,
+        "next_action": next_action,
+        "next_title": next_title,
+        "next_text": next_text,
+        "streak": {
+            "current": current_streak,
+            "longest": longest_streak,
+            "completed_days": completed_days,
+            "today_completed": today_completed,
+        },
+        "summary": {
+            "unlocked_badges": unlocked_count,
+            "total_badges": len(badges),
+            "words_learned": words_learned,
+            "completed_lessons": completed_lessons,
+            "completed_word_tests": completed_word_tests,
+            "completed_games": completed_games,
+            "accuracy": accuracy,
+        },
+        "badges": badges,
+    }
+
+
 # ---------- API: профиль и регистрация ----------
 
 async def api_me(request: web.Request):
@@ -975,6 +1084,18 @@ async def api_learning_path(request: web.Request):
     report = await database.get_parent_report(user_id)
     return web.json_response(
         _learning_path_payload(user, daily_status, stats, dictionary_summary, report)
+    )
+
+
+async def api_motivation_status(request: web.Request):
+    user_id = request["tg_user"]["id"]
+    user = await _current_user_or_404(request)
+    stats = await database.get_user_stats(user_id)
+    dictionary_summary = await database.get_dictionary_summary(user_id)
+    report = await database.get_parent_report(user_id)
+    streak = await database.get_learning_streak(user_id)
+    return web.json_response(
+        _motivation_payload(user, stats, dictionary_summary, report, streak)
     )
 
 
@@ -1845,6 +1966,7 @@ def create_app(
     app.router.add_get("/api/me",  api_me)
     app.router.add_get("/api/leaderboard",              api_leaderboard)
     app.router.add_get("/api/learning/path",            api_learning_path)
+    app.router.add_get("/api/motivation/status",        api_motivation_status)
     app.router.add_get("/api/parent/report",            api_parent_report)
     app.router.add_post("/api/results/reset",           api_results_reset)
     app.router.add_get("/api/activity/history",         api_activity_history)

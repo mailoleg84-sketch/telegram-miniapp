@@ -9,6 +9,7 @@ from webapp.server import (
     _learning_path_payload,
     _level_from_score,
     _level_label,
+    _motivation_payload,
     _parent_recommendations,
 )
 
@@ -155,6 +156,22 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertEqual(payload["next_action"], "review")
         self.assertIn("Повторить", payload["next_title"])
         self.assertTrue(any(step["id"] == "review" and step["status"] == "current" for step in payload["steps"]))
+
+    def test_motivation_payload_unlocks_streak_badges(self):
+        payload = _motivation_payload(
+            user={"age_group": "8_10", "goal": "speaking"},
+            stats={"words_learned": 12, "total_correct": 31, "total_wrong": 4},
+            dictionary_summary={"review_words": 0},
+            report={"completed_lessons": 4, "completed_word_tests": 1, "completed_games": 0},
+            streak={"current_streak": 3, "longest_streak": 4, "completed_days": 4, "today_completed": True},
+        )
+
+        self.assertEqual(payload["streak"]["current"], 3)
+        self.assertEqual(payload["next_action"], "game")
+        unlocked = {badge["id"] for badge in payload["badges"] if badge["unlocked"]}
+        self.assertIn("three_day_streak", unlocked)
+        self.assertIn("word_collector", unlocked)
+        self.assertIn("careful_answer", unlocked)
 
     def test_initial_word_bank_has_5000_unique_age_balanced_items(self):
         by_age = {}

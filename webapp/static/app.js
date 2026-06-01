@@ -23,6 +23,7 @@ const state = {
   answers: [],
   game: null,
   learningPath: null,
+  motivation: null,
   levelTest: null,
   dictionaryFilter: "all",
 };
@@ -209,6 +210,7 @@ function clearAccountLocalState() {
   state.answers = [];
   state.game = null;
   state.learningPath = null;
+  state.motivation = null;
   state.levelTest = null;
   state.dictionaryFilter = "all";
   try {
@@ -293,8 +295,10 @@ function routeLearningAction(action) {
   if (action === "daily") return renderDailyLesson();
   if (action === "vocab") return renderVocabStart();
   if (action === "game") return renderGamesMenu();
+  if (action === "training") return renderTrainingMenu();
   if (action === "review") return renderTrainingMenu("review");
   if (action === "dictionary") return renderDictionary("review");
+  if (action === "motivation") return renderMotivation();
   if (action === "chat") return renderChat();
   return renderMenu();
 }
@@ -355,6 +359,49 @@ async function loadLearningPath() {
       <button class="btn mt-12" id="learningPathFallback">Открыть урок</button>`;
     const fallback = document.getElementById("learningPathFallback");
     if (fallback) fallback.onclick = () => { haptic(); renderDailyLesson(); };
+  }
+}
+
+function motivationPreviewHtml(data) {
+  const summary = data.summary || {};
+  const streak = data.streak || {};
+  const badges = `${summary.unlocked_badges || 0}/${summary.total_badges || 0}`;
+  return `
+    <div class="motivation-head">
+      <div>
+        <div class="daily-badge">${esc(data.title || "Достижения")}</div>
+        <h2>${streak.current || 0} дней подряд</h2>
+      </div>
+      <strong>${esc(badges)}</strong>
+    </div>
+    <p class="hint">${esc(data.coach_message || "Поддерживаем короткий учебный темп.")}</p>
+    <div class="motivation-stats">
+      <span><b>${streak.longest || 0}</b><small>лучшая серия</small></span>
+      <span><b>${summary.words_learned || 0}</b><small>слов</small></span>
+      <span><b>${summary.accuracy || 0}%</b><small>точность</small></span>
+    </div>
+    <button class="btn mt-12" id="motivationOpen">Открыть достижения</button>`;
+}
+
+async function loadMotivationPreview() {
+  const box = document.getElementById("motivationPreview");
+  if (!box) return;
+  box.innerHTML = `<div class="hint">Собираю достижения...</div>`;
+  try {
+    const data = await api("/api/motivation/status", "GET");
+    state.motivation = data;
+    box.innerHTML = motivationPreviewHtml(data);
+    const open = document.getElementById("motivationOpen");
+    if (open) open.onclick = () => { haptic(); renderMotivation(); };
+  } catch (_) {
+    box.innerHTML = `
+      <div class="motivation-head">
+        <div>
+          <div class="daily-badge">Достижения</div>
+          <h2>Учебный прогресс</h2>
+        </div>
+      </div>
+      <p class="hint">Достижения появятся после первых уроков и тестов.</p>`;
   }
 }
 
@@ -455,9 +502,14 @@ function renderMenu() {
         <div class="hint">Подбираю следующий шаг...</div>
       </div>
 
+      <div class="card motivation-preview" id="motivationPreview">
+        <div class="hint">Собираю достижения...</div>
+      </div>
+
       <button class="btn ${u.level_test_completed ? "btn-secondary" : ""}" id="levelTest">${u.level_test_completed ? "Обновить уровень" : "Пройти тест уровня"}</button>
       <button class="btn" id="vocab">Новые слова + тест</button>
       <button class="btn" id="daily">Ежедневный урок</button>
+      <button class="btn btn-secondary" id="motivation">Достижения</button>
       <button class="btn" id="games">Игры со словами</button>
       <button class="btn" id="training">Тренировка слов</button>
       <button class="btn" id="dictionary">Словарь и повторение</button>
@@ -471,6 +523,7 @@ function renderMenu() {
   document.getElementById("levelTest").onclick = () => { haptic(); renderLevelTestIntro(); };
   document.getElementById("vocab").onclick = () => { haptic(); renderVocabStart(); };
   document.getElementById("daily").onclick = () => { haptic(); renderDailyLesson(); };
+  document.getElementById("motivation").onclick = () => { haptic(); renderMotivation(); };
   document.getElementById("games").onclick = () => { haptic(); renderGamesMenu(); };
   document.getElementById("training").onclick = () => { haptic(); renderTrainingMenu(); };
   document.getElementById("dictionary").onclick = () => { haptic(); renderDictionary(); };
@@ -480,6 +533,7 @@ function renderMenu() {
   document.getElementById("leaderboard").onclick = () => { haptic(); renderLeaderboard(); };
   document.getElementById("profile").onclick = () => { haptic(); renderProfile(); };
   loadLearningPath();
+  loadMotivationPreview();
 }
 
 async function renderLevelTestIntro({ afterRegistration = false } = {}) {
@@ -2397,6 +2451,72 @@ async function renderChat() {
       await api("/api/chat/reset", "POST");
       renderChat();
     };
+  } catch (e) {
+    renderError(e.message);
+  }
+}
+
+function motivationBadgeHtml(badge) {
+  const progress = Math.max(0, Math.min(100, Number(badge.progress_percent) || 0));
+  return `
+    <button class="badge-card ${badge.unlocked ? "unlocked" : ""}" data-action="${esc(badge.action || "daily")}">
+      <div class="badge-mark">${badge.unlocked ? "✓" : progress + "%"}</div>
+      <div class="badge-main">
+        <b>${esc(badge.title)}</b>
+        <p>${esc(badge.text)}</p>
+        <div class="mini-progress"><span style="width:${progress}%"></span></div>
+        <small>${Number(badge.value) || 0}/${Number(badge.target) || 0}</small>
+      </div>
+    </button>`;
+}
+
+async function renderMotivation() {
+  setBack(renderMenu);
+  loading();
+  try {
+    const data = await api("/api/motivation/status", "GET");
+    state.motivation = data;
+    const summary = data.summary || {};
+    const streak = data.streak || {};
+    const badges = data.badges || [];
+    app.innerHTML = `
+      <div class="screen">
+        <h1>${esc(data.title || "Достижения")}</h1>
+        <div class="card motivation-hero">
+          <div>
+            <span class="daily-badge">Серия занятий</span>
+            <h2>${streak.current || 0} дней подряд</h2>
+            <p class="hint">${esc(data.coach_message || "Каждый короткий урок двигает вперед.")}</p>
+          </div>
+          <strong>${summary.unlocked_badges || 0}/${summary.total_badges || 0}</strong>
+        </div>
+        <div class="card">
+          <div class="stat-row"><span>Лучшая серия</span><b>${streak.longest || 0}</b></div>
+          <div class="stat-row"><span>Всего учебных дней</span><b>${streak.completed_days || 0}</b></div>
+          <div class="stat-row"><span>Слов в обучении</span><b>${summary.words_learned || 0}</b></div>
+          <div class="stat-row"><span>Точность ответов</span><b>${summary.accuracy || 0}%</b></div>
+        </div>
+        <div class="card">
+          <h2>${esc(data.next_title || "Следующий шаг")}</h2>
+          <p class="hint">${esc(data.next_text || "Сделай короткое задание.")}</p>
+          <button class="btn mt-12" id="motivationNext">Продолжить</button>
+        </div>
+        <div class="badge-grid">
+          ${badges.map(motivationBadgeHtml).join("")}
+        </div>
+        <button class="btn btn-secondary mt-12" id="motivationHome">В меню</button>
+      </div>`;
+    document.getElementById("motivationNext").onclick = () => {
+      haptic();
+      routeLearningAction(data.next_action || "daily");
+    };
+    document.querySelectorAll(".badge-card").forEach(button => {
+      button.onclick = () => {
+        haptic();
+        routeLearningAction(button.dataset.action || "daily");
+      };
+    });
+    document.getElementById("motivationHome").onclick = () => { haptic(); renderMenu(); };
   } catch (e) {
     renderError(e.message);
   }
