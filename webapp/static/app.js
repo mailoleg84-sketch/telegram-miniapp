@@ -15,7 +15,7 @@ tg.ready();
 tg.expand();
 
 const app = document.getElementById("app");
-const state = { me: null, back: null, vocab: null, quiz: null, answers: [] };
+const state = { me: null, back: null, vocab: null, quiz: null, answers: [], levelTest: null };
 let fallbackAuth = window.location.search || "";
 const LOGGED_OUT_KEY = "englishTutorKidsLoggedOut";
 
@@ -146,6 +146,7 @@ function clearAccountLocalState() {
   state.vocab = null;
   state.quiz = null;
   state.answers = [];
+  state.levelTest = null;
   try {
     localStorage.removeItem("stableVoiceUntil");
     localStorage.removeItem("stableVoiceReason");
@@ -295,7 +296,7 @@ function renderRegistration() {
       await api("/api/register", "POST", { parent_name, child_name, child_age, age_group: ageGroup, goal });
       state.me = await api("/api/me", "GET");
       haptic("success");
-      renderMenu();
+      renderLevelTestIntro({ afterRegistration: true });
     } catch (e) {
       tg.showAlert(e.message);
     }
@@ -311,9 +312,12 @@ function renderMenu() {
       <h1>Привет, ${esc(u.child_name)}!</h1>
       <div class="card">
         <div><b>${esc(u.age_label)}</b> · ${esc(u.goal_label || "английский")}</div>
+        <div class="mt-8">Уровень: <b>${esc(u.level_label || "Beginner / A1")}</b></div>
         <div class="mt-12">Баллы: <span class="points-pill">${u.points} 💎</span></div>
+        ${u.level_test_completed ? "" : `<p class="hint mt-12">Пройди короткий тест, чтобы репетитор точнее выбирал задания.</p>`}
       </div>
 
+      <button class="btn ${u.level_test_completed ? "btn-secondary" : ""}" id="levelTest">${u.level_test_completed ? "Обновить уровень" : "Пройти тест уровня"}</button>
       <button class="btn" id="vocab">Новые слова + тест</button>
       <button class="btn" id="daily">Ежедневный урок</button>
       <button class="btn" id="training">Тренировка слов</button>
@@ -323,6 +327,7 @@ function renderMenu() {
       <button class="btn btn-secondary" id="profile">Профиль</button>
     </div>`;
 
+  document.getElementById("levelTest").onclick = () => { haptic(); renderLevelTestIntro(); };
   document.getElementById("vocab").onclick = () => { haptic(); renderVocabStart(); };
   document.getElementById("daily").onclick = () => { haptic(); renderDailyLesson(); };
   document.getElementById("training").onclick = () => { haptic(); renderTrainingMenu(); };
@@ -330,6 +335,91 @@ function renderMenu() {
   document.getElementById("report").onclick = () => { haptic(); renderParentReport(); };
   document.getElementById("leaderboard").onclick = () => { haptic(); renderLeaderboard(); };
   document.getElementById("profile").onclick = () => { haptic(); renderProfile(); };
+}
+
+async function renderLevelTestIntro({ afterRegistration = false } = {}) {
+  setBack(afterRegistration ? null : renderMenu);
+  loading();
+  try {
+    const data = await api("/api/level/test", "GET");
+    state.levelTest = { data, answers: [], afterRegistration };
+    app.innerHTML = `
+      <div class="screen">
+        <h1>Тест уровня</h1>
+        <div class="card">
+          <div class="daily-badge">${esc(data.age_label)} · ${data.questions.length} вопросов</div>
+          <p class="hint mt-12">Это короткая проверка без оценок и стресса. По результату репетитор будет давать задания не слишком легкие и не слишком сложные.</p>
+          <div class="stat-row"><span>Сейчас</span><b>${esc(data.level_label)}</b></div>
+        </div>
+        <button class="btn" id="levelStart">Начать тест</button>
+        ${afterRegistration ? `<button class="btn btn-secondary" id="levelSkip">Позже</button>` : `<button class="btn btn-secondary" id="levelBack">В меню</button>`}
+      </div>`;
+    document.getElementById("levelStart").onclick = () => {
+      haptic();
+      renderLevelQuestion(0);
+    };
+    const backButton = document.getElementById(afterRegistration ? "levelSkip" : "levelBack");
+    if (backButton) backButton.onclick = () => { haptic(); renderMenu(); };
+  } catch (e) {
+    renderError(e.message);
+  }
+}
+
+function renderLevelQuestion(index) {
+  const test = state.levelTest?.data;
+  const q = test?.questions?.[index];
+  if (!q) return finishLevelTest();
+  setBack(index > 0 ? () => renderLevelQuestion(index - 1) : () => renderLevelTestIntro({ afterRegistration: state.levelTest?.afterRegistration }));
+  app.innerHTML = `
+    <div class="screen">
+      <h1>Тест уровня</h1>
+      <div class="card center">
+        <div class="daily-badge">Вопрос ${index + 1}/${test.questions.length}</div>
+        <div class="big-sub mt-12">${esc(q.prompt)}</div>
+      </div>
+      ${q.options.map(option => `
+        <button class="btn btn-secondary level-answer" data-id="${esc(option.id)}">${esc(option.text)}</button>
+      `).join("")}
+    </div>`;
+
+  document.querySelectorAll(".level-answer").forEach(btn => {
+    btn.onclick = () => {
+      haptic();
+      state.levelTest.answers[index] = {
+        question_id: q.id,
+        selected_id: btn.dataset.id,
+      };
+      document.querySelectorAll(".level-answer").forEach(item => item.disabled = true);
+      btn.classList.remove("btn-secondary");
+      setTimeout(() => renderLevelQuestion(index + 1), 350);
+    };
+  });
+}
+
+async function finishLevelTest() {
+  setBack(null);
+  loading();
+  try {
+    const result = await api("/api/level/submit", "POST", {
+      answers: (state.levelTest?.answers || []).filter(Boolean),
+    });
+    state.me = await api("/api/me", "GET");
+    app.innerHTML = `
+      <div class="screen">
+        <h1>Уровень готов</h1>
+        <div class="card center">
+          <div class="big" style="color: var(--button)">${esc(result.level_label)}</div>
+          <p class="hint">${result.correct_count}/${result.total} правильно · ${result.score}%</p>
+          <p>${esc(result.message)}</p>
+        </div>
+        <button class="btn" id="levelDone">${state.levelTest?.afterRegistration ? "Начать обучение" : "В меню"}</button>
+        <button class="btn btn-secondary" id="levelRetry">Пройти еще раз</button>
+      </div>`;
+    document.getElementById("levelDone").onclick = () => { haptic("success"); renderMenu(); };
+    document.getElementById("levelRetry").onclick = () => { haptic(); renderLevelTestIntro(); };
+  } catch (e) {
+    renderError(e.message);
+  }
 }
 
 async function renderVocabStart() {
@@ -580,7 +670,7 @@ async function renderDailyLesson() {
         <h1>Ежедневный урок</h1>
         <div class="card">
           <div class="daily-badge">${status.completed ? "На сегодня готово" : "5 минут"}</div>
-          <p class="hint mt-12">Мини-урок состоит из слов, теста и маленькой практики.</p>
+          <p class="hint mt-12">Мини-урок состоит из слов, теста и маленькой практики. Уровень: ${esc(state.me?.user?.level_label || "Beginner / A1")}.</p>
           <div class="daily-steps">
             ${["Слово", "Тест", "Фраза", "Готово"].map((title, i) => `
               <div class="daily-step ${status.completed_steps > i ? "done" : ""}">
@@ -1943,7 +2033,7 @@ async function renderParentReport() {
         <h1>Отчет для родителя</h1>
         <div class="card">
           <h2>${esc(data.child.name)}</h2>
-          <p class="hint">${esc(data.child.age_label)} · ${esc(data.child.goal_label)}</p>
+          <p class="hint">${esc(data.child.age_label)} · ${esc(data.child.goal_label)} · ${esc(data.child.level_label || "Beginner / A1")}</p>
         </div>
         <div class="card">
           <div class="stat-row"><span>Уроков пройдено</span><b>${r.completed_lessons}</b></div>
@@ -2007,13 +2097,16 @@ async function renderProfile() {
         <div class="card">
           <div class="stat-row"><span>Родитель</span><b>${esc(u.parent_name || "-")}</b></div>
           <div class="stat-row"><span>Возраст</span><b>${u.child_age || "-"}</b></div>
+          <div class="stat-row"><span>Уровень</span><b>${esc(u.level_label || "Beginner / A1")}</b></div>
+          <div class="stat-row"><span>Тест уровня</span><b>${u.level_test_completed ? `${u.level_test_score}%` : "не пройден"}</b></div>
           <div class="stat-row"><span>Слов в обучении</span><b>${s.words_learned}</b></div>
           <div class="stat-row"><span>Правильных ответов</span><b>${s.total_correct}</b></div>
           <div class="stat-row"><span>Ошибок</span><b>${s.total_wrong}</b></div>
         </div>
         <div class="card">
           <h2>Аккаунт и данные</h2>
-          <p class="hint">Сброс результатов обнулит баллы, выученные слова, тесты и ежедневные уроки. Профиль и чат с репетитором останутся.</p>
+          <p class="hint">Сброс результатов обнулит баллы, уровень, выученные слова, тесты и ежедневные уроки. Профиль и чат с репетитором останутся.</p>
+          <button class="btn btn-secondary" id="profileLevelTest">${u.level_test_completed ? "Обновить уровень" : "Пройти тест уровня"}</button>
           <button class="btn btn-danger" id="resetResults">Обнулить результаты</button>
           <button class="btn btn-secondary" id="logout">Выйти из аккаунта</button>
         </div>
@@ -2021,7 +2114,7 @@ async function renderProfile() {
       </div>`;
     document.getElementById("resetResults").onclick = async () => {
       haptic("warning");
-      const ok = await confirmAction("Обнулить все учебные результаты? Баллы, тесты и прогресс слов начнутся заново.");
+      const ok = await confirmAction("Обнулить все учебные результаты? Баллы, уровень, тесты и прогресс слов начнутся заново.");
       if (!ok) return;
       try {
         const result = await api("/api/results/reset", "POST", { confirm: "reset_results" });
@@ -2038,6 +2131,7 @@ async function renderProfile() {
       const ok = await confirmAction("Выйти из аккаунта на этом устройстве? Для другого аккаунта переключитесь в Telegram и откройте приложение снова.");
       if (ok) logoutFromApp();
     };
+    document.getElementById("profileLevelTest").onclick = () => { haptic(); renderLevelTestIntro(); };
     document.getElementById("profileHome").onclick = () => { haptic(); renderMenu(); };
   } catch (e) {
     renderError(e.message);

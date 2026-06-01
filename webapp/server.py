@@ -18,9 +18,11 @@ from config import (
     CHAT_HISTORY_LIMIT,
     DAILY_LESSON_REWARD_POINTS,
     DAILY_LESSON_STEPS,
+    ENGLISH_LEVELS,
     LEARNING_GOALS,
     POINTS_CORRECT,
     POINTS_WRONG,
+    TUTOR_DEFAULT_LEVEL,
     WORDS_PER_AGE_GROUP,
     WEBAPP_HOST,
     WEBAPP_PORT,
@@ -189,14 +191,32 @@ def _goal_label(goal: str | None) -> str:
     return next((label for label, value in LEARNING_GOALS if value == goal), goal or "")
 
 
-def _level_for_user(user) -> str:
-    goal = user["goal"] if user else ""
-    age_group = user["age_group"] if user else ""
+def _record_value(row, key: str, default=None):
+    if not row:
+        return default
+    try:
+        value = row[key]
+    except (KeyError, IndexError, TypeError):
+        return default
+    return value if value not in (None, "") else default
+
+
+def _level_label(level: str | None) -> str:
+    return next((label for label, value in ENGLISH_LEVELS if value == level), level or "Не определен")
+
+
+def _estimated_level_for_user(user) -> str:
+    goal = _record_value(user, "goal", "")
+    age_group = _record_value(user, "age_group", "")
     if goal in {"exams", "travel"} or age_group == "14_18":
         return "elementary"
     if age_group in {"5_7", "8_10"} or goal == "first_steps":
         return "beginner"
-    return "beginner+"
+    return "beginner"
+
+
+def _level_for_user(user) -> str:
+    return _record_value(user, "english_level") or _estimated_level_for_user(user) or TUTOR_DEFAULT_LEVEL
 
 
 def _style_for_user(user) -> str:
@@ -392,6 +412,218 @@ async def _build_vocab_question(word, age_group: str) -> dict:
     }
 
 
+LEVEL_TESTS = {
+    "5_7": [
+        {
+            "id": "5_7_cat",
+            "prompt": "Что значит cat?",
+            "options": [("cat", "кошка"), ("dog", "собака"), ("sun", "солнце")],
+            "correct_id": "cat",
+        },
+        {
+            "id": "5_7_blue",
+            "prompt": "Какой цвет blue?",
+            "options": [("red", "красный"), ("blue", "синий"), ("green", "зеленый")],
+            "correct_id": "blue",
+        },
+        {
+            "id": "5_7_hello",
+            "prompt": "Что можно ответить на Hello?",
+            "options": [("hi", "Hi!"), ("bye", "Bye!"), ("thanks", "Thanks!")],
+            "correct_id": "hi",
+        },
+        {
+            "id": "5_7_three",
+            "prompt": "One, two, ...",
+            "options": [("five", "five"), ("three", "three"), ("red", "red")],
+            "correct_id": "three",
+        },
+        {
+            "id": "5_7_like",
+            "prompt": "Как сказать: Я люблю яблоки?",
+            "options": [("like", "I like apples."), ("am", "I am apples."), ("go", "I go apples.")],
+            "correct_id": "like",
+        },
+    ],
+    "8_10": [
+        {
+            "id": "8_10_like",
+            "prompt": "Выбери правильную фразу.",
+            "options": [("like", "I like pizza."), ("likes", "I likes pizza."), ("am", "I am pizza.")],
+            "correct_id": "like",
+        },
+        {
+            "id": "8_10_can",
+            "prompt": "Что значит I can swim?",
+            "options": [("can", "Я умею плавать"), ("want", "Я хочу плавать"), ("had", "Я плавал вчера")],
+            "correct_id": "can",
+        },
+        {
+            "id": "8_10_plural",
+            "prompt": "Как правильно: две кошки?",
+            "options": [("cats", "two cats"), ("cat", "two cat"), ("caties", "two caties")],
+            "correct_id": "cats",
+        },
+        {
+            "id": "8_10_question",
+            "prompt": "Выбери вопрос.",
+            "options": [("do", "Do you like games?"), ("you", "You like do games?"), ("likes", "Does you like games?")],
+            "correct_id": "do",
+        },
+        {
+            "id": "8_10_yesterday",
+            "prompt": "Вчера я играл.",
+            "options": [("played", "I played yesterday."), ("play", "I play yesterday."), ("playing", "I am play yesterday.")],
+            "correct_id": "played",
+        },
+        {
+            "id": "8_10_place",
+            "prompt": "The book is under the table. Где книга?",
+            "options": [("under", "под столом"), ("on", "на столе"), ("near", "рядом со столом")],
+            "correct_id": "under",
+        },
+    ],
+    "11_13": [
+        {
+            "id": "11_13_present",
+            "prompt": "He ___ football every Sunday.",
+            "options": [("plays", "plays"), ("play", "play"), ("playing", "playing")],
+            "correct_id": "plays",
+        },
+        {
+            "id": "11_13_past",
+            "prompt": "We ___ to school yesterday.",
+            "options": [("went", "went"), ("go", "go"), ("goes", "goes")],
+            "correct_id": "went",
+        },
+        {
+            "id": "11_13_question",
+            "prompt": "Выбери правильный порядок слов.",
+            "options": [("where", "Where do you live?"), ("do", "Where you do live?"), ("live", "Where live you?")],
+            "correct_id": "where",
+        },
+        {
+            "id": "11_13_future",
+            "prompt": "Tomorrow I ___ visit my friend.",
+            "options": [("will", "will"), ("was", "was"), ("did", "did")],
+            "correct_id": "will",
+        },
+        {
+            "id": "11_13_comparative",
+            "prompt": "My room is ___ than my brother's room.",
+            "options": [("bigger", "bigger"), ("big", "big"), ("biggest", "biggest")],
+            "correct_id": "bigger",
+        },
+        {
+            "id": "11_13_meaning",
+            "prompt": "I have already done my homework.",
+            "options": [("already", "Я уже сделал домашку"), ("tomorrow", "Я сделаю домашку завтра"), ("never", "Я никогда не делал домашку")],
+            "correct_id": "already",
+        },
+        {
+            "id": "11_13_advice",
+            "prompt": "Как дать совет?",
+            "options": [("should", "You should rest."), ("musted", "You musted rest."), ("are", "You are rest.")],
+            "correct_id": "should",
+        },
+    ],
+    "14_18": [
+        {
+            "id": "14_18_perfect",
+            "prompt": "I ___ just finished my project.",
+            "options": [("have", "have"), ("did", "did"), ("am", "am")],
+            "correct_id": "have",
+        },
+        {
+            "id": "14_18_condition",
+            "prompt": "If I had more time, I ___ travel more.",
+            "options": [("would", "would"), ("will", "will"), ("can", "can")],
+            "correct_id": "would",
+        },
+        {
+            "id": "14_18_natural",
+            "prompt": "Выбери самый естественный ответ на Thanks a lot!",
+            "options": [("welcome", "You're welcome!"), ("fine", "I'm fine."), ("later", "See you later.")],
+            "correct_id": "welcome",
+        },
+        {
+            "id": "14_18_reported",
+            "prompt": "She said that she ___ tired.",
+            "options": [("was", "was"), ("is", "is"), ("be", "be")],
+            "correct_id": "was",
+        },
+        {
+            "id": "14_18_phrase",
+            "prompt": "Что значит I am looking forward to it?",
+            "options": [("wait", "Я этого с нетерпением жду"), ("look", "Я смотрю вперед"), ("lost", "Я это потерял")],
+            "correct_id": "wait",
+        },
+        {
+            "id": "14_18_email",
+            "prompt": "Какая фраза лучше для вежливого письма?",
+            "options": [("could", "Could you please help me?"), ("give", "Give me help."), ("must", "You must help.")],
+            "correct_id": "could",
+        },
+        {
+            "id": "14_18_passive",
+            "prompt": "English ___ in many countries.",
+            "options": [("spoken", "is spoken"), ("speaks", "speaks"), ("spoke", "is spoke")],
+            "correct_id": "spoken",
+        },
+        {
+            "id": "14_18_opinion",
+            "prompt": "Как начать мнение?",
+            "options": [("opinion", "In my opinion, ..."), ("because", "Because my opinion, ..."), ("think", "I thinking that ...")],
+            "correct_id": "opinion",
+        },
+    ],
+}
+
+
+def _level_questions_for_age(age_group: str) -> list[dict]:
+    return LEVEL_TESTS.get(age_group) or LEVEL_TESTS["8_10"]
+
+
+def _public_level_question(question: dict) -> dict:
+    return {
+        "id": question["id"],
+        "prompt": question["prompt"],
+        "options": [
+            {"id": option_id, "text": text}
+            for option_id, text in question["options"]
+        ],
+    }
+
+
+def _level_from_score(age_group: str, correct_count: int, total: int) -> str:
+    if total <= 0:
+        return _estimated_level_for_user({"age_group": age_group})
+    score = correct_count / total
+    if age_group == "5_7":
+        return "beginner" if score >= 0.65 else "starter"
+    if age_group == "8_10":
+        if score < 0.35:
+            return "starter"
+        if score < 0.75:
+            return "beginner"
+        return "elementary"
+    if score < 0.35:
+        return "beginner"
+    if score < 0.75:
+        return "elementary"
+    return "pre_intermediate"
+
+
+def _level_result_message(level: str) -> str:
+    messages = {
+        "starter": "Начнем очень мягко: первые слова, короткие фразы и много поддержки.",
+        "beginner": "Хорошая база для простых диалогов. Будем уверенно строить фразы.",
+        "elementary": "Можно добавлять больше грамматики, мини-диалоги и школьные темы.",
+        "pre_intermediate": "Отлично, можно тренировать живую речь, объяснения и более длинные ответы.",
+    }
+    return messages.get(level, "Репетитор подстроит задания под этот уровень.")
+
+
 # ---------- API: профиль и регистрация ----------
 
 async def api_me(request: web.Request):
@@ -408,9 +640,11 @@ async def api_me(request: web.Request):
             },
             "age_groups": [{"value": v, "label": l} for l, v in AGE_GROUPS],
             "goals": [{"value": v, "label": l} for l, v in LEARNING_GOALS],
+            "levels": [{"value": v, "label": l} for l, v in ENGLISH_LEVELS],
         })
 
     stats = await database.get_user_stats(user_id)
+    level = _level_for_user(user)
     return web.json_response({
         "registered": True,
         "user": {
@@ -422,6 +656,10 @@ async def api_me(request: web.Request):
             "age_label":  _age_label(user["age_group"]),
             "goal": user["goal"] or "",
             "goal_label": _goal_label(user["goal"]),
+            "level": level,
+            "level_label": _level_label(level),
+            "level_test_score": _record_value(user, "level_test_score"),
+            "level_test_completed": bool(_record_value(user, "level_test_completed_at")),
             "points":     user["points"],
         },
         "stats": {
@@ -481,8 +719,72 @@ async def api_register(request: web.Request):
         parent_name=parent_name or tg_user.get("first_name", ""),
         child_age=child_age or None,
         goal=goal or None,
+        english_level=_level_from_score(age_group, 0, 0),
     )
     return web.json_response({"ok": True})
+
+
+async def api_level_test(request: web.Request):
+    user = await _current_user_or_404(request)
+    age_group = _normalized_age_group_for_user(user)
+    level = _level_for_user(user)
+    questions = _level_questions_for_age(age_group)
+    return web.json_response({
+        "age_group": age_group,
+        "age_label": _age_label(age_group),
+        "level": level,
+        "level_label": _level_label(level),
+        "questions": [_public_level_question(question) for question in questions],
+    })
+
+
+async def api_level_submit(request: web.Request):
+    user_id = request["tg_user"]["id"]
+    user = await _current_user_or_404(request)
+    body = await _safe_json(request)
+    answers = body.get("answers") or []
+    if not isinstance(answers, list):
+        return web.json_response({"error": "bad payload"}, status=400)
+
+    age_group = _normalized_age_group_for_user(user)
+    questions = _level_questions_for_age(age_group)
+    by_id = {question["id"]: question for question in questions}
+    selected_by_question = {}
+    for raw in answers:
+        if not isinstance(raw, dict):
+            continue
+        question_id = str(raw.get("question_id") or "")
+        selected_id = str(raw.get("selected_id") or "")
+        if question_id in by_id and selected_id:
+            selected_by_question[question_id] = selected_id
+
+    results = []
+    correct_count = 0
+    for question in questions:
+        selected_id = selected_by_question.get(question["id"])
+        correct = selected_id == question["correct_id"]
+        if correct:
+            correct_count += 1
+        results.append({
+            "question_id": question["id"],
+            "correct": correct,
+            "selected_id": selected_id,
+            "correct_id": question["correct_id"],
+        })
+
+    total = len(questions)
+    score = round(correct_count / total * 100) if total else 0
+    level = _level_from_score(age_group, correct_count, total)
+    await database.update_user_level(user_id, level, score)
+    return web.json_response({
+        "correct_count": correct_count,
+        "total": total,
+        "score": score,
+        "level": level,
+        "level_label": _level_label(level),
+        "message": _level_result_message(level),
+        "results": results,
+    })
 
 
 async def api_parent_report(request: web.Request):
@@ -490,12 +792,14 @@ async def api_parent_report(request: web.Request):
     user = await _current_user_or_404(request)
     report = await database.get_parent_report(user_id)
     stats = await database.get_user_stats(user_id)
+    level = _level_for_user(user)
     return web.json_response({
         "child": {
             "name": user["name"],
             "age_group": user["age_group"],
             "age_label": _age_label(user["age_group"]),
             "goal_label": _goal_label(user["goal"]),
+            "level_label": _level_label(level),
             "points": user["points"],
         },
         "report": {
@@ -1086,6 +1390,8 @@ def create_app(
     app.router.add_get("/api/leaderboard",              api_leaderboard)
     app.router.add_get("/api/parent/report",            api_parent_report)
     app.router.add_post("/api/results/reset",           api_results_reset)
+    app.router.add_get("/api/level/test",               api_level_test)
+    app.router.add_post("/api/level/submit",            api_level_submit)
     app.router.add_get("/api/daily/status",             api_daily_status)
     app.router.add_post("/api/daily/progress",          api_daily_progress)
     app.router.add_post("/api/register",               api_register)

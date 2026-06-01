@@ -42,7 +42,7 @@ DATABASE_URL = _env("DATABASE_URL", "")
 
 # --- Mini App (Telegram WebApp) ---
 WEBAPP_URL = _env("WEBAPP_URL", "https://telegram-miniapp-1-r0sj.onrender.com")
-APP_VERSION = _env("APP_VERSION", "20260531-kids-v46")
+APP_VERSION = _env("APP_VERSION", "20260601-kids-v47")
 
 WEBAPP_HOST = os.getenv("WEBAPP_HOST", "0.0.0.0")
 # Render задаёт порт через переменную PORT — читаем её, иначе 8080.
@@ -103,6 +103,13 @@ LEARNING_GOALS = [
     ("Разговорная практика", "speaking"),
     ("Путешествия", "travel"),
     ("Экзамены", "exams"),
+]
+
+ENGLISH_LEVELS = [
+    ("Starter - первые слова", "starter"),
+    ("Beginner / A1", "beginner"),
+    ("Elementary / A1+", "elementary"),
+    ("Pre-Intermediate / A2", "pre_intermediate"),
 ]
 
 WORDS_PER_AGE_GROUP = {

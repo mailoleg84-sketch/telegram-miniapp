@@ -67,6 +67,9 @@ async def init_db() -> None:
                 parent_name    TEXT,
                 child_age      INTEGER,
                 goal           TEXT,
+                english_level  TEXT DEFAULT 'beginner',
+                level_test_score INTEGER,
+                level_test_completed_at TIMESTAMP,
                 points         INTEGER DEFAULT 0,
                 registered_at  TIMESTAMP DEFAULT NOW()
             )
@@ -74,6 +77,9 @@ async def init_db() -> None:
         await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS parent_name TEXT")
         await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS child_age INTEGER")
         await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS goal TEXT")
+        await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS english_level TEXT DEFAULT 'beginner'")
+        await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS level_test_score INTEGER")
+        await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS level_test_completed_at TIMESTAMP")
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS words (
                 id           SERIAL PRIMARY KEY,
@@ -186,24 +192,37 @@ async def add_user(
     parent_name: str | None = None,
     child_age: int | None = None,
     goal: str | None = None,
+    english_level: str | None = None,
 ) -> None:
     pool = await _get_pool()
     await pool.execute("""
-        INSERT INTO users (user_id, name, age_group, parent_name, child_age, goal)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO users (user_id, name, age_group, parent_name, child_age, goal, english_level)
+        VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 'beginner'))
         ON CONFLICT (user_id)
         DO UPDATE SET
             name = EXCLUDED.name,
             age_group = EXCLUDED.age_group,
             parent_name = EXCLUDED.parent_name,
             child_age = EXCLUDED.child_age,
-            goal = EXCLUDED.goal
-    """, user_id, name, age_group, parent_name, child_age, goal)
+            goal = EXCLUDED.goal,
+            english_level = COALESCE(users.english_level, EXCLUDED.english_level)
+    """, user_id, name, age_group, parent_name, child_age, goal, english_level)
 
 
 async def get_user(user_id: int):
     pool = await _get_pool()
     return await pool.fetchrow("SELECT * FROM users WHERE user_id = $1", user_id)
+
+
+async def update_user_level(user_id: int, english_level: str, score: int) -> None:
+    pool = await _get_pool()
+    await pool.execute("""
+        UPDATE users
+        SET english_level = $2,
+            level_test_score = $3,
+            level_test_completed_at = NOW()
+        WHERE user_id = $1
+    """, user_id, english_level, score)
 
 
 async def update_points(user_id: int, delta: int) -> None:
@@ -218,7 +237,14 @@ async def reset_learning_results(user_id: int) -> None:
     pool = await _get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
-            await conn.execute("UPDATE users SET points = 0 WHERE user_id = $1", user_id)
+            await conn.execute("""
+                UPDATE users
+                SET points = 0,
+                    english_level = 'beginner',
+                    level_test_score = NULL,
+                    level_test_completed_at = NULL
+                WHERE user_id = $1
+            """, user_id)
             await conn.execute("DELETE FROM user_progress WHERE user_id = $1", user_id)
             await conn.execute("DELETE FROM daily_lessons WHERE user_id = $1", user_id)
             await conn.execute("DELETE FROM vocabulary_sessions WHERE user_id = $1", user_id)

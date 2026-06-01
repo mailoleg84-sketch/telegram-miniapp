@@ -1,6 +1,7 @@
 import unittest
 
 from webapp.openai_service import _runtime_instructions, _safety_guard_reply, openai_config_status
+from webapp.server import _level_from_score, _level_label
 
 
 class OpenAISafetyTests(unittest.TestCase):
@@ -42,6 +43,14 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertIn("Не просто болтай", prompt)
         self.assertIn("учебный шаг", prompt)
         self.assertIn("Не меняй тему", prompt)
+
+    def test_level_test_score_is_age_adaptive(self):
+        self.assertEqual(_level_from_score("5_7", 0, 5), "starter")
+        self.assertEqual(_level_from_score("5_7", 4, 5), "beginner")
+        self.assertEqual(_level_from_score("8_10", 2, 6), "starter")
+        self.assertEqual(_level_from_score("8_10", 5, 6), "elementary")
+        self.assertEqual(_level_from_score("14_18", 7, 8), "pre_intermediate")
+        self.assertIn("A1", _level_label("beginner"))
 
 
 if __name__ == "__main__":
