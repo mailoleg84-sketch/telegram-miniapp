@@ -42,7 +42,7 @@ DATABASE_URL = _env("DATABASE_URL", "")
 
 # --- Mini App (Telegram WebApp) ---
 WEBAPP_URL = _env("WEBAPP_URL", "https://telegram-miniapp-1-r0sj.onrender.com")
-APP_VERSION = _env("APP_VERSION", "20260601-kids-v50")
+APP_VERSION = _env("APP_VERSION", "20260601-kids-v51")
 
 WEBAPP_HOST = os.getenv("WEBAPP_HOST", "0.0.0.0")
 # Render задаёт порт через переменную PORT — читаем её, иначе 8080.
@@ -86,6 +86,8 @@ TUTOR_LANGUAGE_BALANCE = _env("TUTOR_LANGUAGE_BALANCE", "отвечать на �
 # --- Геймификация ---
 POINTS_CORRECT = 10
 POINTS_WRONG = -3
+GAME_POINTS_CORRECT = int(os.getenv("GAME_POINTS_CORRECT", "8"))
+GAME_PERFECT_BONUS_POINTS = int(os.getenv("GAME_PERFECT_BONUS_POINTS", "10"))
 DAILY_LESSON_REWARD_POINTS = int(os.getenv("DAILY_LESSON_REWARD_POINTS", "25"))
 DAILY_LESSON_STEPS = 4
 

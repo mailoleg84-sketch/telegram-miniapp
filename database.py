@@ -158,6 +158,24 @@ async def init_db() -> None:
             CREATE INDEX IF NOT EXISTS vocabulary_sessions_user_created_idx
             ON vocabulary_sessions (user_id, created_at DESC)
         """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS game_sessions (
+                id              SERIAL PRIMARY KEY,
+                user_id         BIGINT NOT NULL,
+                game_type       TEXT NOT NULL,
+                age_group       TEXT NOT NULL,
+                word_ids        INTEGER[] NOT NULL,
+                correct_count   INTEGER DEFAULT 0,
+                wrong_count     INTEGER DEFAULT 0,
+                completed       BOOLEAN DEFAULT FALSE,
+                created_at      TIMESTAMP DEFAULT NOW(),
+                completed_at    TIMESTAMP
+            )
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS game_sessions_user_created_idx
+            ON game_sessions (user_id, created_at DESC)
+        """)
         await _seed_words(conn)
 
 
@@ -248,6 +266,7 @@ async def reset_learning_results(user_id: int) -> None:
             await conn.execute("DELETE FROM user_progress WHERE user_id = $1", user_id)
             await conn.execute("DELETE FROM daily_lessons WHERE user_id = $1", user_id)
             await conn.execute("DELETE FROM vocabulary_sessions WHERE user_id = $1", user_id)
+            await conn.execute("DELETE FROM game_sessions WHERE user_id = $1", user_id)
 
 
 # ---------- Слова ----------
@@ -536,6 +555,43 @@ async def finish_vocabulary_session(
     """, session_id, user_id, correct_count, wrong_count)
 
 
+# ---------- Игровые сессии ----------
+
+async def create_game_session(user_id: int, game_type: str, age_group: str, word_ids: list[int]):
+    pool = await _get_pool()
+    return await pool.fetchrow("""
+        INSERT INTO game_sessions (user_id, game_type, age_group, word_ids)
+        VALUES ($1, $2, $3, $4)
+        RETURNING *
+    """, user_id, game_type, age_group, word_ids)
+
+
+async def get_game_session(session_id: int, user_id: int):
+    pool = await _get_pool()
+    return await pool.fetchrow("""
+        SELECT * FROM game_sessions
+        WHERE id = $1 AND user_id = $2
+    """, session_id, user_id)
+
+
+async def finish_game_session(
+    session_id: int,
+    user_id: int,
+    correct_count: int,
+    wrong_count: int,
+) -> None:
+    pool = await _get_pool()
+    await pool.execute("""
+        UPDATE game_sessions
+        SET
+            correct_count = $3,
+            wrong_count = $4,
+            completed = TRUE,
+            completed_at = NOW()
+        WHERE id = $1 AND user_id = $2
+    """, session_id, user_id, correct_count, wrong_count)
+
+
 # ---------- Прогресс ----------
 
 async def update_progress(user_id: int, word_id: int, correct: bool) -> None:
@@ -579,7 +635,9 @@ async def get_parent_report(user_id: int):
             COALESCE(p.total_wrong, 0)::INT AS total_wrong,
             COALESCE(l.completed_lessons, 0)::INT AS completed_lessons,
             COALESCE(v.completed_word_tests, 0)::INT AS completed_word_tests,
-            COALESCE(v.avg_word_test_score, 0)::INT AS avg_word_test_score
+            COALESCE(v.avg_word_test_score, 0)::INT AS avg_word_test_score,
+            COALESCE(g.completed_games, 0)::INT AS completed_games,
+            COALESCE(g.avg_game_score, 0)::INT AS avg_game_score
         FROM users u
         LEFT JOIN (
             SELECT
@@ -611,6 +669,21 @@ async def get_parent_report(user_id: int):
             WHERE completed = TRUE
             GROUP BY user_id
         ) v ON v.user_id = u.user_id
+        LEFT JOIN (
+            SELECT
+                user_id,
+                COUNT(*) AS completed_games,
+                ROUND(AVG(
+                    CASE
+                        WHEN (correct_count + wrong_count) > 0
+                        THEN correct_count::NUMERIC / (correct_count + wrong_count) * 100
+                        ELSE NULL
+                    END
+                ), 0) AS avg_game_score
+            FROM game_sessions
+            WHERE completed = TRUE
+            GROUP BY user_id
+        ) g ON g.user_id = u.user_id
         WHERE u.user_id = $1
     """, user_id)
 
@@ -630,7 +703,8 @@ async def get_activity_history(user_id: int, limit: int = 30):
                 NULL::INT AS correct_count,
                 NULL::INT AS wrong_count,
                 NULL::INT AS word_count,
-                rewarded_at IS NOT NULL AS rewarded
+                rewarded_at IS NOT NULL AS rewarded,
+                NULL::TEXT AS game_type
             FROM daily_lessons
             WHERE user_id = $1
               AND (completed = TRUE OR completed_steps > 0)
@@ -651,8 +725,31 @@ async def get_activity_history(user_id: int, limit: int = 30):
                 correct_count::INT,
                 wrong_count::INT,
                 CARDINALITY(word_ids)::INT AS word_count,
-                FALSE AS rewarded
+                FALSE AS rewarded,
+                NULL::TEXT AS game_type
             FROM vocabulary_sessions
+            WHERE user_id = $1
+              AND (completed = TRUE OR CARDINALITY(word_ids) > 0)
+
+            UNION ALL
+
+            SELECT
+                'word_game'::TEXT AS event_type,
+                COALESCE(completed_at, created_at) AS event_at,
+                created_at::DATE::TEXT AS event_date,
+                completed,
+                NULL::INT AS completed_steps,
+                CASE
+                    WHEN (correct_count + wrong_count) > 0
+                    THEN ROUND(correct_count::NUMERIC / (correct_count + wrong_count) * 100)::INT
+                    ELSE NULL::INT
+                END AS score,
+                correct_count::INT,
+                wrong_count::INT,
+                CARDINALITY(word_ids)::INT AS word_count,
+                FALSE AS rewarded,
+                game_type
+            FROM game_sessions
             WHERE user_id = $1
               AND (completed = TRUE OR CARDINALITY(word_ids) > 0)
         ) events

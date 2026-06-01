@@ -21,6 +21,7 @@ const state = {
   vocab: null,
   quiz: null,
   answers: [],
+  game: null,
   levelTest: null,
   dictionaryFilter: "all",
 };
@@ -154,6 +155,7 @@ function clearAccountLocalState() {
   state.vocab = null;
   state.quiz = null;
   state.answers = [];
+  state.game = null;
   state.levelTest = null;
   state.dictionaryFilter = "all";
   try {
@@ -329,6 +331,7 @@ function renderMenu() {
       <button class="btn ${u.level_test_completed ? "btn-secondary" : ""}" id="levelTest">${u.level_test_completed ? "Обновить уровень" : "Пройти тест уровня"}</button>
       <button class="btn" id="vocab">Новые слова + тест</button>
       <button class="btn" id="daily">Ежедневный урок</button>
+      <button class="btn" id="games">Игры со словами</button>
       <button class="btn" id="training">Тренировка слов</button>
       <button class="btn" id="dictionary">Словарь и повторение</button>
       <button class="btn" id="chat">Поговорить с репетитором</button>
@@ -341,6 +344,7 @@ function renderMenu() {
   document.getElementById("levelTest").onclick = () => { haptic(); renderLevelTestIntro(); };
   document.getElementById("vocab").onclick = () => { haptic(); renderVocabStart(); };
   document.getElementById("daily").onclick = () => { haptic(); renderDailyLesson(); };
+  document.getElementById("games").onclick = () => { haptic(); renderGamesMenu(); };
   document.getElementById("training").onclick = () => { haptic(); renderTrainingMenu(); };
   document.getElementById("dictionary").onclick = () => { haptic(); renderDictionary(); };
   document.getElementById("chat").onclick = () => { haptic(); renderChat(); };
@@ -531,6 +535,117 @@ async function finishVocabQuiz() {
       </div>`;
     document.getElementById("again").onclick = () => { haptic(); renderVocabStart(); };
     document.getElementById("home").onclick = () => { haptic(); renderMenu(); };
+  } catch (e) {
+    renderError(e.message);
+  }
+}
+
+function renderGamesMenu() {
+  setBack(renderMenu);
+  app.innerHTML = `
+    <div class="screen">
+      <h1>Игры со словами</h1>
+      <div class="card">
+        <h2>Словесная охота</h2>
+        <p class="hint">Короткая игра: смотри перевод и лови правильное английское слово. За правильные ответы начисляются баллы, штрафов нет.</p>
+      </div>
+      <button class="btn" id="wordHuntStart">Играть</button>
+      <button class="btn btn-secondary" id="wordHuntDictionary">Словарь</button>
+      <button class="btn btn-secondary" id="wordHuntHome">В меню</button>
+    </div>`;
+  document.getElementById("wordHuntStart").onclick = () => { haptic(); startWordHunt(); };
+  document.getElementById("wordHuntDictionary").onclick = () => { haptic(); renderDictionary(); };
+  document.getElementById("wordHuntHome").onclick = () => { haptic(); renderMenu(); };
+}
+
+async function startWordHunt() {
+  setBack(renderGamesMenu);
+  loading();
+  try {
+    const data = await api("/api/game/word-hunt/start", "POST", {});
+    state.game = {
+      data,
+      answers: [],
+      score: 0,
+    };
+    renderWordHuntRound(0);
+  } catch (e) {
+    renderError(e.message);
+  }
+}
+
+function renderWordHuntRound(index) {
+  const game = state.game?.data;
+  const round = game?.rounds?.[index];
+  if (!round) return finishWordHunt();
+  const progress = `${index + 1}/${game.rounds.length}`;
+  setBack(renderGamesMenu);
+  app.innerHTML = `
+    <div class="screen">
+      <h1>${esc(game.title || "Словесная охота")}</h1>
+      <div class="game-score">
+        <span>${progress}</span>
+        <b>${state.game.score} поймано</b>
+      </div>
+      <div class="card center word-hunt-card">
+        <div class="daily-badge">Найди слово</div>
+        <div class="big-sub mt-12">${esc(round.translation)}</div>
+        <p class="hint mt-12">${esc(round.prompt)}</p>
+      </div>
+      <div class="game-options">
+        ${round.options.map(option => `
+          <button class="btn btn-secondary game-option" data-id="${option.id}">${esc(option.word)}</button>
+        `).join("")}
+      </div>
+    </div>`;
+
+  document.querySelectorAll(".game-option").forEach(btn => {
+    btn.onclick = () => {
+      const selectedId = Number(btn.dataset.id);
+      const correct = selectedId === round.word_id;
+      state.game.answers[index] = { word_id: round.word_id, selected_id: selectedId };
+      if (correct) state.game.score += 1;
+      document.querySelectorAll(".game-option").forEach(item => item.disabled = true);
+      btn.classList.remove("btn-secondary");
+      btn.classList.add(correct ? "btn-correct" : "btn-wrong");
+      haptic(correct ? "success" : "error");
+      setTimeout(() => renderWordHuntRound(index + 1), 550);
+    };
+  });
+}
+
+async function finishWordHunt() {
+  setBack(renderGamesMenu);
+  loading();
+  try {
+    const result = await api("/api/game/word-hunt/finish", "POST", {
+      session_id: state.game.data.session_id,
+      answers: state.game.answers.filter(Boolean),
+    });
+    if (state.me?.user) state.me.user.points = result.points;
+    const mistakes = result.results.filter(item => !item.correct);
+    app.innerHTML = `
+      <div class="screen">
+        <h1>Охота завершена</h1>
+        <div class="card center">
+          <div class="big" style="color: var(--button)">${result.score}%</div>
+          <p>${result.correct_count} поймано из ${result.total}</p>
+          <p><b>+${result.delta} 💎</b> · всего: ${result.points}</p>
+          ${result.perfect_bonus ? `<p class="hint">Бонус за идеальную игру: +${result.perfect_bonus} 💎</p>` : ""}
+        </div>
+        ${mistakes.length ? `
+          <div class="card">
+            <h2>Потренировать еще</h2>
+            ${mistakes.map(item => `<div class="stat-row"><span>${esc(item.translation)}</span><b>${esc(item.word)}</b></div>`).join("")}
+          </div>
+        ` : `<div class="card center"><b>Отличная охота!</b><p class="hint">Все слова пойманы правильно.</p></div>`}
+        <button class="btn" id="gameAgain">Играть еще</button>
+        <button class="btn btn-secondary" id="gameReview">Повторить слова</button>
+        <button class="btn btn-secondary" id="gameHome">В меню</button>
+      </div>`;
+    document.getElementById("gameAgain").onclick = () => { haptic(); startWordHunt(); };
+    document.getElementById("gameReview").onclick = () => { haptic(); renderTrainingMenu(mistakes.length ? "review" : "all"); };
+    document.getElementById("gameHome").onclick = () => { haptic(); renderMenu(); };
   } catch (e) {
     renderError(e.message);
   }
@@ -2128,7 +2243,9 @@ async function renderParentReport() {
           <div class="stat-row"><span>Уроков пройдено</span><b>${r.completed_lessons}</b></div>
           <div class="stat-row"><span>Слов в обучении</span><b>${r.words_learned}</b></div>
           <div class="stat-row"><span>Тестов по словам</span><b>${r.completed_word_tests}</b></div>
+          <div class="stat-row"><span>Игр пройдено</span><b>${r.completed_games || 0}</b></div>
           <div class="stat-row"><span>Средний результат</span><b>${r.avg_word_test_score}%</b></div>
+          <div class="stat-row"><span>Средний результат игр</span><b>${r.avg_game_score || 0}%</b></div>
           <div class="stat-row"><span>Правильных ответов</span><b>${r.total_correct}</b></div>
           <div class="stat-row"><span>Ошибок</span><b>${r.total_wrong}</b></div>
         </div>
@@ -2171,6 +2288,7 @@ async function renderParentReport() {
         const action = button.dataset.action;
         if (action === "daily") return renderDailyLesson();
         if (action === "vocab") return renderVocabStart();
+        if (action === "game") return renderGamesMenu();
         if (action === "review") return renderTrainingMenu("review");
         if (action === "dictionary") return renderDictionary("review");
         return renderMenu();
@@ -2236,10 +2354,12 @@ async function renderActivityHistory() {
         `}
         <button class="btn" id="historyDaily">Начать урок</button>
         <button class="btn btn-secondary" id="historyVocab">Новые слова + тест</button>
+        <button class="btn btn-secondary" id="historyGame">Игры со словами</button>
         <button class="btn btn-secondary" id="historyHome">В меню</button>
       </div>`;
     document.getElementById("historyDaily").onclick = () => { haptic(); renderDailyLesson(); };
     document.getElementById("historyVocab").onclick = () => { haptic(); renderVocabStart(); };
+    document.getElementById("historyGame").onclick = () => { haptic(); renderGamesMenu(); };
     document.getElementById("historyHome").onclick = () => { haptic(); renderMenu(); };
   } catch (e) {
     renderError(e.message);

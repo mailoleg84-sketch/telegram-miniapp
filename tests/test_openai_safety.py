@@ -1,5 +1,6 @@
 import unittest
 
+from config import GAME_PERFECT_BONUS_POINTS, GAME_POINTS_CORRECT
 from webapp.openai_service import _runtime_instructions, _safety_guard_reply, openai_config_status
 from webapp.server import (
     _activity_event_dict,
@@ -97,6 +98,27 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertEqual(payload["title"], "Тест по словам")
         self.assertEqual(payload["description"], "3 правильно из 4")
         self.assertEqual(payload["points_delta"], 27)
+
+    def test_activity_event_formats_word_game(self):
+        row = {
+            "event_type": "word_game",
+            "event_at": "2026-06-01T11:00:00",
+            "event_date": "2026-06-01",
+            "completed": True,
+            "completed_steps": None,
+            "score": 100,
+            "correct_count": 4,
+            "wrong_count": 0,
+            "word_count": 4,
+            "rewarded": False,
+            "game_type": "word_hunt",
+        }
+
+        payload = _activity_event_dict(row)
+
+        self.assertEqual(payload["title"], "Словесная охота")
+        self.assertEqual(payload["description"], "Поймано слов: 4 из 4")
+        self.assertEqual(payload["points_delta"], 4 * GAME_POINTS_CORRECT + GAME_PERFECT_BONUS_POINTS)
 
     def test_parent_recommendations_prioritize_review(self):
         report = {

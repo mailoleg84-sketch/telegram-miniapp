@@ -19,6 +19,8 @@ from config import (
     DAILY_LESSON_REWARD_POINTS,
     DAILY_LESSON_STEPS,
     ENGLISH_LEVELS,
+    GAME_PERFECT_BONUS_POINTS,
+    GAME_POINTS_CORRECT,
     LEARNING_GOALS,
     POINTS_CORRECT,
     POINTS_WRONG,
@@ -236,6 +238,17 @@ def _activity_event_dict(row) -> dict:
         title = "Ежедневный урок"
         description = "Урок завершен" if completed else f"Пройдено шагов: {steps}/{DAILY_LESSON_STEPS}"
         points_delta = DAILY_LESSON_REWARD_POINTS if row["rewarded"] else 0
+    elif event_type == "word_game":
+        correct_count = int(row["correct_count"] or 0)
+        wrong_count = int(row["wrong_count"] or 0)
+        word_count = int(row["word_count"] or 0)
+        title = _game_title(row["game_type"] or "word_hunt")
+        description = (
+            f"Поймано слов: {correct_count} из {correct_count + wrong_count}"
+            if completed else f"Начата игра: {word_count} слов"
+        )
+        perfect_bonus = GAME_PERFECT_BONUS_POINTS if completed and word_count > 0 and correct_count == word_count else 0
+        points_delta = correct_count * GAME_POINTS_CORRECT + perfect_bonus if completed else 0
     else:
         correct_count = int(row["correct_count"] or 0)
         wrong_count = int(row["wrong_count"] or 0)
@@ -264,10 +277,18 @@ def _activity_event_dict(row) -> dict:
     }
 
 
+def _game_title(game_type: str) -> str:
+    titles = {
+        "word_hunt": "Словесная охота",
+    }
+    return titles.get(game_type, "Игра со словами")
+
+
 def _parent_recommendations(report: dict, dictionary_summary: dict, problem_words: list[dict]) -> list[dict]:
     words_learned = int(report.get("words_learned") or 0)
     completed_lessons = int(report.get("completed_lessons") or 0)
     completed_word_tests = int(report.get("completed_word_tests") or 0)
+    completed_games = int(report.get("completed_games") or 0)
     avg_score = int(report.get("avg_word_test_score") or 0)
     total_wrong = int(report.get("total_wrong") or 0)
     review_words = int((dictionary_summary or {}).get("review_words") or 0)
@@ -284,6 +305,12 @@ def _parent_recommendations(report: dict, dictionary_summary: dict, problem_word
             "title": "Добавить первые слова",
             "text": "Запустите набор новых слов с тестом, чтобы появился базовый словарь и первые результаты.",
             "action": "vocab",
+        })
+    if words_learned > 0 and completed_games == 0:
+        recommendations.append({
+            "title": "Закрепить слова в игре",
+            "text": "После первых слов лучше сыграть в короткую «Словесную охоту»: ребенок повторит перевод без ощущения контрольной.",
+            "action": "game",
         })
     if review_words > 0:
         recommendations.append({
@@ -538,6 +565,20 @@ async def _build_vocab_question(word, age_group: str) -> dict:
         "example": word["example"] or "",
         "type": "picture" if age_group == "5_7" else "translation",
         "prompt": "Выбери перевод",
+        "options": options,
+    }
+
+
+async def _build_word_hunt_round(word, age_group: str) -> dict:
+    wrong = await database.get_random_words(3, exclude_id=word["id"])
+    options = [{"id": word["id"], "word": word["word"]}]
+    options += [{"id": item["id"], "word": item["word"]} for item in wrong]
+    random.shuffle(options)
+    return {
+        "word_id": word["id"],
+        "translation": word["translation"],
+        "example": word["example"] or "",
+        "prompt": f"Поймай английское слово для: {word['translation']}",
         "options": options,
     }
 
@@ -933,6 +974,8 @@ async def api_parent_report(request: web.Request):
         "completed_lessons": int(report["completed_lessons"] if report else 0),
         "completed_word_tests": int(report["completed_word_tests"] if report else 0),
         "avg_word_test_score": int(report["avg_word_test_score"] if report else 0),
+        "completed_games": int(report["completed_games"] if report else 0),
+        "avg_game_score": int(report["avg_game_score"] if report else 0),
     }
     return web.json_response({
         "child": {
@@ -1167,6 +1210,98 @@ async def api_vocab_finish(request: web.Request):
         "total": total,
         "score": round(correct_count / total * 100) if total else 0,
         "delta": total_delta,
+        "points": user["points"] if user else 0,
+        "results": results,
+    })
+
+
+async def api_word_hunt_start(request: web.Request):
+    user_id = request["tg_user"]["id"]
+    user = await _current_user_or_404(request)
+    age_group = user["age_group"] if user["age_group"] in WORDS_PER_AGE_GROUP else "8_10"
+    count = min(6, max(4, WORDS_PER_AGE_GROUP.get(age_group, 6)))
+    words = await database.get_words_for_age(age_group, count=count)
+    if not words:
+        return web.json_response({"error": "Пока не удалось загрузить слова для игры"}, status=500)
+
+    session = await database.create_game_session(
+        user_id=user_id,
+        game_type="word_hunt",
+        age_group=age_group,
+        word_ids=[word["id"] for word in words],
+    )
+    rounds = [await _build_word_hunt_round(word, age_group) for word in words]
+    return web.json_response({
+        "session_id": session["id"],
+        "game_type": "word_hunt",
+        "title": _game_title("word_hunt"),
+        "age_group": age_group,
+        "age_label": _age_label(age_group),
+        "rounds": rounds,
+        "points_correct": GAME_POINTS_CORRECT,
+        "perfect_bonus": GAME_PERFECT_BONUS_POINTS,
+    })
+
+
+async def api_word_hunt_finish(request: web.Request):
+    user_id = request["tg_user"]["id"]
+    body = await _safe_json(request)
+    try:
+        session_id = int(body["session_id"])
+        answers = body["answers"]
+    except (KeyError, ValueError, TypeError):
+        return web.json_response({"error": "bad payload"}, status=400)
+
+    session = await database.get_game_session(session_id, user_id)
+    if not session:
+        return web.json_response({"error": "game not found"}, status=404)
+    if session["completed"]:
+        return web.json_response({"error": "Эта игра уже завершена"}, status=400)
+
+    words = await database.get_words_by_ids(list(session["word_ids"]))
+    answer_by_word: dict[int, int] = {}
+    for raw in answers:
+        try:
+            word_id = int(raw.get("word_id"))
+            selected_id = int(raw.get("selected_id"))
+        except (TypeError, ValueError, AttributeError):
+            continue
+        answer_by_word[word_id] = selected_id
+
+    results = []
+    correct_count = 0
+    wrong_count = 0
+
+    for word in words:
+        word_id = int(word["id"])
+        selected_id = answer_by_word.get(word_id)
+        correct = selected_id == word_id
+        if correct:
+            correct_count += 1
+        else:
+            wrong_count += 1
+        await database.update_progress(user_id, word_id, correct=correct)
+        results.append({
+            "word_id": word_id,
+            "word": word["word"],
+            "translation": word["translation"],
+            "selected_id": selected_id,
+            "correct": correct,
+        })
+
+    total = correct_count + wrong_count
+    perfect_bonus = GAME_PERFECT_BONUS_POINTS if total > 0 and correct_count == total else 0
+    total_delta = correct_count * GAME_POINTS_CORRECT + perfect_bonus
+    await database.finish_game_session(session_id, user_id, correct_count, wrong_count)
+    await database.update_points(user_id, total_delta)
+    user = await database.get_user(user_id)
+    return web.json_response({
+        "correct_count": correct_count,
+        "wrong_count": wrong_count,
+        "total": total,
+        "score": round(correct_count / total * 100) if total else 0,
+        "delta": total_delta,
+        "perfect_bonus": perfect_bonus,
         "points": user["points"] if user else 0,
         "results": results,
     })
@@ -1598,6 +1733,8 @@ def create_app(
     app.router.add_post("/api/vocab/start",            api_vocab_start)
     app.router.add_post("/api/vocab/quiz",             api_vocab_quiz)
     app.router.add_post("/api/vocab/finish",           api_vocab_finish)
+    app.router.add_post("/api/game/word-hunt/start",   api_word_hunt_start)
+    app.router.add_post("/api/game/word-hunt/finish",  api_word_hunt_finish)
     app.router.add_post("/api/training/choice/next",   api_choice_next)
     app.router.add_post("/api/training/choice/answer", api_choice_answer)
     app.router.add_post("/api/training/input/next",    api_input_next)

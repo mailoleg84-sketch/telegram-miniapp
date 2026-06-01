@@ -241,6 +241,36 @@ input[type="text"]:focus { border-color: var(--button); }
   color: #fff;
 }
 
+.game-score {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  background: var(--secondary-bg);
+  color: var(--hint);
+  font-size: 14px;
+}
+.game-score b {
+  color: var(--text);
+}
+.word-hunt-card {
+  min-height: 160px;
+  display: grid;
+  align-content: center;
+}
+.game-options {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+.game-options .btn {
+  margin-bottom: 0;
+  min-height: 52px;
+}
+
 .activity-list {
   display: grid;
   gap: 10px;
