@@ -634,15 +634,12 @@ function renderProgressHub() {
           <small>место среди учеников</small>
         </button>
       </div>
-
-      <button class="btn btn-secondary mt-12" id="profile">Профиль и аккаунт</button>
     </div>`;
 
   document.getElementById("motivation").onclick = () => { haptic(); renderMotivation(); };
   document.getElementById("report").onclick = () => { haptic(); renderParentReport(); };
   document.getElementById("history").onclick = () => { haptic(); renderActivityHistory(); };
   document.getElementById("leaderboard").onclick = () => { haptic(); renderLeaderboard(); };
-  document.getElementById("profile").onclick = () => { haptic(); renderProfile(); };
   loadMotivationPreview();
 }
 
