@@ -490,6 +490,11 @@ ANIMAL_NOUN_WORDS = {
     "horse", "lion", "mouse", "pig", "rabbit",
 }
 
+FOOD_NOUN_WORDS = {
+    "apple", "bread", "breakfast", "cake", "cheese", "cookie",
+    "dinner", "egg", "juice", "lunch", "milk", "orange",
+}
+
 ADJECTIVE_NOUN_WORD_COMPATIBILITY = {
     "brave": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
     "bright": {
@@ -522,6 +527,8 @@ ADJECTIVE_NOUN_WORD_COMPATIBILITY = {
     },
     "early": {"breakfast", "birthday", "dinner", "homework", "lesson", "lunch", "party"},
     "friendly": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
+    "fresh": FOOD_NOUN_WORDS | {"flower", "leaf"},
+    "hot": {"bread", "breakfast", "cake", "cheese", "dinner", "egg", "lunch", "milk"},
     "hungry": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
     "kind": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
     "late": {"breakfast", "birthday", "dinner", "homework", "lesson", "lunch", "party"},
@@ -545,6 +552,8 @@ ADJECTIVE_NOUN_WORD_COMPATIBILITY = {
         "skateboard", "station", "village",
     },
     "thirsty": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
+    "tasty": FOOD_NOUN_WORDS,
+    "warm": {"bread", "breakfast", "cake", "cheese", "coat", "dinner", "egg", "hat", "house", "lunch", "milk"},
 }
 
 VERB_OBJECT_COMPATIBILITY = {
@@ -622,6 +631,10 @@ VERB_NOUN_WORD_COMPATIBILITY = {
         "conversation", "exercise", "football", "grammar", "language",
         "lesson", "music", "pronunciation", "skill", "sport", "training",
         "vocabulary",
+    },
+    "use": {
+        "camera", "computer", "dictionary", "email", "folder",
+        "notebook", "page", "pen", "pencil", "postcard", "ticket",
     },
 }
 
@@ -905,6 +918,10 @@ def _ru_decline_word(word: str, case: str, gender: str, animate: bool = False) -
         if gender == "n":
             return word
         if animate:
+            if word.endswith("а"):
+                return word[:-1] + "у"
+            if word.endswith("я"):
+                return word[:-1] + "ю"
             if word.endswith(("й", "ь")):
                 return word[:-1] + "я"
             return word + "а"
@@ -923,6 +940,9 @@ def _ru_decline_word(word: str, case: str, gender: str, animate: bool = False) -
             if word.endswith("е"):
                 return word[:-1] + "я"
             return word
+        if word.endswith(("а", "я")):
+            stem = word[:-1]
+            return stem + ("и" if stem.endswith(("г", "к", "х", "ж", "ч", "ш", "щ")) or word.endswith("я") else "ы")
         if word.endswith(("й", "ь")):
             return word[:-1] + "я"
         return word + "а"
@@ -941,6 +961,10 @@ def _ru_decline_word(word: str, case: str, gender: str, animate: bool = False) -
             if word.endswith("е"):
                 return word[:-1] + "ем"
             return word
+        if word.endswith("а"):
+            return word[:-1] + "ой"
+        if word.endswith("я"):
+            return word[:-1] + "ей"
         if word.endswith(("й", "ь")):
             return word[:-1] + "ем"
         return word + "ом"
@@ -961,6 +985,8 @@ def _ru_decline_word(word: str, case: str, gender: str, animate: bool = False) -
             if word.endswith("е"):
                 return word[:-1] + "и"
             return word
+        if word.endswith(("а", "я")):
+            return word[:-1] + "е"
         if word.endswith("й"):
             return word[:-1] + "е"
         if word.endswith("ь"):

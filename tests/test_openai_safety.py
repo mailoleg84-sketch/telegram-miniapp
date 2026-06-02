@@ -221,6 +221,9 @@ class OpenAISafetyTests(unittest.TestCase):
             "late station",
             "look at adventure",
             "i see adventure",
+            "fresh restaurant",
+            "tasty restaurant",
+            "use a lesson",
         }
         self.assertFalse(impossible_phrases & words)
         self.assertIn("carry a guitar", words)
@@ -246,6 +249,9 @@ class OpenAISafetyTests(unittest.TestCase):
             "i see a guitar": "я вижу гитару",
             "i like a guitar": "мне нравится гитара",
             "i know about an airport": "я знаю об аэропорте",
+            "use a computer": "использовать компьютер",
+            "remember an uncle": "помнить дядю",
+            "remember a grandpa": "помнить дедушку",
         }
         for phrase, translation in expected.items():
             self.assertEqual(words.get(phrase), translation, phrase)
