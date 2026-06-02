@@ -1181,7 +1181,7 @@ async function renderChoiceTraining(focus = "all") {
       <div class="screen">
         <h1>Выбери перевод</h1>
         ${task.review_empty ? `<div class="card"><p class="hint">Ошибок для повторения пока нет, поэтому даю обычное слово.</p></div>` : ""}
-        ${wordStudyCard(task, { prompt: "Как переводится это слово?", compact: true })}
+        ${wordStudyCard(task, { compact: true })}
         ${task.options.map(option => `
           <button class="btn btn-secondary choice-answer" data-id="${option.id}">${esc(option.translation)}</button>
         `).join("")}

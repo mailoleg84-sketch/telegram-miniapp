@@ -382,6 +382,15 @@ UNCOUNTABLE_NOUNS = {
     "vocabulary",
 }
 
+COUNTABLE_NOUN_WORDS = {
+    "adventure", "album", "article", "camp", "chapter", "choice", "club",
+    "conversation", "diary", "direction", "drawing", "dream", "event",
+    "exercise", "experiment", "fact", "festival", "habit", "language",
+    "magazine", "message", "mistake", "novel", "planet", "project",
+    "recipe", "schedule", "skill", "sport", "story", "theater",
+    "tradition", "trip", "competition", "relationship",
+}
+
 ADJECTIVE_TOPIC_COMPATIBILITY = {
     "art": {"art", "hobbies", "music", "school", "study", "technology", "work"},
     "basic": set(NOUN_TOPIC for NOUN_TOPIC in {
@@ -495,7 +504,75 @@ FOOD_NOUN_WORDS = {
     "dinner", "egg", "juice", "lunch", "milk", "orange",
 }
 
+KID_SIZE_NOUN_WORDS = (
+    PERSON_NOUN_WORDS
+    | ANIMAL_NOUN_WORDS
+    | {
+        "apple", "ball", "bike", "bird", "boat", "book", "box", "bus",
+        "cake", "car", "chair", "cloud", "cup", "duck", "egg", "eye",
+        "face", "flower", "frog", "game", "garden", "hat", "house",
+        "kite", "lamp", "leaf", "leg", "lion", "moon", "orange", "park",
+        "plane", "river", "robot", "shoe", "star", "table", "tree",
+    }
+)
+
+VISIBLE_NOUN_WORDS = (
+    KID_SIZE_NOUN_WORDS
+    | {
+        "airport", "basket", "beach", "bedroom", "board", "bottle",
+        "camera", "candle", "cartoon", "classroom", "computer", "desk",
+        "dress", "farm", "folder", "guitar", "hospital", "market",
+        "movie", "museum", "notebook", "picture", "postcard", "station",
+        "ticket", "village",
+    }
+)
+
+LIKEABLE_NOUN_WORDS = (
+    ANIMAL_NOUN_WORDS
+    | FOOD_NOUN_WORDS
+    | {
+        "adventure", "album", "beach", "birthday", "book", "cartoon",
+        "club", "conversation", "drawing", "festival", "football",
+        "game", "garden", "guitar", "language", "magazine", "movie",
+        "music", "novel", "park", "party", "picture", "recipe",
+        "sport", "story", "theater", "trip",
+    }
+)
+
+FAVORITE_NOUN_WORDS = LIKEABLE_NOUN_WORDS | {
+    "classmate", "friend", "subject", "teacher",
+}
+
+LOOKABLE_NOUN_WORDS = (
+    VISIBLE_NOUN_WORDS
+    | {
+        "album", "article", "camp", "chapter", "competition", "drawing",
+        "experiment", "festival", "magazine", "novel", "planet", "recipe",
+        "relationship", "theater", "tradition", "trip",
+    }
+)
+
+MODIFIER_NOUN_WORDS = (
+    VISIBLE_NOUN_WORDS
+    | LIKEABLE_NOUN_WORDS
+    | {
+        "achievement", "application", "argument", "assignment", "balance",
+        "career", "challenge", "choice", "communication", "community",
+        "competition", "confidence", "decision", "diary", "discussion",
+        "education", "essay", "event", "exercise", "experience",
+        "explanation", "feedback", "future", "goal", "habit", "homework",
+        "impression", "interview", "language", "lesson", "message",
+        "mistake", "opinion", "opportunity", "paragraph", "performance",
+        "portfolio", "presentation", "priority", "progress", "project",
+        "proposal", "purpose", "question", "recommendation", "revision",
+        "schedule", "scholarship", "skill", "solution", "strategy",
+        "summary", "teamwork", "training", "university", "vocabulary",
+        "weekend", "workshop",
+    }
+)
+
 ADJECTIVE_NOUN_WORD_COMPATIBILITY = {
+    "big": KID_SIZE_NOUN_WORDS,
     "brave": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
     "bright": {
         "ball", "bike", "bird", "boat", "book", "box", "camera", "car",
@@ -507,13 +584,14 @@ ADJECTIVE_NOUN_WORD_COMPATIBILITY = {
         "airport", "beach", "classroom", "market", "party", "playground",
         "restaurant", "station", "village",
     },
-    "careful": PERSON_NOUN_WORDS,
+    "careful": PERSON_NOUN_WORDS | {"classmate"},
     "clever": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
     "clean": {
         "bedroom", "bike", "board", "bottle", "bus", "car", "chair",
         "classroom", "coat", "cup", "desk", "dress", "hat", "house",
         "kitchen", "shoe", "table",
     },
+    "cold": FOOD_NOUN_WORDS | {"rain"},
     "dark": {
         "bedroom", "bike", "bird", "boat", "book", "box", "camera", "car",
         "classroom", "coat", "computer", "dress", "forest", "garden",
@@ -526,34 +604,54 @@ ADJECTIVE_NOUN_WORD_COMPATIBILITY = {
         "kitchen", "shoe", "table",
     },
     "early": {"breakfast", "birthday", "dinner", "homework", "lesson", "lunch", "party"},
+    "fast": ANIMAL_NOUN_WORDS | {"bike", "bus", "car", "plane", "skateboard"},
     "friendly": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
-    "fresh": FOOD_NOUN_WORDS | {"flower", "leaf"},
+    "fresh": {"apple", "bread", "breakfast", "cake", "cookie", "dinner", "egg", "flower", "juice", "leaf", "lunch", "milk", "orange"},
+    "funny": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS | {"cartoon", "game", "movie", "story"},
+    "good": LIKEABLE_NOUN_WORDS | {"answer", "book", "lesson", "project", "question"},
+    "happy": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
+    "hard": {"book", "box", "chair", "desk", "lesson", "question", "table"},
+    "healthy": {"breakfast", "dinner", "lunch"},
     "hot": {"bread", "breakfast", "cake", "cheese", "dinner", "egg", "lunch", "milk"},
     "hungry": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
     "kind": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
     "late": {"breakfast", "birthday", "dinner", "homework", "lesson", "lunch", "party"},
+    "little": KID_SIZE_NOUN_WORDS,
+    "long": {"boat", "book", "bus", "car", "dress", "lesson", "page", "river", "story", "tree"},
     "loud": {
         "airport", "bus", "car", "cartoon", "classroom", "football",
         "guitar", "movie", "party", "playground", "station",
     },
+    "new": VISIBLE_NOUN_WORDS | {"lesson", "project", "skill", "word"},
+    "nice": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS | {"book", "game", "party", "story", "trip"},
     "noisy": {
         "airport", "bus", "car", "cartoon", "classroom", "football",
         "guitar", "movie", "party", "playground", "station",
     },
+    "old": {"bike", "book", "car", "house", "story", "tradition"},
     "polite": PERSON_NOUN_WORDS,
     "quiet": {
-        "airport", "beach", "bedroom", "cartoon", "classroom", "farm",
-        "guitar", "movie", "museum", "park", "restaurant", "village",
+        "beach", "bedroom", "classroom", "farm", "museum", "park",
+        "restaurant", "village",
     },
+    "round": {"ball", "cake", "clock", "cup", "eye", "face", "moon", "orange"},
     "safe": {
         "airport", "beach", "bedroom", "bike", "bus", "car",
         "classroom", "computer", "email", "farm", "hospital", "house",
         "market", "park", "plane", "playground", "restaurant",
         "skateboard", "station", "village",
     },
+    "sad": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS | {"story"},
+    "short": {"book", "lesson", "message", "page", "story", "trip"},
+    "slow": ANIMAL_NOUN_WORDS | {"bike", "bus", "car", "plane"},
+    "small": KID_SIZE_NOUN_WORDS,
+    "soft": {"baby", "bread", "cake", "coat", "hat", "shoe"},
+    "strong": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS | {"teamwork"},
+    "sweet": {"apple", "cake", "cookie", "juice", "milk", "orange"},
     "thirsty": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
     "tasty": FOOD_NOUN_WORDS,
     "warm": {"bread", "breakfast", "cake", "cheese", "coat", "dinner", "egg", "hat", "house", "lunch", "milk"},
+    "weak": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
 }
 
 VERB_OBJECT_COMPATIBILITY = {
@@ -597,6 +695,36 @@ VERB_OBJECT_COMPATIBILITY = {
     "visit": {"family", "friends", "places", "school", "travel", "culture"},
 }
 
+CHOOSABLE_NOUN_WORDS = {
+    "album", "article", "beach", "bike", "book", "camera", "cartoon",
+    "club", "dictionary", "dress", "exercise", "folder", "game", "guitar",
+    "language", "magazine", "movie", "museum", "notebook", "page",
+    "picture", "project", "recipe", "sport", "story", "ticket", "trip",
+}
+
+CLEANABLE_NOUN_WORDS = {
+    "basket", "bedroom", "bike", "board", "bottle", "bus", "car",
+    "chair", "classroom", "cup", "desk", "house", "kitchen", "shoe",
+    "table",
+}
+
+DESCRIBABLE_NOUN_WORDS = (
+    (PERSON_NOUN_WORDS - {"parent"})
+    | ANIMAL_NOUN_WORDS
+    | {
+        "adventure", "airport", "beach", "bedroom", "book", "cartoon",
+        "classroom", "culture", "dream", "event", "experiment", "festival",
+        "garden", "house", "market", "movie", "museum", "park", "picture",
+        "project", "story", "theater", "trip", "village",
+    }
+)
+
+HAVE_NOUN_WORDS = {
+    "apple", "ball", "basket", "bike", "book", "bottle", "box", "camera",
+    "cat", "dog", "dress", "folder", "friend", "game", "guitar", "hat",
+    "notebook", "pen", "pencil", "picture", "robot", "ticket",
+}
+
 PORTABLE_NOUN_WORDS = {
     "album", "article", "basket", "boat", "book", "bottle", "box",
     "camera", "candle", "chapter", "coat", "cookie", "cup",
@@ -619,7 +747,11 @@ DRAWABLE_NOUN_WORDS = {
 
 VERB_NOUN_WORD_COMPATIBILITY = {
     "carry": PORTABLE_NOUN_WORDS,
+    "choose": CHOOSABLE_NOUN_WORDS,
+    "clean": CLEANABLE_NOUN_WORDS,
+    "describe": DESCRIBABLE_NOUN_WORDS,
     "draw": DRAWABLE_NOUN_WORDS,
+    "have": HAVE_NOUN_WORDS,
     "hold": PORTABLE_NOUN_WORDS | {"hand"},
     "learn": {
         "biology", "chemistry", "conversation", "exercise", "fact",
@@ -629,9 +761,10 @@ VERB_NOUN_WORD_COMPATIBILITY = {
     "open": OPENABLE_NOUN_WORDS,
     "practice": {
         "conversation", "exercise", "football", "grammar", "language",
-        "lesson", "music", "pronunciation", "skill", "sport", "training",
+        "lesson", "music", "pronunciation", "skill", "training",
         "vocabulary",
     },
+    "remember": PERSON_NOUN_WORDS | {"birthday", "lesson", "story"},
     "use": {
         "camera", "computer", "dictionary", "email", "folder",
         "notebook", "page", "pen", "pencil", "postcard", "ticket",
@@ -662,23 +795,20 @@ MODIFIER_COMPATIBILITY = {
 
 
 def _compatible_adjective_phrase(adjective: str, adjective_topic: str, noun: str, noun_topic: str) -> bool:
-    if adjective in ADJECTIVE_NOUN_WORD_COMPATIBILITY:
-        return noun in ADJECTIVE_NOUN_WORD_COMPATIBILITY[adjective]
-    allowed_topics = ADJECTIVE_WORD_OVERRIDES.get(
-        adjective,
-        ADJECTIVE_TOPIC_COMPATIBILITY.get(adjective_topic, set()),
-    )
-    return noun_topic in allowed_topics
+    allowed_words = ADJECTIVE_NOUN_WORD_COMPATIBILITY.get(adjective)
+    return noun in allowed_words if allowed_words is not None else False
 
 
 def _compatible_verb_phrase(verb: str, noun: str, noun_topic: str) -> bool:
-    if verb in VERB_NOUN_WORD_COMPATIBILITY:
-        return noun in VERB_NOUN_WORD_COMPATIBILITY[verb]
-    allowed_topics = VERB_OBJECT_COMPATIBILITY.get(verb, set())
-    return noun_topic in allowed_topics
+    allowed_words = VERB_NOUN_WORD_COMPATIBILITY.get(verb)
+    return noun in allowed_words if allowed_words is not None else False
 
 
-def _compatible_modifier_phrase(modifier: str, noun_topic: str) -> bool:
+def _compatible_modifier_phrase(modifier: str, noun: str, noun_topic: str) -> bool:
+    if modifier == "favorite":
+        return noun in FAVORITE_NOUN_WORDS
+    if modifier in {"my", "your", "this", "that"}:
+        return noun in MODIFIER_NOUN_WORDS
     allowed_topics = MODIFIER_COMPATIBILITY.get(modifier, set())
     return noun_topic in allowed_topics
 
@@ -690,6 +820,8 @@ def _article_for(noun: str) -> str:
 
 
 def _needs_article(noun: str, noun_topic: str) -> bool:
+    if noun in COUNTABLE_NOUN_WORDS:
+        return True
     return noun_topic in COUNTABLE_NOUN_TOPICS and noun not in UNCOUNTABLE_NOUNS
 
 
@@ -698,8 +830,10 @@ def _article_phrase(noun: str, noun_topic: str) -> str:
 
 
 def _verb_object_phrase(verb: str, noun: str, noun_topic: str) -> str:
-    if verb in {"learn", "practice"} and noun_topic in {
-        "learning", "music", "school", "speaking", "sports", "study", "writing",
+    if verb in {"learn", "practice"} and noun in {
+        "biology", "chemistry", "conversation", "football", "geography",
+        "grammar", "history", "music", "pronunciation", "science",
+        "training", "vocabulary",
     }:
         return noun
     return _article_phrase(noun, noun_topic)
@@ -719,6 +853,7 @@ RUSSIAN_NOUN_GENDER_OVERRIDES = {
     "дедлайн": "m",
     "день рождения": "m",
     "дневник": "m",
+    "одноклассник": "m",
     "дождь": "m",
     "доска": "f",
     "достижение": "n",
@@ -747,6 +882,7 @@ RUSSIAN_NOUN_GENDER_OVERRIDES = {
     "отношения": "p",
     "пальто": "n",
     "папа": "m",
+    "родитель": "m",
     "парк": "m",
     "парта": "f",
     "площадка": "f",
@@ -777,6 +913,15 @@ RUSSIAN_NOUN_GENDER_OVERRIDES = {
 
 RUSSIAN_ANIMATE_TOPICS = {"animals", "family", "friends", "jobs"}
 
+RUSSIAN_PLURAL_ADJECTIVE_OVERRIDES = {
+    "мой": "мои",
+    "твой": "твои",
+    "этот": "эти",
+    "тот": "те",
+    "один": "одни",
+    "два": "двое",
+}
+
 RUSSIAN_CASE_OVERRIDES = {
     "воздушный змей": {
         "acc": "воздушного змея",
@@ -789,6 +934,12 @@ RUSSIAN_CASE_OVERRIDES = {
         "gen": "дня рождения",
         "inst": "днем рождения",
         "prep": "дне рождения",
+    },
+    "одноклассник": {
+        "acc": "одноклассника",
+        "gen": "одноклассника",
+        "inst": "одноклассником",
+        "prep": "однокласснике",
     },
     "домашняя работа": {
         "acc": "домашнюю работу",
@@ -819,6 +970,12 @@ RUSSIAN_CASE_OVERRIDES = {
         "gen": "отношений",
         "inst": "отношениями",
         "prep": "отношениях",
+    },
+    "робот": {
+        "acc": "робота",
+        "gen": "робота",
+        "inst": "роботом",
+        "prep": "роботе",
     },
     "часы": {
         "acc": "часы",
@@ -878,8 +1035,27 @@ def _replace_last_ru_word_suffix(text: str, suffix: str) -> str:
     last_word = parts[-1]
     for ending in ("ый", "ий", "ой"):
         if last_word.endswith(ending):
-            normalized_suffix = "ее" if ending == "ий" and suffix == "ое" else suffix
+            if ending == "ий" and suffix == "ое":
+                normalized_suffix = "ое" if last_word.endswith(("кий", "гий", "хий")) else "ее"
+            else:
+                normalized_suffix = suffix
             return prefix + last_word[:-2] + normalized_suffix
+    return text
+
+
+def _ru_plural_adjective_form(text: str) -> str:
+    if text in RUSSIAN_PLURAL_ADJECTIVE_OVERRIDES:
+        return RUSSIAN_PLURAL_ADJECTIVE_OVERRIDES[text]
+    parts = text.rsplit(" ", 1)
+    prefix = parts[0] + " " if len(parts) == 2 else ""
+    last_word = parts[-1]
+    if last_word.endswith("ий"):
+        return prefix + last_word[:-2] + "ие"
+    if last_word.endswith("ый"):
+        return prefix + last_word[:-2] + "ые"
+    if last_word.endswith("ой"):
+        suffix = "ие" if last_word[:-2].endswith(("ж", "ш", "ч", "щ")) else "ые"
+        return prefix + last_word[:-2] + suffix
     return text
 
 
@@ -889,9 +1065,9 @@ def _ru_variant_form(text: str, gender: str) -> str:
         return ""
     if len(variants) == 1 or gender == "m":
         return variants[0]
-    index = 1 if gender == "f" else 2 if gender == "n" and len(variants) > 2 else 0
     if gender == "p":
-        index = 0
+        return _ru_plural_adjective_form(variants[0])
+    index = 1 if gender == "f" else 2 if gender == "n" and len(variants) > 2 else 0
     target = variants[index] if index < len(variants) else variants[0]
     if target in {"ая", "яя", "ое", "ее"}:
         return _replace_last_ru_word_suffix(variants[0], target)
@@ -1061,6 +1237,41 @@ def _ru_modifier_phrase_translation(mod: str, mod_ru: str, noun: str, noun_ru: s
     return f"{modifier} {noun_ru}"
 
 
+WORD_PRACTICE_TEMPLATES = [
+    ("the word {word}", "слово {translation}", "The word is {word}."),
+    ("say the word {word}", "сказать слово {translation}", "Say the word {word}."),
+    ("write the word {word}", "написать слово {translation}", "Write the word {word}."),
+    ("repeat the word {word}", "повторить слово {translation}", "Repeat the word {word}."),
+    ("learn the word {word}", "выучить слово {translation}", "Learn the word {word}."),
+    ("spell the word {word}", "произнести по буквам слово {translation}", "Spell the word {word}."),
+    ("read the word {word}", "прочитать слово {translation}", "Read the word {word}."),
+    ("remember the word {word}", "запомнить слово {translation}", "Remember the word {word}."),
+    ("practice the word {word}", "потренироваться со словом {translation}", "Practice the word {word}."),
+    ("English word {word}", "английское слово {translation}", "This is the English word {word}."),
+    ("new word {word}", "новое слово {translation}", "The new word is {word}."),
+    ("use the word {word}", "использовать слово {translation}", "Use the word {word}."),
+    ("check the word {word}", "проверить слово {translation}", "Check the word {word}."),
+]
+
+
+def _word_practice_items(
+    lexical_items: list[tuple[str, str, str, str]],
+    age_group: str,
+) -> list[Entry5]:
+    items: list[Entry5] = []
+    for word, translation, topic, _item_age in lexical_items:
+        clean_translation = _clean_ru_translation(translation)
+        for phrase_template, translation_template, example_template in WORD_PRACTICE_TEMPLATES:
+            items.append((
+                phrase_template.format(word=word),
+                translation_template.format(translation=clean_translation),
+                example_template.format(word=word),
+                topic,
+                age_group,
+            ))
+    return items
+
+
 def _add_base_words(entries: list[Entry5], seen: set[str]) -> None:
     for word, translation, example, topic, age_group in CORE_WORDS:
         _add(entries, seen, (word, _clean_ru_translation(translation), example, topic, age_group))
@@ -1078,20 +1289,14 @@ def _fill_age_group(entries: list[Entry5], seen: set[str], age_group: str) -> No
     nouns = [item for item in NOUNS if item[3] == age_group]
     adjectives = [item for item in ADJECTIVES if item[3] == age_group]
     verbs = [item for item in VERBS if item[3] == age_group]
+    lexical_items = nouns + adjectives + verbs
 
     modifiers = [
         ("my", "мой/моя/мое"),
         ("your", "твой/твоя/твое"),
         ("this", "этот/эта/это"),
         ("that", "тот/та/то"),
-        ("the", "определенный артикль"),
-        ("a", "неопределенный артикль"),
-        ("one", "один/одна/одно"),
-        ("two", "два/две"),
         ("favorite", "любимый/ая/ое"),
-        ("next", "следующий/ая/ее"),
-        ("first", "первый/ая/ое"),
-        ("last", "последний/яя/ее"),
     ]
 
     generators = [
@@ -1128,7 +1333,7 @@ def _fill_age_group(entries: list[Entry5], seen: set[str], age_group: str) -> No
         )
         for mod, mod_ru in modifiers
         for noun, noun_ru, noun_topic, _noun_age in nouns
-        if _compatible_modifier_phrase(mod, noun_topic)
+        if _compatible_modifier_phrase(mod, noun, noun_topic)
         and (mod not in {"a", "one"} or _needs_article(noun, noun_topic))
     )
     generators.extend(
@@ -1140,7 +1345,7 @@ def _fill_age_group(entries: list[Entry5], seen: set[str], age_group: str) -> No
             age_group,
         )
         for noun, noun_ru, noun_topic, _noun_age in nouns
-        if noun_topic in CONCRETE_NOUN_TOPICS
+        if noun in LOOKABLE_NOUN_WORDS
     )
     generators.extend(
         (
@@ -1151,7 +1356,7 @@ def _fill_age_group(entries: list[Entry5], seen: set[str], age_group: str) -> No
             age_group,
         )
         for noun, noun_ru, noun_topic, _noun_age in nouns
-        if noun_topic in CONCRETE_NOUN_TOPICS
+        if noun in LOOKABLE_NOUN_WORDS
     )
     generators.extend(
         (
@@ -1162,7 +1367,9 @@ def _fill_age_group(entries: list[Entry5], seen: set[str], age_group: str) -> No
             age_group,
         )
         for noun, noun_ru, noun_topic, _noun_age in nouns
+        if noun in LIKEABLE_NOUN_WORDS
     )
+    generators.extend(_word_practice_items(lexical_items, age_group))
     generators.extend(
         (
             f"I know about {_article_phrase(noun, noun_topic)}",

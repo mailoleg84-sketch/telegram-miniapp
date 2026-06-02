@@ -181,6 +181,11 @@ class OpenAISafetyTests(unittest.TestCase):
             self.assertNotIn(")", translation, word)
             self.assertNotIn("/", translation, word)
             self.assertNotIn(":", translation, word)
+            self.assertNotIn("яркее", translation, word)
+            self.assertNotIn("творческее", translation, word)
+            self.assertNotIn("мой часы", translation, word)
+            self.assertNotIn("точный знания", translation, word)
+            self.assertNotIn("с артиклем", translation, word)
             self.assertTrue(transcription.startswith("/"), word)
             self.assertTrue(transcription.endswith("/"), word)
 
@@ -224,23 +229,49 @@ class OpenAISafetyTests(unittest.TestCase):
             "fresh restaurant",
             "tasty restaurant",
             "use a lesson",
+            "active biology",
+            "active chemistry",
+            "accurate audience",
+            "accurate fluency",
+            "ambitious grammar",
+            "healthy football",
+            "healthy skateboard",
+            "healthy restaurant",
+            "clean a classmate",
+            "choose birthday",
+            "choose a classmate",
+            "describe a parent",
+            "i like an airport",
+            "about an email",
+            "i know about an email",
+            "my biology",
+            "my chemistry",
+            "favorite science",
+            "nice juice",
+            "soft bird",
+            "old garden",
+            "look at environment",
+            "i see environment",
+            "practice sport",
+            "practice a sport",
         }
         self.assertFalse(impossible_phrases & words)
         self.assertIn("carry a guitar", words)
         self.assertIn("choose a guitar", words)
-        self.assertIn("describe a guitar", words)
+        self.assertIn("describe a classmate", words)
+        self.assertIn("practice the word airport", words)
 
     def test_generated_phrase_translations_use_readable_russian(self):
         words = {item[0]: item[1] for item in INITIAL_WORDS}
         expected = {
-            "see an egg": "видеть яйцо",
-            "see a bear": "видеть медведя",
+            "i see an egg": "я вижу яйцо",
+            "i see a bear": "я вижу медведя",
             "have a book": "иметь книгу",
+            "have a robot": "иметь робота",
             "carry a guitar": "нести гитару",
             "choose a guitar": "выбирать гитару",
-            "describe a guitar": "описывать гитару",
+            "describe a classmate": "описывать одноклассника",
             "hot egg": "горячее яйцо",
-            "i know about adventure": "я знаю о приключении",
             "friendly grandpa": "дружелюбный дедушка",
             "kind uncle": "добрый дядя",
             "safe airport": "безопасный аэропорт",
@@ -248,10 +279,13 @@ class OpenAISafetyTests(unittest.TestCase):
             "look at a guitar": "смотреть на гитару",
             "i see a guitar": "я вижу гитару",
             "i like a guitar": "мне нравится гитара",
-            "i know about an airport": "я знаю об аэропорте",
             "use a computer": "использовать компьютер",
             "remember an uncle": "помнить дядю",
             "remember a grandpa": "помнить дедушку",
+            "bright tree": "яркое дерево",
+            "bright coat": "яркое пальто",
+            "practice the word airport": "потренироваться со словом аэропорт",
+            "the word airport": "слово аэропорт",
         }
         for phrase, translation in expected.items():
             self.assertEqual(words.get(phrase), translation, phrase)
