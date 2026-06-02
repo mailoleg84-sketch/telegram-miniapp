@@ -208,6 +208,11 @@ class OpenAISafetyTests(unittest.TestCase):
             "with music",
             "with an internet",
             "with a sport",
+            "safe postcard",
+            "careful airport",
+            "kind classroom",
+            "carry a lesson",
+            "open a clock",
         }
         self.assertFalse(impossible_phrases & words)
         self.assertIn("carry a guitar", words)
@@ -225,8 +230,11 @@ class OpenAISafetyTests(unittest.TestCase):
             "describe a guitar": "описывать гитару",
             "hot egg": "горячее яйцо",
             "about adventure": "о приключении",
-            "with an article": "со статьей",
-            "for mistake": "для ошибки",
+            "friendly grandpa": "дружелюбный дедушка",
+            "kind uncle": "добрый дядя",
+            "safe airport": "безопасный аэропорт",
+            "open a book": "открывать книгу",
+            "look at a guitar": "смотреть на гитару",
         }
         for phrase, translation in expected.items():
             self.assertEqual(words.get(phrase), translation, phrase)

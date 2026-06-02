@@ -480,6 +480,33 @@ ADJECTIVE_WORD_OVERRIDES = {
     "professional": {"work", "communication", "speaking", "writing"},
 }
 
+PERSON_NOUN_WORDS = {
+    "aunt", "baby", "brother", "classmate", "cousin", "doctor",
+    "grandma", "grandpa", "parent", "sister", "uncle",
+}
+
+ANIMAL_NOUN_WORDS = {
+    "bear", "bird", "cat", "dog", "duck", "fish", "frog", "goat",
+    "horse", "lion", "mouse", "pig", "rabbit",
+}
+
+ADJECTIVE_NOUN_WORD_COMPATIBILITY = {
+    "brave": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
+    "careful": PERSON_NOUN_WORDS,
+    "clever": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
+    "friendly": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
+    "hungry": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
+    "kind": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
+    "polite": PERSON_NOUN_WORDS,
+    "safe": {
+        "airport", "beach", "bedroom", "bike", "bus", "car",
+        "classroom", "computer", "email", "farm", "hospital", "house",
+        "market", "park", "plane", "playground", "restaurant",
+        "skateboard", "station", "village",
+    },
+    "thirsty": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
+}
+
 VERB_OBJECT_COMPATIBILITY = {
     "analyze": {"thinking", "science", "school", "work", "writing", "learning", "information"},
     "argue": set(),
@@ -521,6 +548,33 @@ VERB_OBJECT_COMPATIBILITY = {
     "visit": {"family", "friends", "places", "school", "travel", "culture"},
 }
 
+PORTABLE_NOUN_WORDS = {
+    "album", "article", "basket", "boat", "book", "bottle", "box",
+    "camera", "candle", "chapter", "coat", "cookie", "cup",
+    "dictionary", "dress", "egg", "folder", "guitar", "hat", "kite",
+    "lamp", "magazine", "notebook", "page", "pen", "pencil", "picture",
+    "postcard", "recipe", "robot", "shoe", "ticket",
+}
+
+OPENABLE_NOUN_WORDS = {
+    "book", "box", "bottle", "dictionary", "email", "folder",
+    "magazine", "notebook", "page",
+}
+
+DRAWABLE_NOUN_WORDS = {
+    "bear", "bird", "boat", "box", "car", "cat", "dog", "duck",
+    "face", "fish", "flower", "frog", "garden", "goat", "horse",
+    "house", "kite", "leaf", "lion", "moon", "mouse", "pig", "plane",
+    "rabbit", "river", "robot", "star", "tree",
+}
+
+VERB_NOUN_WORD_COMPATIBILITY = {
+    "carry": PORTABLE_NOUN_WORDS,
+    "draw": DRAWABLE_NOUN_WORDS,
+    "hold": PORTABLE_NOUN_WORDS | {"hand"},
+    "open": OPENABLE_NOUN_WORDS,
+}
+
 MODIFIER_COMPATIBILITY = {
     "my": ADJECTIVE_TOPIC_COMPATIBILITY["basic"] | {"body", "exams"},
     "your": ADJECTIVE_TOPIC_COMPATIBILITY["basic"] | {"body", "exams"},
@@ -544,7 +598,9 @@ MODIFIER_COMPATIBILITY = {
 }
 
 
-def _compatible_adjective_phrase(adjective: str, adjective_topic: str, noun_topic: str) -> bool:
+def _compatible_adjective_phrase(adjective: str, adjective_topic: str, noun: str, noun_topic: str) -> bool:
+    if adjective in ADJECTIVE_NOUN_WORD_COMPATIBILITY:
+        return noun in ADJECTIVE_NOUN_WORD_COMPATIBILITY[adjective]
     allowed_topics = ADJECTIVE_WORD_OVERRIDES.get(
         adjective,
         ADJECTIVE_TOPIC_COMPATIBILITY.get(adjective_topic, set()),
@@ -552,7 +608,9 @@ def _compatible_adjective_phrase(adjective: str, adjective_topic: str, noun_topi
     return noun_topic in allowed_topics
 
 
-def _compatible_verb_phrase(verb: str, noun_topic: str) -> bool:
+def _compatible_verb_phrase(verb: str, noun: str, noun_topic: str) -> bool:
+    if verb in VERB_NOUN_WORD_COMPATIBILITY:
+        return noun in VERB_NOUN_WORD_COMPATIBILITY[verb]
     allowed_topics = VERB_OBJECT_COMPATIBILITY.get(verb, set())
     return noun_topic in allowed_topics
 
@@ -594,12 +652,14 @@ RUSSIAN_NOUN_GENDER_OVERRIDES = {
     "выходные": "p",
     "гитара": "f",
     "глаз": "m",
+    "дедушка": "m",
     "дедлайн": "m",
     "день рождения": "m",
     "дневник": "m",
     "дождь": "m",
     "доска": "f",
     "достижение": "n",
+    "дядя": "m",
     "знания": "p",
     "интернет": "m",
     "история": "f",
@@ -895,6 +955,10 @@ def _ru_for_phrase_translation(noun_ru: str, noun_topic: str) -> str:
     return f"для {_ru_decline_noun_phrase(noun_ru, 'gen', noun_topic)}"
 
 
+def _ru_look_at_phrase_translation(noun_ru: str, noun_topic: str) -> str:
+    return f"смотреть на {_ru_decline_noun_phrase(noun_ru, 'acc', noun_topic)}"
+
+
 def _ru_modifier_phrase_translation(mod: str, mod_ru: str, noun: str, noun_ru: str, noun_topic: str) -> str:
     if mod == "a":
         return f"{noun_ru} с артиклем {_article_for(noun)}"
@@ -951,7 +1015,7 @@ def _fill_age_group(entries: list[Entry5], seen: set[str], age_group: str) -> No
         )
         for adj, adj_ru, adj_topic, _adj_age in adjectives
         for noun, noun_ru, noun_topic, _noun_age in nouns
-        if _compatible_adjective_phrase(adj, adj_topic, noun_topic)
+        if _compatible_adjective_phrase(adj, adj_topic, noun, noun_topic)
     ]
     generators.extend(
         (
@@ -963,7 +1027,7 @@ def _fill_age_group(entries: list[Entry5], seen: set[str], age_group: str) -> No
         )
         for verb, verb_ru, _verb_topic, _verb_age in verbs
         for noun, noun_ru, noun_topic, _noun_age in nouns
-        if _compatible_verb_phrase(verb, noun_topic)
+        if _compatible_verb_phrase(verb, noun, noun_topic)
     )
     generators.extend(
         (
@@ -977,6 +1041,16 @@ def _fill_age_group(entries: list[Entry5], seen: set[str], age_group: str) -> No
         for noun, noun_ru, noun_topic, _noun_age in nouns
         if _compatible_modifier_phrase(mod, noun_topic)
         and (mod not in {"a", "one"} or _needs_article(noun, noun_topic))
+    )
+    generators.extend(
+        (
+            f"look at {_article_phrase(noun, noun_topic)}",
+            _ru_look_at_phrase_translation(noun_ru, noun_topic),
+            f"Look at {_article_phrase(noun, noun_topic)}.",
+            noun_topic,
+            age_group,
+        )
+        for noun, noun_ru, noun_topic, _noun_age in nouns
     )
     generators.extend(
         (
