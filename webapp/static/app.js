@@ -292,6 +292,8 @@ function ageToGroup(age) {
 
 function routeLearningAction(action) {
   if (action === "level") return renderLevelTestIntro();
+  if (action === "learn") return renderLearningHub();
+  if (action === "progress") return renderProgressHub();
   if (action === "daily") return renderDailyLesson();
   if (action === "vocab") return renderVocabStart();
   if (action === "game") return renderGamesMenu();
@@ -489,50 +491,158 @@ function renderMenu() {
   tg.MainButton.hide();
   const u = state.me.user;
   app.innerHTML = `
-    <div class="screen">
-      <h1>Привет, ${esc(u.child_name)}!</h1>
-      <div class="card">
-        <div><b>${esc(u.age_label)}</b> · ${esc(u.goal_label || "английский")}</div>
-        <div class="mt-8">Уровень: <b>${esc(u.level_label || "Beginner / A1")}</b></div>
-        <div class="mt-12">Баллы: <span class="points-pill">${u.points} 💎</span></div>
-        ${u.level_test_completed ? "" : `<p class="hint mt-12">Пройди короткий тест, чтобы репетитор точнее выбирал задания.</p>`}
+    <div class="screen dashboard">
+      <div class="dashboard-hero">
+        <div>
+          <div class="daily-badge">Сегодня</div>
+          <h1>Привет, ${esc(u.child_name)}!</h1>
+          <p>${esc(u.goal_label || "Английский")} · ${esc(u.level_label || "Beginner / A1")}</p>
+        </div>
+        <div class="points-orb">
+          <b>${u.points}</b>
+          <span>баллов</span>
+        </div>
       </div>
 
       <div class="card learning-path" id="learningPath">
-        <div class="hint">Подбираю следующий шаг...</div>
+        <div class="hint">Подбираю лучший следующий шаг...</div>
+      </div>
+
+      <div class="action-grid main-actions">
+        <button class="action-tile primary" id="chat">
+          <span>Разговор</span>
+          <b>AI-репетитор</b>
+          <small>говорить, слушать, задавать вопросы</small>
+        </button>
+        <button class="action-tile learn" id="learnHub">
+          <span>Учеба</span>
+          <b>Слова и тренировки</b>
+          <small>урок, тесты, словарь, игры</small>
+        </button>
+        <button class="action-tile progress" id="progressHub">
+          <span>Прогресс</span>
+          <b>Достижения и отчет</b>
+          <small>история, рейтинг, родительский отчет</small>
+        </button>
+        <button class="action-tile profile" id="profile">
+          <span>Аккаунт</span>
+          <b>Профиль</b>
+          <small>уровень, данные, выход</small>
+        </button>
       </div>
 
       <div class="card motivation-preview" id="motivationPreview">
         <div class="hint">Собираю достижения...</div>
       </div>
-
-      <button class="btn ${u.level_test_completed ? "btn-secondary" : ""}" id="levelTest">${u.level_test_completed ? "Обновить уровень" : "Пройти тест уровня"}</button>
-      <button class="btn" id="vocab">Новые слова + тест</button>
-      <button class="btn" id="daily">Ежедневный урок</button>
-      <button class="btn btn-secondary" id="motivation">Достижения</button>
-      <button class="btn" id="games">Игры со словами</button>
-      <button class="btn" id="training">Тренировка слов</button>
-      <button class="btn" id="dictionary">Словарь и повторение</button>
-      <button class="btn" id="chat">Поговорить с репетитором</button>
-      <button class="btn btn-secondary" id="history">История занятий</button>
-      <button class="btn btn-secondary" id="report">Отчет для родителя</button>
-      <button class="btn btn-secondary" id="leaderboard">Рейтинг</button>
-      <button class="btn btn-secondary" id="profile">Профиль</button>
     </div>`;
 
-  document.getElementById("levelTest").onclick = () => { haptic(); renderLevelTestIntro(); };
-  document.getElementById("vocab").onclick = () => { haptic(); renderVocabStart(); };
-  document.getElementById("daily").onclick = () => { haptic(); renderDailyLesson(); };
-  document.getElementById("motivation").onclick = () => { haptic(); renderMotivation(); };
-  document.getElementById("games").onclick = () => { haptic(); renderGamesMenu(); };
-  document.getElementById("training").onclick = () => { haptic(); renderTrainingMenu(); };
-  document.getElementById("dictionary").onclick = () => { haptic(); renderDictionary(); };
   document.getElementById("chat").onclick = () => { haptic(); renderChat(); };
-  document.getElementById("history").onclick = () => { haptic(); renderActivityHistory(); };
-  document.getElementById("report").onclick = () => { haptic(); renderParentReport(); };
-  document.getElementById("leaderboard").onclick = () => { haptic(); renderLeaderboard(); };
+  document.getElementById("learnHub").onclick = () => { haptic(); renderLearningHub(); };
+  document.getElementById("progressHub").onclick = () => { haptic(); renderProgressHub(); };
   document.getElementById("profile").onclick = () => { haptic(); renderProfile(); };
   loadLearningPath();
+  loadMotivationPreview();
+}
+
+function renderLearningHub() {
+  setBack(renderMenu);
+  tg.MainButton.hide();
+  const u = state.me.user;
+  app.innerHTML = `
+    <div class="screen">
+      <h1>Учеба</h1>
+      <div class="section-label">Сегодня</div>
+      <div class="action-list">
+        <button class="action-row primary" id="daily">
+          <span>Урок дня</span>
+          <b>Короткий маршрут</b>
+          <small>слова, мини-тест и простая фраза</small>
+        </button>
+        <button class="action-row" id="chatPractice">
+          <span>Разговор</span>
+          <b>Потренироваться с репетитором</b>
+          <small>живой диалог по текущей теме</small>
+        </button>
+      </div>
+
+      <div class="section-label">Слова</div>
+      <div class="hub-grid">
+        <button class="action-tile learn" id="vocab">
+          <span>Новые</span>
+          <b>Слова + тест</b>
+          <small>добавить слова в обучение</small>
+        </button>
+        <button class="action-tile review" id="training">
+          <span>Повторение</span>
+          <b>Тренировка слов</b>
+          <small>ошибки и закрепление</small>
+        </button>
+        <button class="action-tile dictionary" id="dictionary">
+          <span>Словарь</span>
+          <b>Мои слова</b>
+          <small>транскрипция и озвучка</small>
+        </button>
+        <button class="action-tile game" id="games">
+          <span>Игра</span>
+          <b>Словесная охота</b>
+          <small>быстро найти слово</small>
+        </button>
+      </div>
+
+      <div class="section-label">Настройка уровня</div>
+      <button class="btn btn-secondary" id="levelTest">${u.level_test_completed ? "Обновить уровень" : "Пройти тест уровня"}</button>
+    </div>`;
+
+  document.getElementById("daily").onclick = () => { haptic(); renderDailyLesson(); };
+  document.getElementById("chatPractice").onclick = () => { haptic(); renderChat(); };
+  document.getElementById("vocab").onclick = () => { haptic(); renderVocabStart(); };
+  document.getElementById("training").onclick = () => { haptic(); renderTrainingMenu(); };
+  document.getElementById("dictionary").onclick = () => { haptic(); renderDictionary(); };
+  document.getElementById("games").onclick = () => { haptic(); renderGamesMenu(); };
+  document.getElementById("levelTest").onclick = () => { haptic(); renderLevelTestIntro(); };
+}
+
+function renderProgressHub() {
+  setBack(renderMenu);
+  tg.MainButton.hide();
+  app.innerHTML = `
+    <div class="screen">
+      <h1>Прогресс</h1>
+      <div class="card motivation-preview" id="motivationPreview">
+        <div class="hint">Собираю достижения...</div>
+      </div>
+
+      <div class="hub-grid">
+        <button class="action-tile progress" id="motivation">
+          <span>Награды</span>
+          <b>Достижения</b>
+          <small>серии, бейджи, следующий шаг</small>
+        </button>
+        <button class="action-tile report" id="report">
+          <span>Родителю</span>
+          <b>Отчет</b>
+          <small>что получается и что повторить</small>
+        </button>
+        <button class="action-tile history" id="history">
+          <span>Журнал</span>
+          <b>История занятий</b>
+          <small>уроки, игры, тесты</small>
+        </button>
+        <button class="action-tile leaderboard-tile" id="leaderboard">
+          <span>Рейтинг</span>
+          <b>Баллы</b>
+          <small>место среди учеников</small>
+        </button>
+      </div>
+
+      <button class="btn btn-secondary mt-12" id="profile">Профиль и аккаунт</button>
+    </div>`;
+
+  document.getElementById("motivation").onclick = () => { haptic(); renderMotivation(); };
+  document.getElementById("report").onclick = () => { haptic(); renderParentReport(); };
+  document.getElementById("history").onclick = () => { haptic(); renderActivityHistory(); };
+  document.getElementById("leaderboard").onclick = () => { haptic(); renderLeaderboard(); };
+  document.getElementById("profile").onclick = () => { haptic(); renderProfile(); };
   loadMotivationPreview();
 }
 

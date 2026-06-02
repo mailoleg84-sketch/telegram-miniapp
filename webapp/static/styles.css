@@ -10,6 +10,12 @@
 
   --green: #34c759;
   --red:   #ff3b30;
+  --yellow: #ffb703;
+  --sky: #2f9df4;
+  --mint: #2ec4b6;
+  --violet: #7c5cff;
+  --ink-soft: rgba(24, 39, 75, 0.12);
+  --shadow-soft: 0 10px 30px rgba(24, 39, 75, 0.08);
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -19,7 +25,9 @@ html, body {
   padding: 0;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text",
                "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(180deg, rgba(47, 157, 244, 0.08) 0%, rgba(46, 196, 182, 0.05) 210px, transparent 420px);
   color: var(--text);
   min-height: 100vh;
 }
@@ -44,6 +52,8 @@ h2 { font-size: 18px; margin: 0 0 12px; font-weight: 600; }
   border-radius: 14px;
   padding: 20px;
   margin-bottom: 12px;
+  border: 1px solid var(--ink-soft);
+  box-shadow: var(--shadow-soft);
 }
 
 .center { text-align: center; }
@@ -146,6 +156,168 @@ input[type="text"]:focus { border-color: var(--button); }
   border-radius: 999px;
   font-weight: 700;
   font-size: 14px;
+}
+
+.dashboard {
+  display: grid;
+  gap: 12px;
+}
+.dashboard-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 22px;
+  border-radius: 18px;
+  background: var(--bg);
+  border: 1px solid var(--ink-soft);
+  box-shadow: var(--shadow-soft);
+}
+.dashboard-hero h1 {
+  margin: 10px 0 6px;
+}
+.dashboard-hero p {
+  margin: 0;
+  color: var(--hint);
+  font-size: 14px;
+  line-height: 1.35;
+}
+.points-orb {
+  flex: 0 0 86px;
+  width: 86px;
+  height: 86px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  border-radius: 50%;
+  background: linear-gradient(145deg, rgba(255, 183, 3, 0.95), rgba(46, 196, 182, 0.92));
+  color: #1f2933;
+  box-shadow: inset 0 -8px 0 rgba(0, 0, 0, 0.08);
+}
+.points-orb b,
+.points-orb span {
+  display: block;
+  line-height: 1.05;
+}
+.points-orb b {
+  font-size: 28px;
+}
+.points-orb span {
+  font-size: 12px;
+  font-weight: 700;
+}
+.section-label {
+  margin: 18px 0 8px;
+  color: var(--hint);
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+.action-grid,
+.hub-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.main-actions {
+  margin-bottom: 0;
+}
+.action-list {
+  display: grid;
+  gap: 10px;
+}
+.action-tile,
+.action-row {
+  position: relative;
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  min-height: 118px;
+  padding: 16px;
+  border: 1px solid var(--ink-soft);
+  border-radius: 14px;
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.action-row {
+  min-height: 88px;
+}
+.action-tile::before,
+.action-row::before {
+  content: "";
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--button);
+}
+.action-tile.primary::before,
+.action-row.primary::before { background: var(--sky); }
+.action-tile.learn::before { background: var(--green); }
+.action-tile.progress::before { background: var(--violet); }
+.action-tile.profile::before { background: var(--yellow); }
+.action-tile.review::before { background: var(--mint); }
+.action-tile.dictionary::before { background: var(--button); }
+.action-tile.game::before { background: var(--red); }
+.action-tile.report::before { background: var(--sky); }
+.action-tile.history::before { background: var(--mint); }
+.action-tile.leaderboard-tile::before { background: var(--yellow); }
+.action-tile span,
+.action-row span {
+  color: var(--hint);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+.action-tile b,
+.action-row b {
+  max-width: calc(100% - 18px);
+  font-size: 16px;
+  line-height: 1.18;
+}
+.action-tile small,
+.action-row small {
+  color: var(--hint);
+  font-size: 13px;
+  line-height: 1.28;
+}
+.action-tile:active,
+.action-row:active {
+  transform: scale(0.99);
+}
+
+@media (max-width: 380px) {
+  #app {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .dashboard-hero {
+    align-items: flex-start;
+    padding: 18px;
+  }
+  .points-orb {
+    flex-basis: 72px;
+    width: 72px;
+    height: 72px;
+  }
+  .points-orb b {
+    font-size: 22px;
+  }
+  .action-grid,
+  .hub-grid {
+    grid-template-columns: 1fr;
+  }
+  .action-tile {
+    min-height: 94px;
+  }
 }
 
 .stat-row {
