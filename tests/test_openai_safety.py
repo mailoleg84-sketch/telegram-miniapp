@@ -175,8 +175,11 @@ class OpenAISafetyTests(unittest.TestCase):
 
     def test_initial_word_bank_has_5000_unique_age_balanced_items(self):
         by_age = {}
-        for word, _translation, _example, _topic, age_group, transcription in INITIAL_WORDS:
+        for word, translation, _example, _topic, age_group, transcription in INITIAL_WORDS:
             by_age[age_group] = by_age.get(age_group, 0) + 1
+            self.assertNotIn("(", translation, word)
+            self.assertNotIn(")", translation, word)
+            self.assertNotIn("/", translation, word)
             self.assertTrue(transcription.startswith("/"), word)
             self.assertTrue(transcription.endswith("/"), word)
 

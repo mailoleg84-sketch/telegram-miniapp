@@ -583,16 +583,148 @@ def _verb_object_phrase(verb: str, noun: str, noun_topic: str) -> str:
     return _article_phrase(noun, noun_topic)
 
 
+RUSSIAN_NOUN_GENDER_OVERRIDES = {
+    "анкета": "f",
+    "библиотека": "f",
+    "больница": "f",
+    "бутылка": "f",
+    "велосипед": "m",
+    "воздушный змей": "m",
+    "выходные": "p",
+    "гитара": "f",
+    "глаз": "m",
+    "дедлайн": "m",
+    "день рождения": "m",
+    "дневник": "m",
+    "дождь": "m",
+    "доска": "f",
+    "достижение": "n",
+    "знания": "p",
+    "интернет": "m",
+    "история": "f",
+    "карандаш": "m",
+    "командная работа": "f",
+    "компьютер": "m",
+    "корзина": "f",
+    "кролик": "m",
+    "лидерство": "n",
+    "малыш": "m",
+    "мама": "f",
+    "мастер-класс": "m",
+    "медведь": "m",
+    "мнение": "n",
+    "молоко": "n",
+    "мышь": "f",
+    "наука": "f",
+    "окно": "n",
+    "опыт": "m",
+    "отношения": "p",
+    "пальто": "n",
+    "папа": "m",
+    "парк": "m",
+    "парта": "f",
+    "площадка": "f",
+    "поколение": "n",
+    "портфолио": "n",
+    "предложение": "n",
+    "презентация": "f",
+    "приложение": "n",
+    "прогресс": "m",
+    "проект": "m",
+    "птица": "f",
+    "рисование": "n",
+    "собеседование": "n",
+    "словарь": "m",
+    "соревнование": "n",
+    "сообщество": "n",
+    "сочинение": "n",
+    "стипендия": "f",
+    "университет": "m",
+    "упражнение": "n",
+    "усилие": "n",
+    "часы": "p",
+    "эссе": "n",
+}
+
+
+def _clean_ru_translation(text: str) -> str:
+    text = re.sub(r"\s*\([^)]*\)", "", text).strip()
+    if "/" in text:
+        text = text.split("/", 1)[0].strip()
+    return text
+
+
+def _ru_noun_gender(noun_ru: str) -> str:
+    noun = noun_ru.split(" или ", 1)[0].strip().lower()
+    noun = noun.split(",", 1)[0].strip()
+    if noun in RUSSIAN_NOUN_GENDER_OVERRIDES:
+        return RUSSIAN_NOUN_GENDER_OVERRIDES[noun]
+    if noun.endswith(("ые", "ие")) and len(noun) > 5:
+        return "p"
+    if noun.endswith(("ание", "ение", "ство", "о", "е", "ё")):
+        return "n"
+    if noun.endswith(("ия", "а", "я")):
+        return "f"
+    if noun.endswith("ь"):
+        return "f"
+    return "m"
+
+
+def _replace_last_ru_word_suffix(text: str, suffix: str) -> str:
+    if suffix not in {"ая", "яя", "ое", "ее"}:
+        return suffix
+    parts = text.rsplit(" ", 1)
+    prefix = parts[0] + " " if len(parts) == 2 else ""
+    last_word = parts[-1]
+    for ending in ("ый", "ий", "ой"):
+        if last_word.endswith(ending):
+            return prefix + last_word[:-2] + suffix
+    return text
+
+
+def _ru_variant_form(text: str, gender: str) -> str:
+    variants = [part.strip() for part in text.split("/") if part.strip()]
+    if not variants:
+        return ""
+    if len(variants) == 1 or gender == "m":
+        return variants[0]
+    index = 1 if gender == "f" else 2 if gender == "n" and len(variants) > 2 else 0
+    if gender == "p":
+        index = 0
+    target = variants[index] if index < len(variants) else variants[0]
+    if target in {"ая", "яя", "ое", "ее"}:
+        return _replace_last_ru_word_suffix(variants[0], target)
+    return target
+
+
+def _ru_adjective_phrase_translation(adj_ru: str, noun_ru: str) -> str:
+    adjective = _ru_variant_form(adj_ru, _ru_noun_gender(noun_ru))
+    return f"{adjective} {noun_ru}"
+
+
+def _ru_modifier_phrase_translation(mod: str, mod_ru: str, noun: str, noun_ru: str, noun_topic: str) -> str:
+    if mod == "a":
+        return f"{noun_ru} с артиклем {_article_for(noun)}"
+    if mod == "the":
+        return f"{noun_ru} с артиклем the"
+    if mod in {"favorite", "first", "last", "next"}:
+        return _ru_adjective_phrase_translation(mod_ru, noun_ru)
+    modifier = _ru_variant_form(mod_ru, _ru_noun_gender(noun_ru))
+    if mod == "one" and not _needs_article(noun, noun_topic):
+        return noun_ru
+    return f"{modifier} {noun_ru}"
+
+
 def _add_base_words(entries: list[Entry5], seen: set[str]) -> None:
     for word, translation, example, topic, age_group in CORE_WORDS:
-        _add(entries, seen, (word, translation, example, topic, age_group))
+        _add(entries, seen, (word, _clean_ru_translation(translation), example, topic, age_group))
 
     for word, translation, topic, age_group in NOUNS:
-        _add(entries, seen, (word, translation, f"I know the word {word}.", topic, age_group))
+        _add(entries, seen, (word, _clean_ru_translation(translation), f"I know the word {word}.", topic, age_group))
     for word, translation, topic, age_group in ADJECTIVES:
-        _add(entries, seen, (word, translation, f"This word is {word}.", topic, age_group))
+        _add(entries, seen, (word, _clean_ru_translation(translation), f"This word is {word}.", topic, age_group))
     for word, translation, topic, age_group in VERBS:
-        _add(entries, seen, (word, translation, f"I can {word}.", topic, age_group))
+        _add(entries, seen, (word, _clean_ru_translation(translation), f"I can {word}.", topic, age_group))
 
 
 def _fill_age_group(entries: list[Entry5], seen: set[str], age_group: str) -> None:
@@ -619,7 +751,7 @@ def _fill_age_group(entries: list[Entry5], seen: set[str], age_group: str) -> No
     generators = [
         (
             f"{adj} {noun}",
-            f"{noun_ru} ({adj_ru})",
+            _ru_adjective_phrase_translation(adj_ru, noun_ru),
             f"The phrase is: {adj} {noun}.",
             noun_topic,
             age_group,
@@ -643,7 +775,7 @@ def _fill_age_group(entries: list[Entry5], seen: set[str], age_group: str) -> No
     generators.extend(
         (
             f"{_article_for(noun) if mod == 'a' else mod} {noun}",
-            f"{mod_ru}: {noun_ru}",
+            _ru_modifier_phrase_translation(mod, mod_ru, noun, noun_ru, noun_topic),
             f"This is {_article_for(noun) if mod == 'a' else mod} {noun}.",
             noun_topic,
             age_group,
@@ -656,7 +788,7 @@ def _fill_age_group(entries: list[Entry5], seen: set[str], age_group: str) -> No
     generators.extend(
         (
             f"about {_article_phrase(noun, noun_topic)}",
-            f"о/об: {noun_ru}",
+            f"о: {noun_ru}",
             f"Let's talk about {_article_phrase(noun, noun_topic)}.",
             noun_topic,
             age_group,
