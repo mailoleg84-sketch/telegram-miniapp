@@ -186,6 +186,7 @@ class OpenAISafetyTests(unittest.TestCase):
             self.assertNotIn("мой часы", translation, word)
             self.assertNotIn("точный знания", translation, word)
             self.assertNotIn("с артиклем", translation, word)
+            self.assertNotIn("хотящий пить", translation, word)
             self.assertTrue(transcription.startswith("/"), word)
             self.assertTrue(transcription.endswith("/"), word)
 
@@ -254,6 +255,12 @@ class OpenAISafetyTests(unittest.TestCase):
             "i see environment",
             "practice sport",
             "practice a sport",
+            "thirsty cousin",
+            "friendly cousin",
+            "strong cousin",
+            "careful cousin",
+            "loud football",
+            "noisy football",
         }
         self.assertFalse(impossible_phrases & words)
         self.assertIn("carry a guitar", words)

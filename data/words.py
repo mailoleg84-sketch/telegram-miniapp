@@ -276,7 +276,7 @@ ADJECTIVES = [
     ("late", "поздний/яя/ее", "time", "8_10"), ("safe", "безопасный/ая/ое", "safety", "8_10"),
     ("strong", "сильный/ая/ое", "body", "8_10"), ("weak", "слабый/ая/ое", "body", "8_10"),
     ("clever", "умный/ая/ое", "learning", "8_10"), ("noisy", "шумный/ая/ое", "sound", "8_10"),
-    ("hungry", "голодный/ая/ое", "food", "8_10"), ("thirsty", "хотящий пить", "food", "8_10"),
+    ("hungry", "голодный/ая/ое", "food", "8_10"), ("thirsty", "хочет пить", "food", "8_10"),
     ("comfortable", "удобный/ая/ое", "home", "8_10"),
 
     # 11-13
@@ -494,6 +494,8 @@ PERSON_NOUN_WORDS = {
     "grandma", "grandpa", "parent", "sister", "uncle",
 }
 
+QUALIFIED_PERSON_NOUN_WORDS = PERSON_NOUN_WORDS - {"cousin"}
+
 ANIMAL_NOUN_WORDS = {
     "bear", "bird", "cat", "dog", "duck", "fish", "frog", "goat",
     "horse", "lion", "mouse", "pig", "rabbit",
@@ -573,7 +575,7 @@ MODIFIER_NOUN_WORDS = (
 
 ADJECTIVE_NOUN_WORD_COMPATIBILITY = {
     "big": KID_SIZE_NOUN_WORDS,
-    "brave": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
+    "brave": QUALIFIED_PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
     "bright": {
         "ball", "bike", "bird", "boat", "book", "box", "camera", "car",
         "coat", "computer", "dress", "email", "flower", "folder", "garden",
@@ -584,8 +586,8 @@ ADJECTIVE_NOUN_WORD_COMPATIBILITY = {
         "airport", "beach", "classroom", "market", "party", "playground",
         "restaurant", "station", "village",
     },
-    "careful": PERSON_NOUN_WORDS | {"classmate"},
-    "clever": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
+    "careful": QUALIFIED_PERSON_NOUN_WORDS | {"classmate"},
+    "clever": QUALIFIED_PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
     "clean": {
         "bedroom", "bike", "board", "bottle", "bus", "car", "chair",
         "classroom", "coat", "cup", "desk", "dress", "hat", "house",
@@ -605,31 +607,31 @@ ADJECTIVE_NOUN_WORD_COMPATIBILITY = {
     },
     "early": {"breakfast", "birthday", "dinner", "homework", "lesson", "lunch", "party"},
     "fast": ANIMAL_NOUN_WORDS | {"bike", "bus", "car", "plane", "skateboard"},
-    "friendly": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
+    "friendly": QUALIFIED_PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
     "fresh": {"apple", "bread", "breakfast", "cake", "cookie", "dinner", "egg", "flower", "juice", "leaf", "lunch", "milk", "orange"},
-    "funny": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS | {"cartoon", "game", "movie", "story"},
+    "funny": QUALIFIED_PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS | {"cartoon", "game", "movie", "story"},
     "good": LIKEABLE_NOUN_WORDS | {"answer", "book", "lesson", "project", "question"},
-    "happy": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
+    "happy": QUALIFIED_PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
     "hard": {"book", "box", "chair", "desk", "lesson", "question", "table"},
     "healthy": {"breakfast", "dinner", "lunch"},
     "hot": {"bread", "breakfast", "cake", "cheese", "dinner", "egg", "lunch", "milk"},
-    "hungry": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
-    "kind": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
+    "hungry": QUALIFIED_PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
+    "kind": QUALIFIED_PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
     "late": {"breakfast", "birthday", "dinner", "homework", "lesson", "lunch", "party"},
     "little": KID_SIZE_NOUN_WORDS,
     "long": {"boat", "book", "bus", "car", "dress", "lesson", "page", "river", "story", "tree"},
     "loud": {
-        "airport", "bus", "car", "cartoon", "classroom", "football",
+        "airport", "bus", "car", "cartoon", "classroom",
         "guitar", "movie", "party", "playground", "station",
     },
     "new": VISIBLE_NOUN_WORDS | {"lesson", "project", "skill", "word"},
-    "nice": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS | {"book", "game", "party", "story", "trip"},
+    "nice": QUALIFIED_PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS | {"book", "game", "party", "story", "trip"},
     "noisy": {
-        "airport", "bus", "car", "cartoon", "classroom", "football",
+        "airport", "bus", "car", "cartoon", "classroom",
         "guitar", "movie", "party", "playground", "station",
     },
     "old": {"bike", "book", "car", "house", "story", "tradition"},
-    "polite": PERSON_NOUN_WORDS,
+    "polite": QUALIFIED_PERSON_NOUN_WORDS,
     "quiet": {
         "beach", "bedroom", "classroom", "farm", "museum", "park",
         "restaurant", "village",
@@ -641,17 +643,17 @@ ADJECTIVE_NOUN_WORD_COMPATIBILITY = {
         "market", "park", "plane", "playground", "restaurant",
         "skateboard", "station", "village",
     },
-    "sad": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS | {"story"},
+    "sad": QUALIFIED_PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS | {"story"},
     "short": {"book", "lesson", "message", "page", "story", "trip"},
     "slow": ANIMAL_NOUN_WORDS | {"bike", "bus", "car", "plane"},
     "small": KID_SIZE_NOUN_WORDS,
     "soft": {"baby", "bread", "cake", "coat", "hat", "shoe"},
-    "strong": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS | {"teamwork"},
+    "strong": QUALIFIED_PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS | {"teamwork"},
     "sweet": {"apple", "cake", "cookie", "juice", "milk", "orange"},
-    "thirsty": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
+    "thirsty": QUALIFIED_PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
     "tasty": FOOD_NOUN_WORDS,
     "warm": {"bread", "breakfast", "cake", "cheese", "coat", "dinner", "egg", "hat", "house", "lunch", "milk"},
-    "weak": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
+    "weak": QUALIFIED_PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
 }
 
 VERB_OBJECT_COMPATIBILITY = {
@@ -1075,6 +1077,8 @@ def _ru_variant_form(text: str, gender: str) -> str:
 
 
 def _ru_adjective_phrase_translation(adj_ru: str, noun_ru: str) -> str:
+    if _clean_ru_translation(adj_ru) == "хочет пить":
+        return f"{_clean_ru_translation(noun_ru)} хочет пить"
     adjective = _ru_variant_form(adj_ru, _ru_noun_gender(noun_ru))
     return f"{adjective} {noun_ru}"
 
