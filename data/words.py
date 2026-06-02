@@ -394,7 +394,7 @@ ADJECTIVE_TOPIC_COMPATIBILITY = {
     }),
     "behavior": PERSON_NOUN_TOPICS | {"school", "speaking", "communication", "work", "society", "life", "sports"},
     "body": {"body", "family", "friends", "sports"},
-    "colors": CONCRETE_NOUN_TOPICS,
+    "colors": CONCRETE_NOUN_TOPICS - {"body"},
     "communication": {"communication", "speaking", "writing", "work", "study", "society", "learning"},
     "comparison": set(NOUN_TOPIC for NOUN_TOPIC in {
         "animals", "art", "clothes", "communication", "culture", "everyday",
@@ -492,12 +492,52 @@ ANIMAL_NOUN_WORDS = {
 
 ADJECTIVE_NOUN_WORD_COMPATIBILITY = {
     "brave": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
+    "bright": {
+        "ball", "bike", "bird", "boat", "book", "box", "camera", "car",
+        "coat", "computer", "dress", "email", "flower", "folder", "garden",
+        "hat", "kite", "lamp", "leaf", "moon", "notebook", "picture",
+        "postcard", "robot", "shoe", "sky", "star", "tree",
+    },
+    "busy": {
+        "airport", "beach", "classroom", "market", "party", "playground",
+        "restaurant", "station", "village",
+    },
     "careful": PERSON_NOUN_WORDS,
     "clever": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
+    "clean": {
+        "bedroom", "bike", "board", "bottle", "bus", "car", "chair",
+        "classroom", "coat", "cup", "desk", "dress", "hat", "house",
+        "kitchen", "shoe", "table",
+    },
+    "dark": {
+        "bedroom", "bike", "bird", "boat", "book", "box", "camera", "car",
+        "classroom", "coat", "computer", "dress", "forest", "garden",
+        "hat", "house", "kite", "lamp", "leaf", "moon", "picture",
+        "river", "robot", "shoe", "sky", "star", "tree",
+    },
+    "dirty": {
+        "bedroom", "bike", "board", "bottle", "bus", "car", "chair",
+        "classroom", "coat", "cup", "desk", "dress", "hat", "house",
+        "kitchen", "shoe", "table",
+    },
+    "early": {"breakfast", "birthday", "dinner", "homework", "lesson", "lunch", "party"},
     "friendly": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
     "hungry": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
     "kind": PERSON_NOUN_WORDS | ANIMAL_NOUN_WORDS,
+    "late": {"breakfast", "birthday", "dinner", "homework", "lesson", "lunch", "party"},
+    "loud": {
+        "airport", "bus", "car", "cartoon", "classroom", "football",
+        "guitar", "movie", "party", "playground", "station",
+    },
+    "noisy": {
+        "airport", "bus", "car", "cartoon", "classroom", "football",
+        "guitar", "movie", "party", "playground", "station",
+    },
     "polite": PERSON_NOUN_WORDS,
+    "quiet": {
+        "airport", "beach", "bedroom", "cartoon", "classroom", "farm",
+        "guitar", "movie", "museum", "park", "restaurant", "village",
+    },
     "safe": {
         "airport", "beach", "bedroom", "bike", "bus", "car",
         "classroom", "computer", "email", "farm", "hospital", "house",
@@ -572,7 +612,17 @@ VERB_NOUN_WORD_COMPATIBILITY = {
     "carry": PORTABLE_NOUN_WORDS,
     "draw": DRAWABLE_NOUN_WORDS,
     "hold": PORTABLE_NOUN_WORDS | {"hand"},
+    "learn": {
+        "biology", "chemistry", "conversation", "exercise", "fact",
+        "geography", "grammar", "history", "language", "lesson",
+        "pronunciation", "science", "skill", "subject", "vocabulary",
+    },
     "open": OPENABLE_NOUN_WORDS,
+    "practice": {
+        "conversation", "exercise", "football", "grammar", "language",
+        "lesson", "music", "pronunciation", "skill", "sport", "training",
+        "vocabulary",
+    },
 }
 
 MODIFIER_COMPATIBILITY = {
@@ -959,6 +1009,19 @@ def _ru_look_at_phrase_translation(noun_ru: str, noun_topic: str) -> str:
     return f"смотреть на {_ru_decline_noun_phrase(noun_ru, 'acc', noun_topic)}"
 
 
+def _ru_i_see_phrase_translation(noun_ru: str, noun_topic: str) -> str:
+    return f"я вижу {_ru_decline_noun_phrase(noun_ru, 'acc', noun_topic)}"
+
+
+def _ru_i_like_phrase_translation(noun_ru: str) -> str:
+    verb = "нравятся" if _ru_noun_gender(noun_ru) == "p" else "нравится"
+    return f"мне {verb} {_clean_ru_translation(noun_ru)}"
+
+
+def _ru_i_know_about_phrase_translation(noun_ru: str, noun_topic: str) -> str:
+    return f"я знаю {_ru_about_phrase_translation(noun_ru, noun_topic)}"
+
+
 def _ru_modifier_phrase_translation(mod: str, mod_ru: str, noun: str, noun_ru: str, noun_topic: str) -> str:
     if mod == "a":
         return f"{noun_ru} с артиклем {_article_for(noun)}"
@@ -1047,6 +1110,38 @@ def _fill_age_group(entries: list[Entry5], seen: set[str], age_group: str) -> No
             f"look at {_article_phrase(noun, noun_topic)}",
             _ru_look_at_phrase_translation(noun_ru, noun_topic),
             f"Look at {_article_phrase(noun, noun_topic)}.",
+            noun_topic,
+            age_group,
+        )
+        for noun, noun_ru, noun_topic, _noun_age in nouns
+        if noun_topic in CONCRETE_NOUN_TOPICS
+    )
+    generators.extend(
+        (
+            f"I see {_article_phrase(noun, noun_topic)}",
+            _ru_i_see_phrase_translation(noun_ru, noun_topic),
+            f"I see {_article_phrase(noun, noun_topic)}.",
+            noun_topic,
+            age_group,
+        )
+        for noun, noun_ru, noun_topic, _noun_age in nouns
+        if noun_topic in CONCRETE_NOUN_TOPICS
+    )
+    generators.extend(
+        (
+            f"I like {_article_phrase(noun, noun_topic)}",
+            _ru_i_like_phrase_translation(noun_ru),
+            f"I like {_article_phrase(noun, noun_topic)}.",
+            noun_topic,
+            age_group,
+        )
+        for noun, noun_ru, noun_topic, _noun_age in nouns
+    )
+    generators.extend(
+        (
+            f"I know about {_article_phrase(noun, noun_topic)}",
+            _ru_i_know_about_phrase_translation(noun_ru, noun_topic),
+            f"I know about {_article_phrase(noun, noun_topic)}.",
             noun_topic,
             age_group,
         )
