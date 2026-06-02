@@ -180,6 +180,7 @@ class OpenAISafetyTests(unittest.TestCase):
             self.assertNotIn("(", translation, word)
             self.assertNotIn(")", translation, word)
             self.assertNotIn("/", translation, word)
+            self.assertNotIn(":", translation, word)
             self.assertTrue(transcription.startswith("/"), word)
             self.assertTrue(transcription.endswith("/"), word)
 
@@ -200,14 +201,35 @@ class OpenAISafetyTests(unittest.TestCase):
             "carry guitar",
             "choose guitar",
             "describe guitar",
+            "see egg",
             "a music",
+            "a internet",
             "one music",
             "with music",
+            "with an internet",
+            "with a sport",
         }
         self.assertFalse(impossible_phrases & words)
         self.assertIn("carry a guitar", words)
         self.assertIn("choose a guitar", words)
         self.assertIn("describe a guitar", words)
+
+    def test_generated_phrase_translations_use_readable_russian(self):
+        words = {item[0]: item[1] for item in INITIAL_WORDS}
+        expected = {
+            "see an egg": "видеть яйцо",
+            "see a bear": "видеть медведя",
+            "have a book": "иметь книгу",
+            "carry a guitar": "нести гитару",
+            "choose a guitar": "выбирать гитару",
+            "describe a guitar": "описывать гитару",
+            "hot egg": "горячее яйцо",
+            "about adventure": "о приключении",
+            "with an article": "со статьей",
+            "for mistake": "для ошибки",
+        }
+        for phrase, translation in expected.items():
+            self.assertEqual(words.get(phrase), translation, phrase)
 
 
 if __name__ == "__main__":

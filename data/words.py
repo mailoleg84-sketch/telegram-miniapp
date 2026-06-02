@@ -359,10 +359,11 @@ CONCRETE_NOUN_TOPICS = {
 
 PERSON_NOUN_TOPICS = {"family", "friends", "jobs"}
 
-COUNTABLE_NOUN_TOPICS = CONCRETE_NOUN_TOPICS - {"body", "food"}
+COUNTABLE_NOUN_TOPICS = set(CONCRETE_NOUN_TOPICS)
 
-WITH_NOUN_TOPICS = COUNTABLE_NOUN_TOPICS - {
-    "family", "friends", "jobs", "places", "transport", "travel",
+WITH_NOUN_TOPICS = {
+    "art", "clothes", "games", "hobbies", "home", "music", "reading",
+    "school", "study", "technology", "toys", "transport", "work", "writing",
 }
 
 FOR_NOUN_TOPICS = {
@@ -376,7 +377,7 @@ UNCOUNTABLE_NOUNS = {
     "breakfast", "dinner", "lunch", "football", "music",
     "biology", "chemistry", "culture", "education", "energy",
     "environment", "feedback", "fluency", "geography", "grammar",
-    "history", "information", "knowledge", "leadership", "progress",
+    "history", "information", "internet", "knowledge", "leadership", "progress",
     "responsibility", "science", "technology", "teamwork", "training",
     "vocabulary",
 }
@@ -607,7 +608,9 @@ RUSSIAN_NOUN_GENDER_OVERRIDES = {
     "компьютер": "m",
     "корзина": "f",
     "кролик": "m",
+    "лагерь": "m",
     "лидерство": "n",
+    "лошадь": "f",
     "малыш": "m",
     "мама": "f",
     "мастер-класс": "m",
@@ -639,11 +642,85 @@ RUSSIAN_NOUN_GENDER_OVERRIDES = {
     "сообщество": "n",
     "сочинение": "n",
     "стипендия": "f",
+    "тетрадь": "f",
     "университет": "m",
     "упражнение": "n",
     "усилие": "n",
+    "фестиваль": "m",
+    "цель": "f",
     "часы": "p",
     "эссе": "n",
+}
+
+RUSSIAN_ANIMATE_TOPICS = {"animals", "family", "friends", "jobs"}
+
+RUSSIAN_CASE_OVERRIDES = {
+    "воздушный змей": {
+        "acc": "воздушного змея",
+        "gen": "воздушного змея",
+        "inst": "воздушным змеем",
+        "prep": "воздушном змее",
+    },
+    "день рождения": {
+        "acc": "день рождения",
+        "gen": "дня рождения",
+        "inst": "днем рождения",
+        "prep": "дне рождения",
+    },
+    "домашняя работа": {
+        "acc": "домашнюю работу",
+        "gen": "домашней работы",
+        "inst": "домашней работой",
+        "prep": "домашней работе",
+    },
+    "командная работа": {
+        "acc": "командную работу",
+        "gen": "командной работы",
+        "inst": "командной работой",
+        "prep": "командной работе",
+    },
+    "двоюродный брат или сестра": {
+        "acc": "двоюродного брата или сестру",
+        "gen": "двоюродного брата или сестры",
+        "inst": "двоюродным братом или сестрой",
+        "prep": "двоюродном брате или сестре",
+    },
+    "мировоззрение": {
+        "acc": "мировоззрение",
+        "gen": "мировоззрения",
+        "inst": "мировоззрением",
+        "prep": "мировоззрении",
+    },
+    "отношения": {
+        "acc": "отношения",
+        "gen": "отношений",
+        "inst": "отношениями",
+        "prep": "отношениях",
+    },
+    "часы": {
+        "acc": "часы",
+        "gen": "часов",
+        "inst": "часами",
+        "prep": "часах",
+    },
+    "знания": {
+        "acc": "знания",
+        "gen": "знаний",
+        "inst": "знаниями",
+        "prep": "знаниях",
+    },
+    "выходные": {
+        "acc": "выходные",
+        "gen": "выходных",
+        "inst": "выходными",
+        "prep": "выходных",
+    },
+    "будущее": {
+        "acc": "будущее",
+        "gen": "будущего",
+        "inst": "будущим",
+        "prep": "будущем",
+    },
 }
 
 
@@ -659,7 +736,7 @@ def _ru_noun_gender(noun_ru: str) -> str:
     noun = noun.split(",", 1)[0].strip()
     if noun in RUSSIAN_NOUN_GENDER_OVERRIDES:
         return RUSSIAN_NOUN_GENDER_OVERRIDES[noun]
-    if noun.endswith(("ые", "ие")) and len(noun) > 5:
+    if noun.endswith("ые") and len(noun) > 5:
         return "p"
     if noun.endswith(("ание", "ение", "ство", "о", "е", "ё")):
         return "n"
@@ -678,7 +755,8 @@ def _replace_last_ru_word_suffix(text: str, suffix: str) -> str:
     last_word = parts[-1]
     for ending in ("ый", "ий", "ой"):
         if last_word.endswith(ending):
-            return prefix + last_word[:-2] + suffix
+            normalized_suffix = "ее" if ending == "ий" and suffix == "ое" else suffix
+            return prefix + last_word[:-2] + normalized_suffix
     return text
 
 
@@ -700,6 +778,121 @@ def _ru_variant_form(text: str, gender: str) -> str:
 def _ru_adjective_phrase_translation(adj_ru: str, noun_ru: str) -> str:
     adjective = _ru_variant_form(adj_ru, _ru_noun_gender(noun_ru))
     return f"{adjective} {noun_ru}"
+
+
+def _ru_decline_word(word: str, case: str, gender: str, animate: bool = False) -> str:
+    if case == "nom":
+        return word
+    if gender == "p":
+        return word
+    if case == "acc":
+        if gender == "f":
+            if word.endswith("а"):
+                return word[:-1] + "у"
+            if word.endswith("я"):
+                return word[:-1] + "ю"
+            return word
+        if gender == "n":
+            return word
+        if animate:
+            if word.endswith(("й", "ь")):
+                return word[:-1] + "я"
+            return word + "а"
+        return word
+    if case == "gen":
+        if gender == "f":
+            if word.endswith(("а", "я")):
+                stem = word[:-1]
+                return stem + ("и" if stem.endswith(("г", "к", "х", "ж", "ч", "ш", "щ")) or word.endswith("я") else "ы")
+            if word.endswith("ь"):
+                return word[:-1] + "и"
+            return word
+        if gender == "n":
+            if word.endswith("о"):
+                return word[:-1] + "а"
+            if word.endswith("е"):
+                return word[:-1] + "я"
+            return word
+        if word.endswith(("й", "ь")):
+            return word[:-1] + "я"
+        return word + "а"
+    if case == "inst":
+        if gender == "f":
+            if word.endswith("а"):
+                return word[:-1] + "ой"
+            if word.endswith("я"):
+                return word[:-1] + "ей"
+            if word.endswith("ь"):
+                return word[:-1] + "ью"
+            return word
+        if gender == "n":
+            if word.endswith("о"):
+                return word[:-1] + "ом"
+            if word.endswith("е"):
+                return word[:-1] + "ем"
+            return word
+        if word.endswith(("й", "ь")):
+            return word[:-1] + "ем"
+        return word + "ом"
+    if case == "prep":
+        if word.endswith("ия"):
+            return word[:-1] + "и"
+        if word.endswith("ие"):
+            return word[:-1] + "и"
+        if gender == "f":
+            if word.endswith(("а", "я")):
+                return word[:-1] + "е"
+            if word.endswith("ь"):
+                return word[:-1] + "и"
+            return word
+        if gender == "n":
+            if word.endswith("о"):
+                return word[:-1] + "е"
+            if word.endswith("е"):
+                return word[:-1] + "и"
+            return word
+        if word.endswith("й"):
+            return word[:-1] + "е"
+        if word.endswith("ь"):
+            return word[:-1] + "е"
+        return word + "е"
+    return word
+
+
+def _ru_decline_noun_phrase(noun_ru: str, case: str, noun_topic: str = "") -> str:
+    noun_ru = _clean_ru_translation(noun_ru)
+    lowered = noun_ru.lower()
+    if lowered in RUSSIAN_CASE_OVERRIDES:
+        return RUSSIAN_CASE_OVERRIDES[lowered].get(case, noun_ru)
+    if " или " in noun_ru:
+        return " или ".join(_ru_decline_noun_phrase(part, case, noun_topic) for part in noun_ru.split(" или "))
+    gender = _ru_noun_gender(noun_ru)
+    animate = noun_topic in RUSSIAN_ANIMATE_TOPICS
+    parts = noun_ru.rsplit(" ", 1)
+    if len(parts) == 1:
+        return _ru_decline_word(noun_ru, case, gender, animate)
+    prefix, last_word = parts
+    return f"{prefix} {_ru_decline_word(last_word, case, gender, animate)}"
+
+
+def _ru_verb_phrase_translation(verb_ru: str, noun_ru: str, noun_topic: str) -> str:
+    return f"{_clean_ru_translation(verb_ru)} {_ru_decline_noun_phrase(noun_ru, 'acc', noun_topic)}"
+
+
+def _ru_about_phrase_translation(noun_ru: str, noun_topic: str) -> str:
+    declined = _ru_decline_noun_phrase(noun_ru, "prep", noun_topic)
+    prefix = "об" if declined[:1].lower() in {"а", "о", "у", "э", "и", "е", "ё", "ю", "я"} else "о"
+    return f"{prefix} {declined}"
+
+
+def _ru_with_phrase_translation(noun_ru: str, noun_topic: str) -> str:
+    declined = _ru_decline_noun_phrase(noun_ru, "inst", noun_topic)
+    prefix = "со" if declined.lower().startswith(("ст", "сп", "сл", "сн")) else "с"
+    return f"{prefix} {declined}"
+
+
+def _ru_for_phrase_translation(noun_ru: str, noun_topic: str) -> str:
+    return f"для {_ru_decline_noun_phrase(noun_ru, 'gen', noun_topic)}"
 
 
 def _ru_modifier_phrase_translation(mod: str, mod_ru: str, noun: str, noun_ru: str, noun_topic: str) -> str:
@@ -763,7 +956,7 @@ def _fill_age_group(entries: list[Entry5], seen: set[str], age_group: str) -> No
     generators.extend(
         (
             f"{verb} {_verb_object_phrase(verb, noun, noun_topic)}",
-            f"{verb_ru}: {noun_ru}",
+            _ru_verb_phrase_translation(verb_ru, noun_ru, noun_topic),
             f"Practice phrase: {verb} {_verb_object_phrase(verb, noun, noun_topic)}.",
             noun_topic,
             age_group,
@@ -788,7 +981,7 @@ def _fill_age_group(entries: list[Entry5], seen: set[str], age_group: str) -> No
     generators.extend(
         (
             f"about {_article_phrase(noun, noun_topic)}",
-            f"о: {noun_ru}",
+            _ru_about_phrase_translation(noun_ru, noun_topic),
             f"Let's talk about {_article_phrase(noun, noun_topic)}.",
             noun_topic,
             age_group,
@@ -798,7 +991,7 @@ def _fill_age_group(entries: list[Entry5], seen: set[str], age_group: str) -> No
     generators.extend(
         (
             f"with {_article_for(noun)} {noun}",
-            f"с: {noun_ru}",
+            _ru_with_phrase_translation(noun_ru, noun_topic),
             f"I can say a phrase with {_article_for(noun)} {noun}.",
             noun_topic,
             age_group,
@@ -809,7 +1002,7 @@ def _fill_age_group(entries: list[Entry5], seen: set[str], age_group: str) -> No
     generators.extend(
         (
             f"for {_article_phrase(noun, noun_topic)}",
-            f"для: {noun_ru}",
+            _ru_for_phrase_translation(noun_ru, noun_topic),
             f"This phrase is for {_article_phrase(noun, noun_topic)}.",
             noun_topic,
             age_group,
