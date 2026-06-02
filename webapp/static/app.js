@@ -89,8 +89,115 @@ async function apiBlob(path, body, timeoutMs = 0) {
 
 let wordAudio = null;
 let wordAudioUrl = "";
+let wordUtterance = null;
+let englishSpeechVoice = null;
+const wordAudioCache = new Map();
+const WORD_AUDIO_CACHE_LIMIT = 80;
+
+function speechSynthesisApi() {
+  return window.speechSynthesis || null;
+}
+
+function warmWordVoices() {
+  const synth = speechSynthesisApi();
+  if (!synth) return;
+  try {
+    synth.getVoices();
+    synth.onvoiceschanged = () => {
+      englishSpeechVoice = null;
+      pickEnglishWordVoice();
+    };
+  } catch (_) {}
+}
+
+function pickEnglishWordVoice() {
+  if (englishSpeechVoice) return englishSpeechVoice;
+  const synth = speechSynthesisApi();
+  const voices = synth?.getVoices?.() || [];
+  const preferred = [
+    "Samantha", "Daniel", "Karen", "Moira", "Google US English",
+    "Google UK English Female", "Microsoft Jenny", "Microsoft Aria",
+  ];
+  englishSpeechVoice =
+    voices.find(voice => /^en[-_]/i.test(voice.lang) && preferred.some(name => voice.name.includes(name))) ||
+    voices.find(voice => /^en[-_](US|GB|CA|AU)/i.test(voice.lang)) ||
+    voices.find(voice => /^en/i.test(voice.lang)) ||
+    null;
+  return englishSpeechVoice;
+}
+
+function rememberWordAudio(key, blob) {
+  if (wordAudioCache.has(key)) wordAudioCache.delete(key);
+  wordAudioCache.set(key, blob);
+  while (wordAudioCache.size > WORD_AUDIO_CACHE_LIMIT) {
+    const oldestKey = wordAudioCache.keys().next().value;
+    wordAudioCache.delete(oldestKey);
+  }
+}
+
+async function speakWordLocally(word, button = null) {
+  const synth = speechSynthesisApi();
+  const text = String(word || "").trim().replace(/\s+/g, " ");
+  if (!synth || !window.SpeechSynthesisUtterance || !/^[a-zA-Z][a-zA-Z' -]{0,80}$/.test(text)) {
+    return false;
+  }
+
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = "en-US";
+  utterance.rate = text.includes(" ") ? 0.84 : 0.74;
+  utterance.pitch = 1.02;
+  utterance.volume = 1;
+  const voice = pickEnglishWordVoice();
+  if (voice) utterance.voice = voice;
+
+  return new Promise(resolve => {
+    let settled = false;
+    const finishStart = ok => {
+      if (settled) return;
+      settled = true;
+      if (!ok) button?.classList.remove("speaking");
+      resolve(ok);
+    };
+    const startTimer = setTimeout(() => {
+      finishStart(Boolean(synth.speaking || synth.pending));
+    }, 260);
+
+    utterance.onstart = () => {
+      clearTimeout(startTimer);
+      finishStart(true);
+    };
+    utterance.onerror = () => {
+      clearTimeout(startTimer);
+      if (wordUtterance === utterance) wordUtterance = null;
+      finishStart(false);
+    };
+    utterance.onend = () => {
+      if (wordUtterance === utterance) wordUtterance = null;
+      button?.classList.remove("speaking");
+    };
+
+    try {
+      synth.cancel();
+      wordUtterance = utterance;
+      button?.classList.add("speaking");
+      synth.speak(utterance);
+    } catch (_) {
+      clearTimeout(startTimer);
+      if (wordUtterance === utterance) wordUtterance = null;
+      finishStart(false);
+    }
+  });
+}
 
 function stopWordAudio() {
+  const synth = speechSynthesisApi();
+  try {
+    synth?.cancel?.();
+  } catch (_) {}
+  wordUtterance = null;
+  document.querySelectorAll(".pronounce-btn.speaking").forEach(button => {
+    button.classList.remove("speaking");
+  });
   if (wordAudio) {
     wordAudio.pause();
     wordAudio = null;
@@ -105,13 +212,20 @@ async function playWordAudio(text, button = null) {
   const word = String(text || "").trim();
   if (!word) return;
   stopWordAudio();
+  if (await speakWordLocally(word, button)) return;
+
   const oldText = button?.textContent;
   if (button) {
     button.disabled = true;
     button.textContent = "…";
   }
   try {
-    const audioBlob = await apiBlob("/api/audio/speech", { text: word, mode: "word" }, 60000);
+    const cacheKey = word.toLowerCase();
+    let audioBlob = wordAudioCache.get(cacheKey);
+    if (!audioBlob) {
+      audioBlob = await apiBlob("/api/audio/speech", { text: word, mode: "word" }, 60000);
+      rememberWordAudio(cacheKey, audioBlob);
+    }
     wordAudioUrl = URL.createObjectURL(audioBlob);
     wordAudio = new Audio(wordAudioUrl);
     wordAudio.onended = stopWordAudio;
@@ -126,6 +240,8 @@ async function playWordAudio(text, button = null) {
     }
   }
 }
+
+warmWordVoices();
 
 function bindPronunciationButtons(root = document) {
   root.querySelectorAll(".pronounce-btn").forEach(button => {
@@ -176,6 +292,39 @@ function esc(value) {
   return String(value ?? "").replace(/[&<>"']/g, c => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   })[c]);
+}
+
+function pronunciationButtonHtml(word, small = false) {
+  return `<button type="button" class="pronounce-btn ${small ? "small" : ""}" data-word="${esc(word)}" aria-label="Озвучить ${esc(word)}">🔊</button>`;
+}
+
+function wordStudyCard(wordData, options = {}) {
+  const badge = options.badge || "";
+  const prompt = options.prompt || "";
+  return `
+    <div class="card word-card ${options.compact ? "compact" : ""}">
+      <div class="word-card-top">
+        ${badge ? `<div class="daily-badge">${esc(badge)}</div>` : "<span></span>"}
+        ${pronunciationButtonHtml(wordData.word)}
+      </div>
+      <div class="word-main">${esc(wordData.word)}</div>
+      ${wordData.transcription ? `<div class="word-transcription">${esc(wordData.transcription)}</div>` : ""}
+      ${wordData.translation ? `<div class="word-translation">${esc(wordData.translation)}</div>` : ""}
+      ${wordData.example ? `<p class="word-example">${esc(wordData.example)}</p>` : ""}
+      ${prompt ? `<p class="hint mt-12">${esc(prompt)}</p>` : ""}
+    </div>`;
+}
+
+function reviewWordRow(wordData) {
+  return `
+    <div class="word-review-row">
+      <div class="word-review-main">
+        <b>${esc(wordData.word)}</b>
+        ${wordData.transcription ? `<small class="transcription">${esc(wordData.transcription)}</small>` : ""}
+        <span>${esc(wordData.translation)}</span>
+      </div>
+      ${pronunciationButtonHtml(wordData.word, true)}
+    </div>`;
 }
 
 function haptic(type = "light") {
@@ -739,16 +888,7 @@ async function renderVocabStart() {
         <h1>Новые слова</h1>
         <p class="hint">Сначала посмотри карточки, потом пройди короткий тест.</p>
         ${data.words.map((w, index) => `
-          <div class="card word-card">
-            <div class="daily-badge">Слово ${index + 1}</div>
-            <div class="big mt-12">${esc(w.word)}</div>
-            <div class="word-pronunciation">
-              <span>${esc(w.transcription || "")}</span>
-              <button type="button" class="pronounce-btn" data-word="${esc(w.word)}">🔊</button>
-            </div>
-            <div class="big-sub">${esc(w.translation)}</div>
-            <p class="hint mt-12">${esc(w.example)}</p>
-          </div>
+          ${wordStudyCard(w, { badge: `Слово ${index + 1}` })}
         `).join("")}
         <button class="btn" id="startQuiz">Начать тест</button>
       </div>`;
@@ -778,15 +918,7 @@ function renderQuizQuestion(index) {
   app.innerHTML = `
     <div class="screen">
       <h1>Тест по словам</h1>
-      <div class="card center">
-        <div class="daily-badge">${progress}</div>
-        <div class="big mt-12">${esc(q.word)}</div>
-        <div class="word-pronunciation">
-          <span>${esc(q.transcription || "")}</span>
-          <button type="button" class="pronounce-btn" data-word="${esc(q.word)}">🔊</button>
-        </div>
-        <p class="hint mt-12">${esc(q.prompt)}</p>
-      </div>
+      ${wordStudyCard(q, { badge: progress, prompt: q.prompt, compact: true })}
       ${q.options.map(o => `
         <button class="btn btn-secondary answer" data-id="${o.id}">${esc(o.translation)}</button>
       `).join("")}
@@ -827,10 +959,7 @@ async function finishVocabQuiz() {
           <div class="card">
             <h2>Повторить</h2>
             ${mistakes.map(m => `
-              <div class="stat-row">
-                <span>${esc(m.word)}${m.transcription ? `<small class="transcription">${esc(m.transcription)}</small>` : ""}</span>
-                <b>${esc(m.translation)} <button type="button" class="pronounce-btn small" data-word="${esc(m.word)}">🔊</button></b>
-              </div>
+              ${reviewWordRow(m)}
             `).join("")}
           </div>
         ` : `<div class="card center"><b>Отлично!</b><p class="hint">Все слова запомнились.</p></div>`}
@@ -942,10 +1071,7 @@ async function finishWordHunt() {
           <div class="card">
             <h2>Потренировать еще</h2>
             ${mistakes.map(item => `
-              <div class="stat-row">
-                <span>${esc(item.translation)}${item.transcription ? `<small class="transcription">${esc(item.transcription)}</small>` : ""}</span>
-                <b>${esc(item.word)} <button type="button" class="pronounce-btn small" data-word="${esc(item.word)}">🔊</button></b>
-              </div>
+              ${reviewWordRow(item)}
             `).join("")}
           </div>
         ` : `<div class="card center"><b>Отличная охота!</b><p class="hint">Все слова пойманы правильно.</p></div>`}
@@ -1057,14 +1183,7 @@ async function renderChoiceTraining(focus = "all") {
       <div class="screen">
         <h1>Выбери перевод</h1>
         ${task.review_empty ? `<div class="card"><p class="hint">Ошибок для повторения пока нет, поэтому даю обычное слово.</p></div>` : ""}
-        <div class="card center">
-          <div class="big">${esc(task.word)}</div>
-          <div class="word-pronunciation">
-            <span>${esc(task.transcription || "")}</span>
-            <button type="button" class="pronounce-btn" data-word="${esc(task.word)}">🔊</button>
-          </div>
-          <p class="hint mt-12">Как переводится это слово?</p>
-        </div>
+        ${wordStudyCard(task, { prompt: "Как переводится это слово?", compact: true })}
         ${task.options.map(option => `
           <button class="btn btn-secondary choice-answer" data-id="${option.id}">${esc(option.translation)}</button>
         `).join("")}
@@ -1166,7 +1285,7 @@ function renderTrainingResult({ correct, title, text, pronounceWord = "", transc
         ${pronounceWord ? `
           <div class="word-pronunciation result">
             <span>${esc(transcription || "")}</span>
-            <button type="button" class="pronounce-btn" data-word="${esc(pronounceWord)}">🔊</button>
+            ${pronunciationButtonHtml(pronounceWord)}
           </div>
         ` : ""}
         <p><b>${delta >= 0 ? "+" : ""}${delta} 💎</b> · всего: ${points}</p>
@@ -1235,16 +1354,7 @@ async function renderDailyWords() {
           <p class="hint mt-12">Посмотри слова. Потом будет короткий тест и одна фраза для практики.</p>
         </div>
         ${words.map((w, index) => `
-          <div class="card word-card">
-            <div class="daily-badge">Слово ${index + 1}</div>
-            <div class="big mt-12">${esc(w.word)}</div>
-            <div class="word-pronunciation">
-              <span>${esc(w.transcription || "")}</span>
-              <button type="button" class="pronounce-btn" data-word="${esc(w.word)}">🔊</button>
-            </div>
-            <div class="big-sub">${esc(w.translation)}</div>
-            <p class="hint mt-12">${esc(w.example)}</p>
-          </div>
+          ${wordStudyCard(w, { badge: `Слово ${index + 1}` })}
         `).join("")}
         <button class="btn" id="dailyWordsDone">Я запомнил слова</button>
       </div>`;
@@ -1283,15 +1393,7 @@ function renderDailyQuizQuestion(index) {
   app.innerHTML = `
     <div class="screen">
       <h1>Урок: мини-тест</h1>
-      <div class="card center">
-        <div class="daily-badge">Шаг 2 из 4 · ${index + 1}/${state.dailyQuiz.questions.length}</div>
-        <div class="big mt-12">${esc(q.word)}</div>
-        <div class="word-pronunciation">
-          <span>${esc(q.transcription || "")}</span>
-          <button type="button" class="pronounce-btn" data-word="${esc(q.word)}">🔊</button>
-        </div>
-        <p class="hint mt-12">Выбери перевод</p>
-      </div>
+      ${wordStudyCard(q, { badge: `Шаг 2 из 4 · ${index + 1}/${state.dailyQuiz.questions.length}`, prompt: "Выбери перевод", compact: true })}
       ${q.options.map(o => `
         <button class="btn btn-secondary daily-answer" data-id="${o.id}">${esc(o.translation)}</button>
       `).join("")}

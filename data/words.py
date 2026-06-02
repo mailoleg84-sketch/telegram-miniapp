@@ -351,6 +351,238 @@ def _age_count(entries: list[Entry5], age_group: str) -> int:
     return sum(1 for item in entries if item[4] == age_group)
 
 
+CONCRETE_NOUN_TOPICS = {
+    "animals", "art", "body", "clothes", "family", "food", "friends",
+    "games", "hobbies", "home", "jobs", "music", "nature", "places",
+    "reading", "school", "sports", "technology", "toys", "transport", "travel",
+}
+
+PERSON_NOUN_TOPICS = {"family", "friends", "jobs"}
+
+COUNTABLE_NOUN_TOPICS = CONCRETE_NOUN_TOPICS - {"body", "food"}
+
+WITH_NOUN_TOPICS = COUNTABLE_NOUN_TOPICS - {
+    "family", "friends", "jobs", "places", "transport", "travel",
+}
+
+FOR_NOUN_TOPICS = {
+    "communication", "culture", "exams", "learning", "reading", "school",
+    "science", "society", "speaking", "study", "technology", "time",
+    "travel", "work", "writing",
+}
+
+UNCOUNTABLE_NOUNS = {
+    "bread", "cheese", "juice", "milk", "rain",
+    "breakfast", "dinner", "lunch", "football", "music",
+    "biology", "chemistry", "culture", "education", "energy",
+    "environment", "feedback", "fluency", "geography", "grammar",
+    "history", "information", "knowledge", "leadership", "progress",
+    "responsibility", "science", "technology", "teamwork", "training",
+    "vocabulary",
+}
+
+ADJECTIVE_TOPIC_COMPATIBILITY = {
+    "art": {"art", "hobbies", "music", "school", "study", "technology", "work"},
+    "basic": set(NOUN_TOPIC for NOUN_TOPIC in {
+        "animals", "art", "clothes", "communication", "culture", "everyday",
+        "family", "food", "friends", "games", "hobbies", "home", "jobs",
+        "learning", "life", "motivation", "music", "nature", "places",
+        "reading", "school", "science", "society", "speaking", "sports",
+        "stories", "study", "technology", "thinking", "time", "toys",
+        "transport", "travel", "work", "writing",
+    }),
+    "behavior": PERSON_NOUN_TOPICS | {"school", "speaking", "communication", "work", "society", "life", "sports"},
+    "body": {"body", "family", "friends", "sports"},
+    "colors": CONCRETE_NOUN_TOPICS,
+    "communication": {"communication", "speaking", "writing", "work", "study", "society", "learning"},
+    "comparison": set(NOUN_TOPIC for NOUN_TOPIC in {
+        "animals", "art", "clothes", "communication", "culture", "everyday",
+        "exams", "family", "food", "friends", "games", "hobbies", "home",
+        "jobs", "learning", "life", "motivation", "music", "nature",
+        "places", "reading", "school", "science", "society", "speaking",
+        "sports", "stories", "study", "technology", "thinking", "time",
+        "toys", "transport", "travel", "work", "writing",
+    }),
+    "culture": {"culture", "society", "hobbies", "art", "stories", "music", "travel"},
+    "everyday": {"everyday", "family", "friends", "school", "home", "life", "work", "travel", "places", "transport", "food"},
+    "feelings": {"animals", "family", "friends", "jobs", "stories", "hobbies", "games", "culture", "speaking"},
+    "food": {"food"},
+    "health": {"body", "food", "sports", "life"},
+    "home": {"home", "clothes", "body", "school", "places", "food"},
+    "learning": {"learning", "school", "study", "exams", "reading", "writing", "speaking", "communication", "science", "technology", "work", "thinking", "culture", "stories", "hobbies"},
+    "life": {"life", "family", "friends", "society", "work", "study", "motivation"},
+    "motivation": {"motivation", "learning", "study", "work", "life", "school", "sports"},
+    "movement": {"animals", "transport", "sports", "games", "travel"},
+    "nature": {"nature", "food", "science", "places"},
+    "people": PERSON_NOUN_TOPICS | {"school", "speaking", "communication", "work", "society"},
+    "safety": {"places", "travel", "transport", "technology", "life", "home", "school", "sports"},
+    "science": {"science", "technology", "learning", "school", "nature"},
+    "shape": CONCRETE_NOUN_TOPICS,
+    "size": CONCRETE_NOUN_TOPICS,
+    "society": {"society", "culture", "communication", "work", "life"},
+    "sound": {"animals", "home", "school", "places", "music", "culture", "everyday", "friends", "technology", "travel", "transport"},
+    "study": {"study", "learning", "school", "exams", "writing", "reading"},
+    "technology": {"technology", "work", "study", "communication", "society"},
+    "thinking": {"thinking", "learning", "study", "work", "science", "communication", "writing", "speaking"},
+    "time": {"time", "school", "everyday", "study", "work", "travel", "exams"},
+    "touch": {"animals", "body", "clothes", "food", "home", "nature", "toys"},
+    "weather": {"body", "clothes", "food", "home", "nature", "places", "travel"},
+    "work": {"work", "study", "motivation", "life", "communication"},
+}
+
+ADJECTIVE_WORD_OVERRIDES = {
+    "nice": ADJECTIVE_TOPIC_COMPATIBILITY["basic"],
+    "amazing": ADJECTIVE_TOPIC_COMPATIBILITY["basic"],
+    "special": ADJECTIVE_TOPIC_COMPATIBILITY["basic"],
+    "good": ADJECTIVE_TOPIC_COMPATIBILITY["basic"],
+    "friendly": PERSON_NOUN_TOPICS | {"animals", "school", "places", "travel"},
+    "busy": {"places", "school", "home", "travel", "transport", "work", "everyday"},
+    "quiet": ADJECTIVE_TOPIC_COMPATIBILITY["sound"],
+    "loud": ADJECTIVE_TOPIC_COMPATIBILITY["sound"],
+    "happy": PERSON_NOUN_TOPICS | {"animals", "stories"},
+    "sad": PERSON_NOUN_TOPICS | {"animals", "stories"},
+    "brave": PERSON_NOUN_TOPICS | {"animals", "stories"},
+    "kind": PERSON_NOUN_TOPICS | {"animals", "school", "jobs"},
+    "polite": PERSON_NOUN_TOPICS | {"school", "jobs"},
+    "ready": PERSON_NOUN_TOPICS | {"school", "work", "study", "exams", "travel"},
+    "early": {"time", "school", "everyday", "food", "travel", "transport", "study", "work"},
+    "late": {"time", "school", "everyday", "food", "travel", "transport", "study", "work"},
+    "hungry": PERSON_NOUN_TOPICS | {"animals"},
+    "thirsty": PERSON_NOUN_TOPICS | {"animals"},
+    "healthy": {"body", "food", "sports", "life"},
+    "colorful": CONCRETE_NOUN_TOPICS | {"culture", "stories"},
+    "careful": PERSON_NOUN_TOPICS | {"school", "work", "travel", "transport"},
+    "safe": {"places", "travel", "transport", "technology", "life", "home", "school", "sports"},
+    "strong": {"animals", "body", "family", "friends", "sports", "work", "motivation"},
+    "weak": {"animals", "body", "family", "friends", "sports", "thinking"},
+    "clever": PERSON_NOUN_TOPICS | {"animals", "school", "jobs"},
+    "noisy": ADJECTIVE_TOPIC_COMPATIBILITY["sound"],
+    "comfortable": {"home", "clothes", "transport", "places", "travel", "school"},
+    "creative": {"art", "hobbies", "music", "school", "study", "work", "stories", "technology"},
+    "curious": PERSON_NOUN_TOPICS | {"animals", "school", "science", "learning"},
+    "important": ADJECTIVE_TOPIC_COMPATIBILITY["learning"] | {"life", "motivation", "society"},
+    "interesting": ADJECTIVE_TOPIC_COMPATIBILITY["learning"] | {"travel", "culture", "stories", "hobbies", "music", "sports"},
+    "modern": {"technology", "work", "study", "school", "culture", "society", "communication"},
+    "natural": {"nature", "food", "science", "life"},
+    "popular": {"culture", "hobbies", "music", "sports", "technology", "travel", "food", "school", "society"},
+    "possible": {"thinking", "learning", "life", "work", "study", "motivation"},
+    "regular": {"time", "study", "school", "sports", "learning", "work"},
+    "simple": ADJECTIVE_TOPIC_COMPATIBILITY["learning"] | {"work", "life", "technology"},
+    "successful": {"motivation", "work", "study", "sports", "school", "life"},
+    "useful": ADJECTIVE_TOPIC_COMPATIBILITY["learning"] | {"work", "life", "technology", "travel"},
+    "usual": {"everyday", "school", "home", "time", "study", "work", "travel"},
+    "careless": PERSON_NOUN_TOPICS | {"school", "work", "study"},
+    "patient": PERSON_NOUN_TOPICS | {"school", "jobs", "work"},
+    "peaceful": {"nature", "places", "culture", "life", "society", "stories"},
+    "powerful": {"science", "technology", "nature", "work", "motivation"},
+    "practical": ADJECTIVE_TOPIC_COMPATIBILITY["learning"] | {"work", "life", "technology"},
+    "professional": {"work", "communication", "speaking", "writing"},
+}
+
+VERB_OBJECT_COMPATIBILITY = {
+    "analyze": {"thinking", "science", "school", "work", "writing", "learning", "information"},
+    "argue": set(),
+    "carry": CONCRETE_NOUN_TOPICS - {"places", "nature", "body"},
+    "choose": {"animals", "art", "clothes", "everyday", "food", "games", "hobbies", "music", "places", "school", "sports", "technology", "toys", "transport", "travel", "work"},
+    "clean": {"home", "clothes", "body", "school", "places"},
+    "compare": {"animals", "art", "clothes", "communication", "culture", "exams", "food", "games", "hobbies", "learning", "music", "reading", "school", "science", "speaking", "sports", "stories", "study", "technology", "thinking", "travel", "work", "writing"},
+    "create": {"art", "hobbies", "school", "stories", "study", "technology", "work", "writing", "communication"},
+    "describe": {"animals", "art", "clothes", "culture", "family", "food", "friends", "hobbies", "home", "music", "nature", "places", "school", "science", "sports", "stories", "technology", "travel"},
+    "discuss": {"communication", "culture", "everyday", "learning", "life", "motivation", "science", "society", "speaking", "study", "technology", "thinking", "travel", "work"},
+    "draw": {"animals", "art", "body", "family", "food", "friends", "home", "nature", "places", "toys", "transport"},
+    "evaluate": {"thinking", "work", "study", "learning", "speaking", "writing", "science"},
+    "explain": {"communication", "learning", "school", "science", "speaking", "study", "technology", "thinking", "writing"},
+    "explore": {"culture", "nature", "places", "science", "technology", "travel"},
+    "find": set(NOUN_TOPIC for NOUN_TOPIC in {
+        "animals", "art", "clothes", "communication", "culture", "everyday",
+        "family", "food", "friends", "games", "hobbies", "home", "learning",
+        "life", "music", "nature", "places", "reading", "school", "science",
+        "speaking", "sports", "stories", "study", "technology", "thinking",
+        "time", "toys", "transport", "travel", "work", "writing",
+    }),
+    "have": {"animals", "clothes", "communication", "everyday", "family", "food", "friends", "games", "hobbies", "home", "learning", "life", "motivation", "school", "sports", "study", "technology", "time", "toys", "transport", "travel", "work"},
+    "hold": CONCRETE_NOUN_TOPICS - {"places", "nature"},
+    "improve": {"communication", "learning", "life", "motivation", "school", "speaking", "sports", "study", "work", "writing"},
+    "learn": {"communication", "culture", "learning", "reading", "school", "science", "speaking", "study", "technology", "writing"},
+    "like": ADJECTIVE_TOPIC_COMPATIBILITY["basic"],
+    "open": {"home", "school", "technology", "reading", "communication", "places"},
+    "organize": {"communication", "everyday", "events", "life", "school", "study", "work", "writing"},
+    "practice": {"learning", "music", "speaking", "sports", "study", "writing"},
+    "prepare": {"exams", "food", "school", "speaking", "study", "travel", "work", "writing"},
+    "present": {"communication", "speaking", "study", "work", "writing"},
+    "recommend": {"art", "communication", "culture", "food", "hobbies", "learning", "places", "reading", "school", "technology", "travel", "work"},
+    "remember": {"communication", "culture", "everyday", "family", "friends", "learning", "school", "stories", "study", "time"},
+    "see": CONCRETE_NOUN_TOPICS | {"culture", "society"},
+    "summarize": {"communication", "reading", "school", "speaking", "study", "work", "writing"},
+    "support": {"communication", "family", "friends", "learning", "life", "motivation", "society", "speaking", "work"},
+    "touch": {"animals", "body", "clothes", "food", "home", "nature", "toys"},
+    "use": {"communication", "home", "learning", "school", "study", "technology", "work", "writing"},
+    "visit": {"family", "friends", "places", "school", "travel", "culture"},
+}
+
+MODIFIER_COMPATIBILITY = {
+    "my": ADJECTIVE_TOPIC_COMPATIBILITY["basic"] | {"body", "exams"},
+    "your": ADJECTIVE_TOPIC_COMPATIBILITY["basic"] | {"body", "exams"},
+    "this": ADJECTIVE_TOPIC_COMPATIBILITY["basic"] | {"body", "exams"},
+    "that": ADJECTIVE_TOPIC_COMPATIBILITY["basic"] | {"body", "exams"},
+    "the": set(NOUN_TOPIC for NOUN_TOPIC in {
+        "animals", "art", "body", "clothes", "communication", "culture",
+        "everyday", "exams", "family", "food", "friends", "games",
+        "hobbies", "home", "jobs", "learning", "life", "motivation",
+        "music", "nature", "places", "reading", "school", "science",
+        "society", "speaking", "sports", "stories", "study", "technology",
+        "thinking", "time", "toys", "transport", "travel", "work", "writing",
+    }),
+    "a": COUNTABLE_NOUN_TOPICS,
+    "one": COUNTABLE_NOUN_TOPICS,
+    "two": set(),
+    "favorite": {"animals", "art", "clothes", "culture", "food", "friends", "games", "hobbies", "music", "places", "reading", "school", "sports", "stories", "technology", "toys", "travel"},
+    "next": {"communication", "everyday", "exams", "learning", "reading", "school", "speaking", "study", "time", "travel", "work", "writing"},
+    "first": {"communication", "everyday", "exams", "learning", "reading", "school", "speaking", "study", "time", "travel", "work", "writing"},
+    "last": {"communication", "everyday", "exams", "learning", "reading", "school", "speaking", "study", "time", "travel", "work", "writing"},
+}
+
+
+def _compatible_adjective_phrase(adjective: str, adjective_topic: str, noun_topic: str) -> bool:
+    allowed_topics = ADJECTIVE_WORD_OVERRIDES.get(
+        adjective,
+        ADJECTIVE_TOPIC_COMPATIBILITY.get(adjective_topic, set()),
+    )
+    return noun_topic in allowed_topics
+
+
+def _compatible_verb_phrase(verb: str, noun_topic: str) -> bool:
+    allowed_topics = VERB_OBJECT_COMPATIBILITY.get(verb, set())
+    return noun_topic in allowed_topics
+
+
+def _compatible_modifier_phrase(modifier: str, noun_topic: str) -> bool:
+    allowed_topics = MODIFIER_COMPATIBILITY.get(modifier, set())
+    return noun_topic in allowed_topics
+
+
+def _article_for(noun: str) -> str:
+    if noun.startswith(("uni", "use", "user")):
+        return "a"
+    return "an" if noun[:1] in {"a", "e", "i", "o", "u"} else "a"
+
+
+def _needs_article(noun: str, noun_topic: str) -> bool:
+    return noun_topic in COUNTABLE_NOUN_TOPICS and noun not in UNCOUNTABLE_NOUNS
+
+
+def _article_phrase(noun: str, noun_topic: str) -> str:
+    return f"{_article_for(noun)} {noun}" if _needs_article(noun, noun_topic) else noun
+
+
+def _verb_object_phrase(verb: str, noun: str, noun_topic: str) -> str:
+    if verb in {"learn", "practice"} and noun_topic in {
+        "learning", "music", "school", "speaking", "sports", "study", "writing",
+    }:
+        return noun
+    return _article_phrase(noun, noun_topic)
+
+
 def _add_base_words(entries: list[Entry5], seen: set[str]) -> None:
     for word, translation, example, topic, age_group in CORE_WORDS:
         _add(entries, seen, (word, translation, example, topic, age_group))
@@ -374,6 +606,8 @@ def _fill_age_group(entries: list[Entry5], seen: set[str], age_group: str) -> No
         ("your", "твой/твоя/твое"),
         ("this", "этот/эта/это"),
         ("that", "тот/та/то"),
+        ("the", "определенный артикль"),
+        ("a", "неопределенный артикль"),
         ("one", "один/одна/одно"),
         ("two", "два/две"),
         ("favorite", "любимый/ая/ое"),
@@ -390,30 +624,66 @@ def _fill_age_group(entries: list[Entry5], seen: set[str], age_group: str) -> No
             noun_topic,
             age_group,
         )
-        for adj, adj_ru, _adj_topic, _adj_age in adjectives
+        for adj, adj_ru, adj_topic, _adj_age in adjectives
         for noun, noun_ru, noun_topic, _noun_age in nouns
+        if _compatible_adjective_phrase(adj, adj_topic, noun_topic)
     ]
     generators.extend(
         (
-            f"{verb} {noun}",
+            f"{verb} {_verb_object_phrase(verb, noun, noun_topic)}",
             f"{verb_ru}: {noun_ru}",
-            f"Practice phrase: {verb} {noun}.",
+            f"Practice phrase: {verb} {_verb_object_phrase(verb, noun, noun_topic)}.",
             noun_topic,
             age_group,
         )
         for verb, verb_ru, _verb_topic, _verb_age in verbs
         for noun, noun_ru, noun_topic, _noun_age in nouns
+        if _compatible_verb_phrase(verb, noun_topic)
     )
     generators.extend(
         (
-            f"{mod} {noun}",
+            f"{_article_for(noun) if mod == 'a' else mod} {noun}",
             f"{mod_ru}: {noun_ru}",
-            f"This is {mod} {noun}.",
+            f"This is {_article_for(noun) if mod == 'a' else mod} {noun}.",
             noun_topic,
             age_group,
         )
         for mod, mod_ru in modifiers
         for noun, noun_ru, noun_topic, _noun_age in nouns
+        if _compatible_modifier_phrase(mod, noun_topic)
+        and (mod not in {"a", "one"} or _needs_article(noun, noun_topic))
+    )
+    generators.extend(
+        (
+            f"about {_article_phrase(noun, noun_topic)}",
+            f"о/об: {noun_ru}",
+            f"Let's talk about {_article_phrase(noun, noun_topic)}.",
+            noun_topic,
+            age_group,
+        )
+        for noun, noun_ru, noun_topic, _noun_age in nouns
+    )
+    generators.extend(
+        (
+            f"with {_article_for(noun)} {noun}",
+            f"с: {noun_ru}",
+            f"I can say a phrase with {_article_for(noun)} {noun}.",
+            noun_topic,
+            age_group,
+        )
+        for noun, noun_ru, noun_topic, _noun_age in nouns
+        if noun_topic in WITH_NOUN_TOPICS and _needs_article(noun, noun_topic)
+    )
+    generators.extend(
+        (
+            f"for {_article_phrase(noun, noun_topic)}",
+            f"для: {noun_ru}",
+            f"This phrase is for {_article_phrase(noun, noun_topic)}.",
+            noun_topic,
+            age_group,
+        )
+        for noun, noun_ru, noun_topic, _noun_age in nouns
+        if noun_topic in FOR_NOUN_TOPICS
     )
 
     for item in generators:

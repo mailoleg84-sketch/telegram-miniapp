@@ -185,6 +185,27 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertEqual(len({item[5] for item in INITIAL_WORDS}), 5000)
         self.assertEqual(by_age, {"5_7": 1250, "8_10": 1250, "11_13": 1250, "14_18": 1250})
 
+    def test_generated_word_bank_filters_bad_phrase_pairs(self):
+        words = {item[0] for item in INITIAL_WORDS}
+        impossible_phrases = {
+            "health guitar",
+            "healthy guitar",
+            "hungry guitar",
+            "thirsty guitar",
+            "weak guitar",
+            "sad guitar",
+            "carry guitar",
+            "choose guitar",
+            "describe guitar",
+            "a music",
+            "one music",
+            "with music",
+        }
+        self.assertFalse(impossible_phrases & words)
+        self.assertIn("carry a guitar", words)
+        self.assertIn("choose a guitar", words)
+        self.assertIn("describe a guitar", words)
+
 
 if __name__ == "__main__":
     unittest.main()

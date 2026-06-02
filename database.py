@@ -183,6 +183,7 @@ async def init_db() -> None:
 
 
 async def _seed_words(conn) -> None:
+    active_words = [item[0] for item in INITIAL_WORDS]
     await conn.executemany(
         """
         INSERT INTO words (word, translation, example, topic, age_group, transcription)
@@ -196,6 +197,19 @@ async def _seed_words(conn) -> None:
             age_group = EXCLUDED.age_group
         """,
         INITIAL_WORDS,
+    )
+    await conn.execute(
+        """
+        DELETE FROM user_progress
+        WHERE word_id IN (
+            SELECT id FROM words WHERE NOT (word = ANY($1::text[]))
+        )
+        """,
+        active_words,
+    )
+    await conn.execute(
+        "DELETE FROM words WHERE NOT (word = ANY($1::text[]))",
+        active_words,
     )
 
 
