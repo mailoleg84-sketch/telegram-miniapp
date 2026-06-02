@@ -310,7 +310,6 @@ function wordStudyCard(wordData, options = {}) {
       <div class="word-main">${esc(wordData.word)}</div>
       ${wordData.transcription ? `<div class="word-transcription">${esc(wordData.transcription)}</div>` : ""}
       ${wordData.translation ? `<div class="word-translation">${esc(wordData.translation)}</div>` : ""}
-      ${wordData.example ? `<p class="word-example">${esc(wordData.example)}</p>` : ""}
       ${prompt ? `<p class="hint mt-12">${esc(prompt)}</p>` : ""}
     </div>`;
 }
@@ -1120,7 +1119,6 @@ async function renderDictionary(filter = state.dictionaryFilter || "all") {
                   <b>${esc(word.word)}</b>
                   ${word.transcription ? `<small class="transcription">${esc(word.transcription)}</small>` : ""}
                   <span>${esc(word.translation)}</span>
-                  ${word.example ? `<small>${esc(word.example)}</small>` : ""}
                 </div>
                 <div class="dictionary-side">
                   <button type="button" class="pronounce-btn small" data-word="${esc(word.word)}">🔊</button>
