@@ -10,7 +10,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import asyncpg
 
 from config import DATABASE_URL
-from data.words import INITIAL_WORDS
+from data.words import LEARNING_WORDS
 
 # Глобальный пул соединений
 _pool: asyncpg.Pool | None = None
@@ -183,7 +183,7 @@ async def init_db() -> None:
 
 
 async def _seed_words(conn) -> None:
-    active_words = [item[0] for item in INITIAL_WORDS]
+    active_words = [item[0] for item in LEARNING_WORDS]
     await conn.executemany(
         """
         INSERT INTO words (word, translation, example, topic, age_group, transcription)
@@ -196,7 +196,7 @@ async def _seed_words(conn) -> None:
             topic = EXCLUDED.topic,
             age_group = EXCLUDED.age_group
         """,
-        INITIAL_WORDS,
+        LEARNING_WORDS,
     )
     await conn.execute(
         """

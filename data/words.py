@@ -1452,3 +1452,10 @@ def _with_transcriptions(entries: list[Entry5]) -> list[Entry6]:
 
 
 INITIAL_WORDS = _with_transcriptions(_build_base_words())
+
+
+def _is_single_word(word: str) -> bool:
+    return " " not in word.strip()
+
+
+LEARNING_WORDS = tuple(item for item in INITIAL_WORDS if _is_single_word(item[0]))

@@ -1,7 +1,7 @@
 import unittest
 
 from config import GAME_PERFECT_BONUS_POINTS, GAME_POINTS_CORRECT
-from data.words import INITIAL_WORDS
+from data.words import INITIAL_WORDS, LEARNING_WORDS
 from webapp.openai_service import _runtime_instructions, _safety_guard_reply, openai_config_status
 from webapp.server import (
     _activity_event_dict,
@@ -194,6 +194,26 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertEqual(len({item[0] for item in INITIAL_WORDS}), 5000)
         self.assertEqual(len({item[5] for item in INITIAL_WORDS}), 5000)
         self.assertEqual(by_age, {"5_7": 1250, "8_10": 1250, "11_13": 1250, "14_18": 1250})
+
+    def test_learning_word_bank_uses_only_single_words(self):
+        by_age = {}
+        words = {item[0] for item in LEARNING_WORDS}
+
+        for word, _translation, _example, _topic, age_group, transcription in LEARNING_WORDS:
+            by_age[age_group] = by_age.get(age_group, 0) + 1
+            self.assertNotIn(" ", word, word)
+            self.assertTrue(transcription.startswith("/"), word)
+            self.assertTrue(transcription.endswith("/"), word)
+
+        self.assertGreaterEqual(len(LEARNING_WORDS), 300)
+        self.assertGreaterEqual(by_age.get("5_7", 0), 80)
+        self.assertGreaterEqual(by_age.get("8_10", 0), 80)
+        self.assertGreaterEqual(by_age.get("11_13", 0), 80)
+        self.assertGreaterEqual(by_age.get("14_18", 0), 80)
+        self.assertIn("moon", words)
+        self.assertIn("amazing", words)
+        self.assertNotIn("check the word amazing", words)
+        self.assertNotIn("read the word suitable", words)
 
     def test_generated_word_bank_filters_bad_phrase_pairs(self):
         words = {item[0] for item in INITIAL_WORDS}
