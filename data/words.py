@@ -16,6 +16,8 @@ import re
 
 import pronouncing
 
+from data.single_words_5000 import SINGLE_WORDS_5000
+
 
 TARGET_WORD_COUNT = 5000
 TARGET_PER_AGE_GROUP = {
@@ -1458,4 +1460,4 @@ def _is_single_word(word: str) -> bool:
     return " " not in word.strip()
 
 
-LEARNING_WORDS = tuple(item for item in INITIAL_WORDS if _is_single_word(item[0]))
+LEARNING_WORDS = tuple(item for item in _with_transcriptions(list(SINGLE_WORDS_5000)) if _is_single_word(item[0]))

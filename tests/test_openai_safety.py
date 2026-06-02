@@ -199,19 +199,31 @@ class OpenAISafetyTests(unittest.TestCase):
         by_age = {}
         words = {item[0] for item in LEARNING_WORDS}
 
-        for word, _translation, _example, _topic, age_group, transcription in LEARNING_WORDS:
+        for word, translation, _example, _topic, age_group, transcription in LEARNING_WORDS:
             by_age[age_group] = by_age.get(age_group, 0) + 1
             self.assertNotIn(" ", word, word)
+            self.assertNotIn("(", translation, word)
+            self.assertNotIn(")", translation, word)
+            self.assertNotIn("/", translation, word)
+            self.assertNotIn(":", translation, word)
             self.assertTrue(transcription.startswith("/"), word)
             self.assertTrue(transcription.endswith("/"), word)
 
-        self.assertGreaterEqual(len(LEARNING_WORDS), 300)
-        self.assertGreaterEqual(by_age.get("5_7", 0), 80)
-        self.assertGreaterEqual(by_age.get("8_10", 0), 80)
-        self.assertGreaterEqual(by_age.get("11_13", 0), 80)
-        self.assertGreaterEqual(by_age.get("14_18", 0), 80)
+        forbidden_words = {
+            "killed", "sexual", "politics", "deaths", "prisoner", "protests",
+            "gospel", "bombs", "damage", "incident", "blew", "cruel",
+            "judicial", "trauma", "tattoo", "didnt", "craig",
+            "tax", "legal", "government", "lawyer", "democrats", "ruined",
+            "unions", "legally",
+        }
+
+        self.assertEqual(len(LEARNING_WORDS), 5000)
+        self.assertEqual(by_age, {"5_7": 1250, "8_10": 1250, "11_13": 1250, "14_18": 1250})
+        self.assertFalse(forbidden_words & words)
         self.assertIn("moon", words)
         self.assertIn("amazing", words)
+        self.assertIn("rainbow", words)
+        self.assertIn("headphones", words)
         self.assertNotIn("check the word amazing", words)
         self.assertNotIn("read the word suitable", words)
 
