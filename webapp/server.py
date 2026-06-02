@@ -577,7 +577,7 @@ async def _build_vocab_question(word, age_group: str) -> dict:
 
 
 async def _build_word_hunt_round(word, age_group: str) -> dict:
-    wrong = await database.get_random_words(3, exclude_id=word["id"])
+    wrong = await database.get_random_words(3, exclude_id=word["id"], age_group=age_group)
     options = [{"id": word["id"], "word": word["word"]}]
     options += [{"id": item["id"], "word": item["word"]} for item in wrong]
     random.shuffle(options)
@@ -1316,9 +1316,10 @@ async def api_daily_progress(request: web.Request):
 
 async def api_learn_next(request: web.Request):
     user_id = request["tg_user"]["id"]
+    user = await _current_user_or_404(request)
     body = await _safe_json(request)
     exclude_id = body.get("current_id")
-    word = await database.get_practice_word(user_id, exclude_id=exclude_id)
+    word = await database.get_practice_word(user_id, exclude_id=exclude_id, age_group=user["age_group"])
     return web.json_response(_word_dict(word))
 
 
@@ -1550,16 +1551,18 @@ async def api_word_hunt_finish(request: web.Request):
 
 async def api_choice_next(request: web.Request):
     user_id = request["tg_user"]["id"]
+    user = await _current_user_or_404(request)
     body = await _safe_json(request)
     focus = "review" if body.get("focus") == "review" else "all"
-    correct = await database.get_review_word(user_id) if focus == "review" else None
+    age_group = user["age_group"]
+    correct = await database.get_review_word(user_id, age_group=age_group) if focus == "review" else None
     review_empty = focus == "review" and not correct
     if not correct:
-        correct = await database.get_practice_word(user_id)
+        correct = await database.get_practice_word(user_id, age_group=age_group)
     if not correct:
         return web.json_response({"error": "Нет слов"}, status=500)
 
-    wrong = await database.get_random_words(3, exclude_id=correct["id"])
+    wrong = await database.get_random_words(3, exclude_id=correct["id"], age_group=age_group)
     options = [{"id": correct["id"], "translation": correct["translation"]}]
     options += [{"id": w["id"], "translation": w["translation"]} for w in wrong]
     random.shuffle(options)
@@ -1605,12 +1608,14 @@ async def api_choice_answer(request: web.Request):
 
 async def api_input_next(request: web.Request):
     user_id = request["tg_user"]["id"]
+    user = await _current_user_or_404(request)
     body = await _safe_json(request)
     focus = "review" if body.get("focus") == "review" else "all"
-    word = await database.get_review_word(user_id) if focus == "review" else None
+    age_group = user["age_group"]
+    word = await database.get_review_word(user_id, age_group=age_group) if focus == "review" else None
     review_empty = focus == "review" and not word
     if not word:
-        word = await database.get_practice_word(user_id)
+        word = await database.get_practice_word(user_id, age_group=age_group)
     if not word:
         return web.json_response({"error": "Нет слов"}, status=500)
     return web.json_response({

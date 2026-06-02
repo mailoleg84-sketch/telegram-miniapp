@@ -304,12 +304,46 @@ async def get_random_word(exclude_id: int | None = None):
     return await pool.fetchrow("SELECT * FROM words ORDER BY RANDOM() LIMIT 1")
 
 
-async def get_random_words(count: int, exclude_id: int | None = None):
+async def get_random_words(
+    count: int,
+    exclude_id: int | None = None,
+    age_group: str | None = None,
+):
     pool = await _get_pool()
+    if exclude_id is not None and age_group:
+        rows = list(await pool.fetch(
+            """
+            SELECT * FROM words
+            WHERE id != $1
+              AND age_group = $2
+            ORDER BY RANDOM()
+            LIMIT $3
+            """,
+            exclude_id, age_group, count,
+        ))
+        if len(rows) >= count:
+            return rows
+        excluded_ids = [exclude_id] + [row["id"] for row in rows]
+        fallback_rows = await pool.fetch(
+            """
+            SELECT * FROM words
+            WHERE id != ALL($1::INTEGER[])
+            ORDER BY RANDOM()
+            LIMIT $2
+            """,
+            excluded_ids, count - len(rows),
+        )
+        rows.extend(fallback_rows)
+        return rows
     if exclude_id is not None:
         return await pool.fetch(
             "SELECT * FROM words WHERE id != $1 ORDER BY RANDOM() LIMIT $2",
             exclude_id, count,
+        )
+    if age_group:
+        return await pool.fetch(
+            "SELECT * FROM words WHERE age_group = $1 ORDER BY RANDOM() LIMIT $2",
+            age_group, count,
         )
     return await pool.fetch(
         "SELECT * FROM words ORDER BY RANDOM() LIMIT $1", count,
@@ -376,7 +410,11 @@ async def get_word_options(word_id: int, age_group: str, count: int = 3):
     return rows
 
 
-async def get_practice_word(user_id: int, exclude_id: int | None = None):
+async def get_practice_word(
+    user_id: int,
+    exclude_id: int | None = None,
+    age_group: str | None = None,
+):
     pool = await _get_pool()
     return await pool.fetchrow("""
         SELECT w.*
@@ -385,6 +423,7 @@ async def get_practice_word(user_id: int, exclude_id: int | None = None):
                ON up.word_id = w.id
               AND up.user_id = $1
         WHERE ($2::INTEGER IS NULL OR w.id != $2)
+          AND ($3::TEXT IS NULL OR w.age_group = $3)
         ORDER BY
             CASE
                 WHEN up.word_id IS NULL THEN 5
@@ -399,10 +438,14 @@ async def get_practice_word(user_id: int, exclude_id: int | None = None):
             up.last_seen ASC NULLS FIRST,
             RANDOM()
         LIMIT 1
-    """, user_id, exclude_id)
+    """, user_id, exclude_id, age_group)
 
 
-async def get_review_word(user_id: int, exclude_id: int | None = None):
+async def get_review_word(
+    user_id: int,
+    exclude_id: int | None = None,
+    age_group: str | None = None,
+):
     pool = await _get_pool()
     return await pool.fetchrow("""
         SELECT w.*
@@ -410,6 +453,7 @@ async def get_review_word(user_id: int, exclude_id: int | None = None):
         JOIN words w ON w.id = up.word_id
         WHERE up.user_id = $1
           AND ($2::INTEGER IS NULL OR w.id != $2)
+          AND ($3::TEXT IS NULL OR w.age_group = $3)
           AND (
             COALESCE(up.wrong_count, 0) > 0
             OR up.last_seen < NOW() - (
@@ -426,7 +470,7 @@ async def get_review_word(user_id: int, exclude_id: int | None = None):
             up.last_seen ASC,
             RANDOM()
         LIMIT 1
-    """, user_id, exclude_id)
+    """, user_id, exclude_id, age_group)
 
 
 async def get_user_dictionary(user_id: int, filter_mode: str = "all", limit: int = 80):
