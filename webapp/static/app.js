@@ -439,6 +439,9 @@ function ageToGroup(age) {
 }
 
 function learningPathHtml(data) {
+  const levelTestButton = data.next_action === "level"
+    ? `<button class="btn btn-secondary mt-12" id="learningPathLevelTest">Пройти тест уровня</button>`
+    : "";
   return `
     <div class="learning-path-head">
       <div>
@@ -448,7 +451,8 @@ function learningPathHtml(data) {
       <strong>${data.progress_percent || 0}%</strong>
     </div>
     <p class="hint">${esc(data.next_text || "Выбери следующий шаг.")}</p>
-    <div class="path-progress"><span style="width:${Math.max(0, Math.min(100, Number(data.progress_percent) || 0))}%"></span></div>`;
+    <div class="path-progress"><span style="width:${Math.max(0, Math.min(100, Number(data.progress_percent) || 0))}%"></span></div>
+    ${levelTestButton}`;
 }
 
 async function loadLearningPath() {
@@ -459,6 +463,10 @@ async function loadLearningPath() {
     const data = await api("/api/learning/path", "GET");
     state.learningPath = data;
     box.innerHTML = learningPathHtml(data);
+    const levelTestButton = document.getElementById("learningPathLevelTest");
+    if (levelTestButton) {
+      levelTestButton.onclick = () => { haptic(); renderLevelTestIntro(); };
+    }
   } catch (_) {
     box.innerHTML = `
       <div class="learning-path-head">
@@ -615,12 +623,12 @@ function renderMenu() {
       <div class="action-grid main-actions">
         <button class="action-tile primary" id="chat">
           <span>Репетитор</span>
-          <b>Голос и чат</b>
+          <b>Разговорная практика</b>
           <small>говорить, слушать, задавать вопросы</small>
         </button>
         <button class="action-tile learn" id="learnHub">
           <span>Учеба</span>
-          <b>Учебный раздел</b>
+          <b>Практические занятия</b>
           <small>урок, тренировки, словарь, игры</small>
         </button>
         <button class="action-tile progress" id="progressHub">
@@ -667,22 +675,18 @@ function renderLearningHub() {
       <div class="section-label">Практика</div>
       <div class="hub-grid">
         <button class="action-tile learn" id="vocab">
-          <span>Новые</span>
-          <b>Новый набор</b>
+          <b>Учим слова</b>
           <small>карточки и короткий тест</small>
         </button>
         <button class="action-tile review" id="training">
-          <span>Повторение</span>
-          <b>Тренировка</b>
+          <b>Работа над ошибками</b>
           <small>ошибки и закрепление</small>
         </button>
         <button class="action-tile dictionary" id="dictionary">
-          <span>Словарь</span>
           <b>Карточки</b>
           <small>транскрипция и озвучка</small>
         </button>
         <button class="action-tile game" id="games">
-          <span>Игра</span>
           <b>Игровая практика</b>
           <small>закрепить слова в игре</small>
         </button>
@@ -712,23 +716,19 @@ function renderProgressHub() {
 
       <div class="hub-grid">
         <button class="action-tile progress" id="motivation">
-          <span>Награды</span>
           <b>Достижения</b>
           <small>серии, бейджи, следующий шаг</small>
         </button>
         <button class="action-tile report" id="report">
-          <span>Родителю</span>
           <b>Отчет</b>
           <small>что получается и что повторить</small>
         </button>
         <button class="action-tile history" id="history">
-          <span>Журнал</span>
           <b>История занятий</b>
           <small>уроки, слова, тесты</small>
         </button>
         <button class="action-tile leaderboard-tile" id="leaderboard">
-          <span>Рейтинг</span>
-          <b>Баллы</b>
+          <b>Рейтинг</b>
           <small>место среди учеников</small>
         </button>
       </div>
@@ -742,7 +742,7 @@ function renderProgressHub() {
 }
 
 async function renderLevelTestIntro({ afterRegistration = false } = {}) {
-  setBack(afterRegistration ? null : renderMenu);
+  setBack(afterRegistration ? null : renderLearningHub);
   loading();
   try {
     const data = await api("/api/level/test", "GET");
@@ -756,14 +756,20 @@ async function renderLevelTestIntro({ afterRegistration = false } = {}) {
           <div class="stat-row"><span>Сейчас</span><b>${esc(data.level_label)}</b></div>
         </div>
         <button class="btn" id="levelStart">Начать тест</button>
-        ${afterRegistration ? `<button class="btn btn-secondary" id="levelSkip">Позже</button>` : `<button class="btn btn-secondary" id="levelBack">В меню</button>`}
+        ${afterRegistration ? `<button class="btn btn-secondary" id="levelSkip">Позже</button>` : `<button class="btn btn-secondary" id="levelBack">К учебе</button>`}
       </div>`;
     document.getElementById("levelStart").onclick = () => {
       haptic();
       renderLevelQuestion(0);
     };
     const backButton = document.getElementById(afterRegistration ? "levelSkip" : "levelBack");
-    if (backButton) backButton.onclick = () => { haptic(); renderMenu(); };
+    if (backButton) {
+      backButton.onclick = () => {
+        haptic();
+        if (afterRegistration) renderMenu();
+        else renderLearningHub();
+      };
+    }
   } catch (e) {
     renderError(e.message);
   }
@@ -801,7 +807,7 @@ function renderLevelQuestion(index) {
 }
 
 async function finishLevelTest() {
-  setBack(null);
+  setBack(state.levelTest?.afterRegistration ? null : renderLearningHub);
   loading();
   try {
     const result = await api("/api/level/submit", "POST", {
@@ -816,18 +822,25 @@ async function finishLevelTest() {
           <p class="hint">${result.correct_count}/${result.total} правильно · ${result.score}%</p>
           <p>${esc(result.message)}</p>
         </div>
-        <button class="btn" id="levelDone">${state.levelTest?.afterRegistration ? "Начать обучение" : "В меню"}</button>
+        <button class="btn" id="levelDone">${state.levelTest?.afterRegistration ? "Начать обучение" : "К учебе"}</button>
         <button class="btn btn-secondary" id="levelRetry">Пройти еще раз</button>
       </div>`;
-    document.getElementById("levelDone").onclick = () => { haptic("success"); renderMenu(); };
-    document.getElementById("levelRetry").onclick = () => { haptic(); renderLevelTestIntro(); };
+    document.getElementById("levelDone").onclick = () => {
+      haptic("success");
+      if (state.levelTest?.afterRegistration) renderMenu();
+      else renderLearningHub();
+    };
+    document.getElementById("levelRetry").onclick = () => {
+      haptic();
+      renderLevelTestIntro({ afterRegistration: Boolean(state.levelTest?.afterRegistration) });
+    };
   } catch (e) {
     renderError(e.message);
   }
 }
 
 async function renderVocabStart() {
-  setBack(renderMenu);
+  setBack(renderLearningHub);
   loading();
   try {
     const data = await api("/api/vocab/start", "POST", {});
@@ -913,10 +926,10 @@ async function finishVocabQuiz() {
           </div>
         ` : `<div class="card center"><b>Отлично!</b><p class="hint">Все слова запомнились.</p></div>`}
         <button class="btn" id="again">Еще набор слов</button>
-        <button class="btn btn-secondary" id="home">В меню</button>
+        <button class="btn btn-secondary" id="home">К учебе</button>
       </div>`;
     document.getElementById("again").onclick = () => { haptic(); renderVocabStart(); };
-    document.getElementById("home").onclick = () => { haptic(); renderMenu(); };
+    document.getElementById("home").onclick = () => { haptic(); renderLearningHub(); };
     bindPronunciationButtons();
   } catch (e) {
     renderError(e.message);
@@ -924,7 +937,7 @@ async function finishVocabQuiz() {
 }
 
 function renderGamesMenu() {
-  setBack(renderMenu);
+  setBack(renderLearningHub);
   app.innerHTML = `
     <div class="screen">
       <h1>Игры со словами</h1>
@@ -933,10 +946,10 @@ function renderGamesMenu() {
         <p class="hint">Короткая игра: смотри перевод и лови правильное английское слово. За правильные ответы начисляются баллы, штрафов нет.</p>
       </div>
       <button class="btn" id="wordHuntStart">Играть</button>
-      <button class="btn btn-secondary" id="wordHuntHome">В меню</button>
+      <button class="btn btn-secondary" id="wordHuntHome">К учебе</button>
     </div>`;
   document.getElementById("wordHuntStart").onclick = () => { haptic(); startWordHunt(); };
-  document.getElementById("wordHuntHome").onclick = () => { haptic(); renderMenu(); };
+  document.getElementById("wordHuntHome").onclick = () => { haptic(); renderLearningHub(); };
 }
 
 async function startWordHunt() {
@@ -1023,10 +1036,10 @@ async function finishWordHunt() {
           </div>
         ` : `<div class="card center"><b>Отличная охота!</b><p class="hint">Все слова пойманы правильно.</p></div>`}
         <button class="btn" id="gameAgain">Играть еще</button>
-        <button class="btn btn-secondary" id="gameHome">В меню</button>
+        <button class="btn btn-secondary" id="gameHome">К учебе</button>
       </div>`;
     document.getElementById("gameAgain").onclick = () => { haptic(); startWordHunt(); };
-    document.getElementById("gameHome").onclick = () => { haptic(); renderMenu(); };
+    document.getElementById("gameHome").onclick = () => { haptic(); renderLearningHub(); };
     bindPronunciationButtons();
   } catch (e) {
     renderError(e.message);
@@ -1034,7 +1047,7 @@ async function finishWordHunt() {
 }
 
 async function renderDictionary() {
-  setBack(renderMenu);
+  setBack(renderLearningHub);
   loading();
   try {
     state.dictionaryFilter = "all";
@@ -1080,7 +1093,7 @@ async function renderDictionary() {
 }
 
 async function renderTrainingMenu(focus = "all") {
-  setBack(renderMenu);
+  setBack(renderLearningHub);
   const reviewMode = focus === "review";
   app.innerHTML = `
     <div class="screen">
@@ -1092,11 +1105,11 @@ async function renderTrainingMenu(focus = "all") {
       </div>
       <button class="btn" id="choiceTraining">Выбрать перевод</button>
       <button class="btn" id="inputTraining">Написать слово</button>
-      <button class="btn btn-secondary" id="trainingHome">В меню</button>
+      <button class="btn btn-secondary" id="trainingHome">К учебе</button>
     </div>`;
   document.getElementById("choiceTraining").onclick = () => { haptic(); renderChoiceTraining(focus); };
   document.getElementById("inputTraining").onclick = () => { haptic(); renderInputTraining(focus); };
-  document.getElementById("trainingHome").onclick = () => { haptic(); renderMenu(); };
+  document.getElementById("trainingHome").onclick = () => { haptic(); renderLearningHub(); };
 }
 
 async function renderChoiceTraining(focus = "all") {
@@ -1217,11 +1230,11 @@ function renderTrainingResult({ correct, title, text, pronounceWord = "", transc
       </div>
       <button class="btn" id="trainingNext">${reviewMode ? "Еще на повторение" : "Еще слово"}</button>
       <button class="btn btn-secondary" id="trainingModes">Другой режим</button>
-      <button class="btn btn-secondary" id="trainingMenu">В меню</button>
+      <button class="btn btn-secondary" id="trainingMenu">К учебе</button>
     </div>`;
   document.getElementById("trainingNext").onclick = () => { haptic(); next(); };
   document.getElementById("trainingModes").onclick = () => { haptic(); renderTrainingMenu(focus); };
-  document.getElementById("trainingMenu").onclick = () => { haptic(); renderMenu(); };
+  document.getElementById("trainingMenu").onclick = () => { haptic(); renderLearningHub(); };
   bindPronunciationButtons();
 }
 
@@ -1234,7 +1247,7 @@ async function updateDailyProgress(completedSteps) {
 }
 
 async function renderDailyLesson() {
-  setBack(renderMenu);
+  setBack(renderLearningHub);
   loading();
   try {
     const status = await api("/api/daily/status", "GET");
@@ -1403,9 +1416,9 @@ async function renderDailyFinish(phraseWasCorrect = true, phrase = "") {
           <p><b>${reward ? `+${reward} баллов за урок` : "Урок уже был засчитан сегодня"}</b></p>
           <p class="hint">Всего баллов: ${status.points ?? state.me?.user?.points ?? 0}</p>
         </div>
-        <button class="btn" id="dailyHome">В меню</button>
+        <button class="btn" id="dailyHome">К учебе</button>
       </div>`;
-    document.getElementById("dailyHome").onclick = () => { haptic(); renderMenu(); };
+    document.getElementById("dailyHome").onclick = () => { haptic(); renderLearningHub(); };
   } catch (e) {
     renderError(e.message);
   }
@@ -2601,7 +2614,7 @@ function motivationBadgeHtml(badge) {
 }
 
 async function renderMotivation() {
-  setBack(renderMenu);
+  setBack(renderProgressHub);
   loading();
   try {
     const data = await api("/api/motivation/status", "GET");
@@ -2633,16 +2646,16 @@ async function renderMotivation() {
         <div class="badge-grid">
           ${badges.map(motivationBadgeHtml).join("")}
         </div>
-        <button class="btn btn-secondary mt-12" id="motivationHome">В меню</button>
+        <button class="btn btn-secondary mt-12" id="motivationHome">К прогрессу</button>
       </div>`;
-    document.getElementById("motivationHome").onclick = () => { haptic(); renderMenu(); };
+    document.getElementById("motivationHome").onclick = () => { haptic(); renderProgressHub(); };
   } catch (e) {
     renderError(e.message);
   }
 }
 
 async function renderParentReport() {
-  setBack(renderMenu);
+  setBack(renderProgressHub);
   loading();
   try {
     const data = await api("/api/parent/report", "GET");
@@ -2695,9 +2708,9 @@ async function renderParentReport() {
             `).join("")}
           </div>
         ` : ""}
-        <button class="btn btn-secondary" id="reportHome">В меню</button>
+        <button class="btn btn-secondary" id="reportHome">К прогрессу</button>
       </div>`;
-    document.getElementById("reportHome").onclick = () => { haptic(); renderMenu(); };
+    document.getElementById("reportHome").onclick = () => { haptic(); renderProgressHub(); };
   } catch (e) {
     renderError(e.message);
   }
@@ -2715,7 +2728,7 @@ function formatEventDate(value) {
 }
 
 async function renderActivityHistory() {
-  setBack(renderMenu);
+  setBack(renderProgressHub);
   loading();
   try {
     const data = await api("/api/activity/history", "GET");
@@ -2753,16 +2766,16 @@ async function renderActivityHistory() {
             <p class="hint">Пройди ежедневный урок или тест по словам, и здесь появятся первые записи.</p>
           </div>
         `}
-        <button class="btn btn-secondary" id="historyHome">В меню</button>
+        <button class="btn btn-secondary" id="historyHome">К прогрессу</button>
       </div>`;
-    document.getElementById("historyHome").onclick = () => { haptic(); renderMenu(); };
+    document.getElementById("historyHome").onclick = () => { haptic(); renderProgressHub(); };
   } catch (e) {
     renderError(e.message);
   }
 }
 
 async function renderLeaderboard() {
-  setBack(renderMenu);
+  setBack(renderProgressHub);
   loading();
   try {
     const data = await api("/api/leaderboard", "GET");
@@ -2781,9 +2794,9 @@ async function renderLeaderboard() {
             </div>
           `).join("") : `<p class="hint center">Рейтинг появится после первых тренировок.</p>`}
         </div>
-        <button class="btn btn-secondary" id="leaderboardHome">В меню</button>
+        <button class="btn btn-secondary" id="leaderboardHome">К прогрессу</button>
       </div>`;
-    document.getElementById("leaderboardHome").onclick = () => { haptic(); renderMenu(); };
+    document.getElementById("leaderboardHome").onclick = () => { haptic(); renderProgressHub(); };
   } catch (e) {
     renderError(e.message);
   }

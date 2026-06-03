@@ -52,39 +52,63 @@ class OpenAISafetyTests(unittest.TestCase):
             "routeLearningAction",
             "Поговорить с репетитором",
             "AI-репетитор",
-            "Разговор",
             "Слова и тренировки",
             "Слова + тест",
             "Новые слова + тест",
             "Мои слова",
             "dictionary-filter",
-            "setBack(renderLearningHub)",
+            "Голос и чат",
+            "Учебный раздел",
+            "<b>Новый набор</b>",
+            "<b>Тренировка</b>",
+            "<span>Новые</span>",
+            "<span>Повторение</span>",
+            "<span>Словарь</span>",
+            "<span>Игра</span>",
+            "<span>Награды</span>",
+            "<span>Родителю</span>",
+            "<span>Журнал</span>",
+            "<span>Рейтинг</span>",
+            "<b>Баллы</b>",
         )
         for marker in forbidden_ui_entrypoints:
             self.assertNotIn(marker, app_js, marker)
 
         expected_single_labels = (
-            "Учебный раздел",
+            "Разговорная практика",
+            "Практические занятия",
             "<div class=\"section-label\">Практика</div>",
-            "<b>Новый набор</b>",
+            "<b>Учим слова</b>",
+            "<b>Работа над ошибками</b>",
             "<b>Карточки</b>",
+            "learningPathLevelTest",
         )
         for marker in expected_single_labels:
             self.assertIn(marker, app_js, marker)
 
-        main_back_screens = (
+        learning_back_screens = (
             "function renderGamesMenu()",
             "async function renderDictionary()",
             "async function renderTrainingMenu",
             "async function renderVocabStart",
             "async function renderDailyLesson",
         )
-        for marker in main_back_screens:
+        for marker in learning_back_screens:
             start = app_js.index(marker)
-            self.assertIn("setBack(renderMenu)", app_js[start:start + 180], marker)
+            self.assertIn("setBack(renderLearningHub)", app_js[start:start + 180], marker)
 
         level_start = app_js.index("async function renderLevelTestIntro")
-        self.assertIn("setBack(afterRegistration ? null : renderMenu)", app_js[level_start:level_start + 180])
+        self.assertIn("setBack(afterRegistration ? null : renderLearningHub)", app_js[level_start:level_start + 180])
+
+        progress_back_screens = (
+            "async function renderMotivation",
+            "async function renderParentReport",
+            "async function renderActivityHistory",
+            "async function renderLeaderboard",
+        )
+        for marker in progress_back_screens:
+            start = app_js.index(marker)
+            self.assertIn("setBack(renderProgressHub)", app_js[start:start + 180], marker)
 
         forbidden_server_routes = (
             'next_action = "chat"',
