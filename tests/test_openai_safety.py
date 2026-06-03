@@ -35,9 +35,37 @@ class OpenAISafetyTests(unittest.TestCase):
             "Поговорить с репетитором",
             "AI-репетитор",
             "Разговор",
+            "Слова и тренировки",
+            "Слова + тест",
+            "Мои слова",
+            "dictionary-filter",
+            "setBack(renderLearningHub)",
         )
         for marker in forbidden_ui_entrypoints:
             self.assertNotIn(marker, app_js, marker)
+
+        expected_single_labels = (
+            "Учебный раздел",
+            "<div class=\"section-label\">Практика</div>",
+            "<b>Новый набор</b>",
+            "<b>Карточки</b>",
+        )
+        for marker in expected_single_labels:
+            self.assertIn(marker, app_js, marker)
+
+        main_back_screens = (
+            "function renderGamesMenu()",
+            "async function renderDictionary()",
+            "async function renderTrainingMenu",
+            "async function renderVocabStart",
+            "async function renderDailyLesson",
+        )
+        for marker in main_back_screens:
+            start = app_js.index(marker)
+            self.assertIn("setBack(renderMenu)", app_js[start:start + 180], marker)
+
+        level_start = app_js.index("async function renderLevelTestIntro")
+        self.assertIn("setBack(afterRegistration ? null : renderMenu)", app_js[level_start:level_start + 180])
 
         forbidden_server_routes = (
             'next_action = "chat"',
