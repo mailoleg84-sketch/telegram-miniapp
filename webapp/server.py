@@ -2,7 +2,6 @@
 import base64
 from collections import defaultdict, deque
 import hashlib
-from html import escape as html_escape
 import logging
 import random
 import time
@@ -76,12 +75,12 @@ def _rate_limit_ok(user_id: int, key: str) -> bool:
 
 TOPIC_IMAGE_STYLES = {
     "animals": ("#eaf7ff", "#2f9df4", "paw"),
-    "art": ("#fff0f6", "#ff5c8a", "star"),
+    "art": ("#fff0f6", "#ff5c8a", "music"),
     "body": ("#fff3e6", "#ff7a45", "heart"),
     "clothes": ("#f2efff", "#7c5cff", "shirt"),
     "communication": ("#eef8ff", "#2481cc", "bubble"),
-    "culture": ("#f4f0ff", "#7c5cff", "star"),
-    "everyday": ("#eefaf8", "#2ec4b6", "star"),
+    "culture": ("#f4f0ff", "#7c5cff", "book"),
+    "everyday": ("#eefaf8", "#2ec4b6", "home"),
     "exams": ("#eef8ff", "#2481cc", "book"),
     "family": ("#fff0f6", "#ff5c8a", "heart"),
     "food": ("#fff7df", "#ff9500", "apple"),
@@ -89,7 +88,7 @@ TOPIC_IMAGE_STYLES = {
     "games": ("#eef8ff", "#2481cc", "game"),
     "grammar": ("#eef8ff", "#2481cc", "book"),
     "health": ("#fff3e6", "#ff7a45", "heart"),
-    "hobbies": ("#f4f0ff", "#7c5cff", "star"),
+    "hobbies": ("#f4f0ff", "#7c5cff", "game"),
     "home": ("#eefaf8", "#2ec4b6", "home"),
     "jobs": ("#eef8ff", "#2481cc", "book"),
     "learning": ("#eef8ff", "#2481cc", "book"),
@@ -112,6 +111,47 @@ TOPIC_IMAGE_STYLES = {
 }
 
 
+FALLBACK_IMAGE_ICONS = (
+    "apple", "paw", "book", "sun", "plane", "home", "game", "laptop",
+    "music", "heart", "shirt", "ball", "bubble", "atom", "clock",
+)
+
+WORD_ICON_OVERRIDES = {
+    "apple": "apple",
+    "banana": "apple",
+    "bread": "apple",
+    "cake": "apple",
+    "cat": "paw",
+    "dog": "paw",
+    "bird": "paw",
+    "fish": "paw",
+    "book": "book",
+    "story": "book",
+    "school": "book",
+    "sun": "sun",
+    "moon": "sun",
+    "rain": "sun",
+    "tree": "sun",
+    "house": "home",
+    "home": "home",
+    "car": "plane",
+    "train": "plane",
+    "bus": "plane",
+    "game": "game",
+    "toy": "game",
+    "phone": "laptop",
+    "computer": "laptop",
+    "song": "music",
+    "music": "music",
+    "football": "ball",
+    "ball": "ball",
+    "shirt": "shirt",
+    "dress": "shirt",
+    "clock": "clock",
+    "time": "clock",
+}
+
+
 def _word_image_url(word: str, topic: str = "") -> str:
     query = urlencode({
         "w": " ".join(str(word or "").split())[:48],
@@ -120,15 +160,12 @@ def _word_image_url(word: str, topic: str = "") -> str:
     return f"/word-image.svg?{query}"
 
 
-def _svg_font_size(text: str) -> int:
-    length = len(text or "")
-    if length <= 8:
-        return 42
-    if length <= 12:
-        return 34
-    if length <= 18:
-        return 27
-    return 22
+def _word_image_style(word: str, topic: str, seed: str):
+    bg, color, icon = TOPIC_IMAGE_STYLES.get(topic, ("#eef8ff", "#2481cc", ""))
+    icon = WORD_ICON_OVERRIDES.get(str(word or "").strip().lower(), icon)
+    if not icon or icon == "star":
+        icon = FALLBACK_IMAGE_ICONS[int(seed[:2], 16) % len(FALLBACK_IMAGE_ICONS)]
+    return bg, color, icon
 
 
 def _topic_icon_svg(icon: str, color: str) -> str:
@@ -213,20 +250,15 @@ def _word_image_svg(word: str, topic: str) -> str:
     clean_word = " ".join(str(word or "word").split())[:48]
     clean_topic = " ".join(str(topic or "basic").split())[:32]
     seed = hashlib.sha1(f"{clean_word}:{clean_topic}".encode("utf-8")).hexdigest()
-    bg, color, icon = TOPIC_IMAGE_STYLES.get(clean_topic, ("#eef8ff", "#2481cc", "star"))
+    bg, color, icon = _word_image_style(clean_word, clean_topic, seed)
     accent = f"#{seed[:6]}"
-    word_text = html_escape(clean_word)
-    topic_text = html_escape(clean_topic)
-    font_size = _svg_font_size(clean_word)
     icon_svg = _topic_icon_svg(icon, color)
-    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="{word_text}">
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="word picture">
   <rect width="512" height="512" rx="54" fill="{bg}"/>
-  <circle cx="426" cy="78" r="54" fill="{accent}" opacity=".12"/>
-  <circle cx="82" cy="422" r="72" fill="{color}" opacity=".10"/>
-  <g transform="translate(60 42)">{icon_svg}</g>
-  <rect x="54" y="318" width="404" height="126" rx="34" fill="#fff" opacity=".92"/>
-  <text x="256" y="374" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="{font_size}" font-weight="800" fill="#111827">{word_text}</text>
-  <text x="256" y="416" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="{color}">{topic_text}</text>
+  <circle cx="426" cy="78" r="54" fill="{accent}" opacity=".14"/>
+  <circle cx="80" cy="420" r="78" fill="{color}" opacity=".10"/>
+  <circle cx="256" cy="256" r="168" fill="#fff" opacity=".72"/>
+  <g transform="translate(60 126) scale(1.02)">{icon_svg}</g>
 </svg>"""
 
 
@@ -1467,17 +1499,18 @@ async def api_dictionary(request: web.Request):
     if filter_mode not in {"all", "review", "mastered"}:
         filter_mode = "all"
     try:
-        limit = int(request.query.get("limit") or 80)
+        limit = int(request.query.get("limit") or 5000)
     except (TypeError, ValueError):
-        limit = 80
-    limit = max(10, min(limit, 120))
+        limit = 5000
+    limit = max(10, min(limit, 5000))
 
     rows = await database.get_user_dictionary(user_id, filter_mode=filter_mode, limit=limit)
     summary = await database.get_dictionary_summary(user_id)
+    total_words = await database.get_words_count()
     return web.json_response({
         "filter": filter_mode,
         "summary": {
-            "total_words": int(summary["total_words"] if summary else 0),
+            "total_words": int(total_words or 0),
             "mastered_words": int(summary["mastered_words"] if summary else 0),
             "review_words": int(summary["review_words"] if summary else 0),
         },

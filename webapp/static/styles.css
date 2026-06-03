@@ -226,9 +226,9 @@ h2 { font-size: 18px; margin: 0 0 12px; font-weight: 600; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .btn-secondary {
-  background: rgba(47, 157, 244, 0.12);
-  color: var(--button);
-  border: 1.5px solid rgba(47, 157, 244, 0.35);
+  background: var(--button);
+  color: var(--button-text);
+  border: none;
 }
 .btn-danger { background: var(--red) !important; color: #fff !important; }
 .btn-correct { background: var(--green) !important; color: #fff !important; }
@@ -341,10 +341,10 @@ input[type="text"]:focus { border-color: var(--button); }
   width: 100%;
   min-height: 118px;
   padding: 16px;
-  border: 1.5px solid rgba(47, 157, 244, 0.35);
+  border: none;
   border-radius: 14px;
-  background: linear-gradient(180deg, rgba(47, 157, 244, 0.13), rgba(47, 157, 244, 0.06));
-  color: var(--text);
+  background: var(--button);
+  color: var(--button-text);
   box-shadow: var(--shadow-soft);
   font-family: inherit;
   text-align: left;
@@ -362,7 +362,7 @@ input[type="text"]:focus { border-color: var(--button); }
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--button);
+  background: rgba(255, 255, 255, 0.72);
 }
 .action-tile.primary::before,
 .action-row.primary::before,
@@ -374,10 +374,10 @@ input[type="text"]:focus { border-color: var(--button); }
 .action-tile.game::before,
 .action-tile.report::before,
 .action-tile.history::before,
-.action-tile.leaderboard-tile::before { background: var(--button); }
+.action-tile.leaderboard-tile::before { background: rgba(255, 255, 255, 0.72); }
 .action-tile span,
 .action-row span {
-  color: var(--hint);
+  color: rgba(255, 255, 255, 0.78);
   font-size: 12px;
   font-weight: 800;
   text-transform: uppercase;
@@ -386,12 +386,13 @@ input[type="text"]:focus { border-color: var(--button); }
 .action-tile b,
 .action-row b {
   max-width: calc(100% - 18px);
+  color: var(--button-text);
   font-size: 16px;
   line-height: 1.18;
 }
 .action-tile small,
 .action-row small {
-  color: var(--hint);
+  color: rgba(255, 255, 255, 0.84);
   font-size: 13px;
   line-height: 1.28;
 }
@@ -1151,8 +1152,8 @@ code {
 }
 
 .chat-mic {
-  background: var(--secondary-bg);
-  color: var(--button);
+  background: var(--button);
+  color: var(--button-text);
   border: none;
   border-radius: 12px;
   cursor: pointer;

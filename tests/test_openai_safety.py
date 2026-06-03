@@ -13,6 +13,7 @@ from webapp.server import (
     _motivation_payload,
     _parent_recommendations,
     _word_image_url,
+    _word_image_svg,
 )
 
 
@@ -50,6 +51,10 @@ class OpenAISafetyTests(unittest.TestCase):
             "gameReview",
             "dailyLearn",
             "profileLevelTest",
+            "wordImageHtml(q",
+            "wordImageHtml(task",
+            "wordImageHtml(word, true)",
+            "imageUrl: result.image_url",
             "data-action=",
             "routeLearningAction",
             "Поговорить с репетитором",
@@ -82,7 +87,7 @@ class OpenAISafetyTests(unittest.TestCase):
             "<div class=\"section-label\">Практика</div>",
             "<b>Учим слова</b>",
             "<b>Работа над ошибками</b>",
-            "<b>Карточки</b>",
+            "<b>Словарь</b>",
             "learningPathLevelTest",
             "wordImageHtml",
         )
@@ -125,10 +130,18 @@ class OpenAISafetyTests(unittest.TestCase):
             self.assertNotIn(marker, server_py, marker)
 
         self.assertIn('app.router.add_get("/word-image.svg", word_image_handler)', server_py)
+        self.assertEqual(app_js.count('id="motivationPreview"'), 1)
+        self.assertIn("/api/dictionary?filter=all&limit=5000", app_js)
+        self.assertEqual(app_js.count("showImage: true"), 2)
         self.assertIn(".btn-secondary", styles_css)
-        self.assertIn("background: rgba(47, 157, 244, 0.12);", styles_css)
-        self.assertIn("color: var(--button);", styles_css)
+        self.assertIn("background: var(--button);", styles_css)
+        self.assertIn("color: var(--button-text);", styles_css)
         self.assertIn(".btn-danger { background: var(--red) !important; color: #fff !important; }", styles_css)
+
+        profile_start = app_js.index("async function renderProfile")
+        profile_block = app_js[profile_start:profile_start + 2500]
+        for marker in ("Слов в обучении", "Правильных ответов", "Ошибок"):
+            self.assertNotIn(marker, profile_block, marker)
 
     def test_config_status_does_not_expose_key_details(self):
         status = openai_config_status()
@@ -354,6 +367,13 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertEqual(len(urls), 5000)
         self.assertEqual(len(set(urls)), 5000)
         self.assertTrue(all(url.startswith("/word-image.svg?") for url in urls))
+
+    def test_word_image_svg_contains_only_picture(self):
+        svg = _word_image_svg("apple", "food")
+
+        self.assertIn("<svg", svg)
+        self.assertNotIn("<text", svg)
+        self.assertNotIn("apple", svg.lower())
 
     def test_generated_word_bank_filters_bad_phrase_pairs(self):
         words = {item[0] for item in INITIAL_WORDS}

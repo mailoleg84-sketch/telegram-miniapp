@@ -314,7 +314,7 @@ function wordStudyCard(wordData, options = {}) {
         ${badge ? `<div class="daily-badge">${esc(badge)}</div>` : "<span></span>"}
         ${pronunciationButtonHtml(wordData.word)}
       </div>
-      ${wordImageHtml(wordData)}
+      ${options.showImage ? wordImageHtml(wordData) : ""}
       <div class="word-main">${esc(wordData.word)}</div>
       ${wordData.transcription ? `<div class="word-transcription">${esc(wordData.transcription)}</div>` : ""}
       ${wordData.translation ? `<div class="word-translation">${esc(wordData.translation)}</div>` : ""}
@@ -325,7 +325,6 @@ function wordStudyCard(wordData, options = {}) {
 function reviewWordRow(wordData) {
   return `
     <div class="word-review-row">
-      ${wordImageHtml(wordData, true)}
       <div class="word-review-main">
         <b>${esc(wordData.word)}</b>
         ${wordData.transcription ? `<small class="transcription">${esc(wordData.transcription)}</small>` : ""}
@@ -652,9 +651,6 @@ function renderMenu() {
         </button>
       </div>
 
-      <div class="card motivation-preview" id="motivationPreview">
-        <div class="hint">Собираю достижения...</div>
-      </div>
     </div>`;
 
   document.getElementById("chat").onclick = () => { haptic(); renderChat(); };
@@ -662,7 +658,6 @@ function renderMenu() {
   document.getElementById("progressHub").onclick = () => { haptic(); renderProgressHub(); };
   document.getElementById("profile").onclick = () => { haptic(); renderProfile(); };
   loadLearningPath();
-  loadMotivationPreview();
 }
 
 function renderLearningHub() {
@@ -692,7 +687,7 @@ function renderLearningHub() {
           <small>ошибки и закрепление</small>
         </button>
         <button class="action-tile dictionary" id="dictionary">
-          <b>Карточки</b>
+          <b>Словарь</b>
           <small>транскрипция и озвучка</small>
         </button>
         <button class="action-tile game" id="games">
@@ -859,7 +854,7 @@ async function renderVocabStart() {
         <h1>Новые слова</h1>
         <p class="hint">Сначала посмотри карточки, потом пройди короткий тест.</p>
         ${data.words.map((w, index) => `
-          ${wordStudyCard(w, { badge: `Слово ${index + 1}` })}
+          ${wordStudyCard(w, { badge: `Слово ${index + 1}`, showImage: true })}
         `).join("")}
         <button class="btn" id="startQuiz">Начать тест</button>
       </div>`;
@@ -1060,12 +1055,12 @@ async function renderDictionary() {
   loading();
   try {
     state.dictionaryFilter = "all";
-    const data = await api("/api/dictionary?filter=all", "GET");
+    const data = await api("/api/dictionary?filter=all&limit=5000", "GET");
     const summary = data.summary || {};
     const words = data.words || [];
     app.innerHTML = `
       <div class="screen">
-        <h1>Карточки</h1>
+        <h1>Словарь</h1>
         <div class="card">
           <div class="stat-row"><span>Всего слов</span><b>${summary.total_words || 0}</b></div>
           <div class="stat-row"><span>Нужно повторить</span><b>${summary.review_words || 0}</b></div>
@@ -1075,7 +1070,6 @@ async function renderDictionary() {
           <div class="card dictionary-list">
             ${words.map(word => `
               <div class="dictionary-row ${word.status}">
-                ${wordImageHtml(word, true)}
                 <div class="dictionary-main">
                   <b>${esc(word.word)}</b>
                   ${word.transcription ? `<small class="transcription">${esc(word.transcription)}</small>` : ""}
@@ -1154,7 +1148,6 @@ async function renderChoiceTraining(focus = "all") {
             text: `${result.word} — ${result.translation}`,
             pronounceWord: result.word,
             transcription: result.transcription,
-            imageUrl: result.image_url,
             delta: result.delta,
             points: result.points,
             next: () => renderChoiceTraining(focus),
@@ -1205,7 +1198,6 @@ async function renderInputTraining(focus = "all") {
           text: `${result.translation} — ${result.word}`,
           pronounceWord: result.word,
           transcription: result.transcription,
-          imageUrl: result.image_url,
           delta: result.delta,
           points: result.points,
           next: () => renderInputTraining(focus),
@@ -1223,7 +1215,7 @@ async function renderInputTraining(focus = "all") {
   }
 }
 
-function renderTrainingResult({ correct, title, text, pronounceWord = "", transcription = "", imageUrl = "", delta, points, next, focus = "all" }) {
+function renderTrainingResult({ correct, title, text, pronounceWord = "", transcription = "", delta, points, next, focus = "all" }) {
   setBack(() => renderTrainingMenu(focus));
   const reviewMode = focus === "review";
   haptic(correct ? "success" : "error");
@@ -1231,7 +1223,6 @@ function renderTrainingResult({ correct, title, text, pronounceWord = "", transc
     <div class="screen">
       <div class="result-card ${correct ? "correct" : "wrong"}">
         <h1>${esc(title)}</h1>
-        ${wordImageHtml({ word: pronounceWord, image_url: imageUrl })}
         <p>${esc(text)}</p>
         ${pronounceWord ? `
           <div class="word-pronunciation result">
@@ -1303,7 +1294,7 @@ async function renderDailyWords() {
           <p class="hint mt-12">Посмотри слова. Потом будет короткий тест и одна фраза для практики.</p>
         </div>
         ${words.map((w, index) => `
-          ${wordStudyCard(w, { badge: `Слово ${index + 1}` })}
+          ${wordStudyCard(w, { badge: `Слово ${index + 1}`, showImage: true })}
         `).join("")}
         <button class="btn" id="dailyWordsDone">Я запомнил слова</button>
       </div>`;
@@ -2821,7 +2812,6 @@ async function renderProfile() {
   try {
     state.me = await api("/api/me", "GET");
     const u = state.me.user;
-    const s = state.me.stats;
     app.innerHTML = `
       <div class="screen">
         <h1>Профиль</h1>
@@ -2835,9 +2825,6 @@ async function renderProfile() {
           <div class="stat-row"><span>Возраст</span><b>${u.child_age || "-"}</b></div>
           <div class="stat-row"><span>Уровень</span><b>${esc(u.level_label || "Beginner / A1")}</b></div>
           <div class="stat-row"><span>Тест уровня</span><b>${u.level_test_completed ? `${u.level_test_score}%` : "не пройден"}</b></div>
-          <div class="stat-row"><span>Слов в обучении</span><b>${s.words_learned}</b></div>
-          <div class="stat-row"><span>Правильных ответов</span><b>${s.total_correct}</b></div>
-          <div class="stat-row"><span>Ошибок</span><b>${s.total_wrong}</b></div>
         </div>
         <div class="card">
           <h2>Аккаунт и данные</h2>

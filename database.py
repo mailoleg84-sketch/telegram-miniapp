@@ -478,15 +478,20 @@ async def get_user_dictionary(user_id: int, filter_mode: str = "all", limit: int
     filter_sql = ""
     if filter_mode == "review":
         filter_sql = """
+          AND up.word_id IS NOT NULL
           AND (
             COALESCE(up.wrong_count, 0) > 0
-            OR up.last_seen < NOW() - (
-                INTERVAL '1 hour' * POWER(2, LEAST(COALESCE(up.correct_count, 0), 8))
+            OR (
+              up.last_seen IS NOT NULL
+              AND up.last_seen < NOW() - (
+                  INTERVAL '1 hour' * POWER(2, LEAST(COALESCE(up.correct_count, 0), 8))
+              )
             )
           )
         """
     elif filter_mode == "mastered":
         filter_sql = """
+          AND up.word_id IS NOT NULL
           AND COALESCE(up.correct_count, 0) >= 3
           AND COALESCE(up.correct_count, 0) >= COALESCE(up.wrong_count, 0) + 2
         """
@@ -504,25 +509,36 @@ async def get_user_dictionary(user_id: int, filter_mode: str = "all", limit: int
             up.last_seen,
             (
               COALESCE(up.wrong_count, 0) > 0
-              OR up.last_seen < NOW() - (
-                  INTERVAL '1 hour' * POWER(2, LEAST(COALESCE(up.correct_count, 0), 8))
+              OR (
+                up.last_seen IS NOT NULL
+                AND up.last_seen < NOW() - (
+                    INTERVAL '1 hour' * POWER(2, LEAST(COALESCE(up.correct_count, 0), 8))
+                )
               )
             ) AS needs_review,
             (
               COALESCE(up.correct_count, 0) >= 3
               AND COALESCE(up.correct_count, 0) >= COALESCE(up.wrong_count, 0) + 2
             ) AS mastered
-        FROM user_progress up
-        JOIN words w ON w.id = up.word_id
-        WHERE up.user_id = $1
+        FROM words w
+        LEFT JOIN user_progress up ON up.word_id = w.id AND up.user_id = $1
+        WHERE TRUE
         {filter_sql}
         ORDER BY
             needs_review DESC,
             mastered ASC,
+            CASE WHEN up.word_id IS NULL THEN 1 ELSE 0 END ASC,
             COALESCE(up.wrong_count, 0) DESC,
-            up.last_seen DESC
+            up.last_seen DESC NULLS LAST,
+            w.age_group ASC,
+            w.word ASC
         LIMIT $2
     """, user_id, limit)
+
+
+async def get_words_count():
+    pool = await _get_pool()
+    return await pool.fetchval("SELECT COUNT(*)::INT FROM words")
 
 
 async def get_dictionary_summary(user_id: int):
