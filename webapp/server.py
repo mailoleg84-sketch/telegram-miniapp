@@ -1,10 +1,13 @@
 """aiohttp-сервер: статика Mini App + JSON API."""
 import base64
 from collections import defaultdict, deque
+import hashlib
+from html import escape as html_escape
 import logging
 import random
 import time
 from pathlib import Path
+from urllib.parse import urlencode
 
 from aiohttp import web
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
@@ -71,6 +74,162 @@ def _rate_limit_ok(user_id: int, key: str) -> bool:
     return True
 
 
+TOPIC_IMAGE_STYLES = {
+    "animals": ("#eaf7ff", "#2f9df4", "paw"),
+    "art": ("#fff0f6", "#ff5c8a", "star"),
+    "body": ("#fff3e6", "#ff7a45", "heart"),
+    "clothes": ("#f2efff", "#7c5cff", "shirt"),
+    "communication": ("#eef8ff", "#2481cc", "bubble"),
+    "culture": ("#f4f0ff", "#7c5cff", "star"),
+    "everyday": ("#eefaf8", "#2ec4b6", "star"),
+    "exams": ("#eef8ff", "#2481cc", "book"),
+    "family": ("#fff0f6", "#ff5c8a", "heart"),
+    "food": ("#fff7df", "#ff9500", "apple"),
+    "friends": ("#fff0f6", "#ff5c8a", "heart"),
+    "games": ("#eef8ff", "#2481cc", "game"),
+    "grammar": ("#eef8ff", "#2481cc", "book"),
+    "health": ("#fff3e6", "#ff7a45", "heart"),
+    "hobbies": ("#f4f0ff", "#7c5cff", "star"),
+    "home": ("#eefaf8", "#2ec4b6", "home"),
+    "jobs": ("#eef8ff", "#2481cc", "book"),
+    "learning": ("#eef8ff", "#2481cc", "book"),
+    "music": ("#f4f0ff", "#7c5cff", "music"),
+    "nature": ("#ecfbef", "#34c759", "sun"),
+    "places": ("#eefaf8", "#2ec4b6", "home"),
+    "reading": ("#eef8ff", "#2481cc", "book"),
+    "school": ("#eef8ff", "#2481cc", "book"),
+    "science": ("#eefaf8", "#2ec4b6", "atom"),
+    "speaking": ("#eef8ff", "#2481cc", "bubble"),
+    "sports": ("#fff7df", "#ff9500", "ball"),
+    "stories": ("#f4f0ff", "#7c5cff", "book"),
+    "study": ("#eef8ff", "#2481cc", "book"),
+    "technology": ("#eef8ff", "#2481cc", "laptop"),
+    "time": ("#f2efff", "#7c5cff", "clock"),
+    "toys": ("#fff7df", "#ff9500", "game"),
+    "transport": ("#eef8ff", "#2481cc", "plane"),
+    "travel": ("#eef8ff", "#2481cc", "plane"),
+    "work": ("#eef8ff", "#2481cc", "book"),
+}
+
+
+def _word_image_url(word: str, topic: str = "") -> str:
+    query = urlencode({
+        "w": " ".join(str(word or "").split())[:48],
+        "t": " ".join(str(topic or "basic").split())[:32],
+    })
+    return f"/word-image.svg?{query}"
+
+
+def _svg_font_size(text: str) -> int:
+    length = len(text or "")
+    if length <= 8:
+        return 42
+    if length <= 12:
+        return 34
+    if length <= 18:
+        return 27
+    return 22
+
+
+def _topic_icon_svg(icon: str, color: str) -> str:
+    if icon == "apple":
+        return f"""
+        <circle cx="160" cy="108" r="42" fill="{color}"/>
+        <circle cx="130" cy="108" r="38" fill="{color}" opacity=".92"/>
+        <path d="M158 62 C174 38 197 39 211 50 C194 74 177 76 158 62Z" fill="#34c759"/>
+        <rect x="157" y="50" width="8" height="25" rx="4" fill="#8a5a2b"/>"""
+    if icon == "paw":
+        return f"""
+        <circle cx="144" cy="117" r="31" fill="{color}"/>
+        <circle cx="106" cy="83" r="17" fill="{color}" opacity=".88"/>
+        <circle cx="138" cy="67" r="18" fill="{color}" opacity=".88"/>
+        <circle cx="174" cy="75" r="17" fill="{color}" opacity=".88"/>
+        <circle cx="201" cy="101" r="16" fill="{color}" opacity=".88"/>"""
+    if icon == "book":
+        return f"""
+        <path d="M88 62 h82 c17 0 30 13 30 30 v82 h-82 c-17 0-30-13-30-30Z" fill="{color}"/>
+        <path d="M200 62 h72 c17 0 30 13 30 30 v82 h-72 c-17 0-30-13-30-30Z" fill="{color}" opacity=".72"/>
+        <path d="M200 78 v92" stroke="#fff" stroke-width="8" stroke-linecap="round"/>"""
+    if icon == "sun":
+        return f"""
+        <circle cx="176" cy="102" r="43" fill="{color}"/>
+        <path d="M70 180 C118 130 170 133 216 180Z" fill="#34c759" opacity=".55"/>
+        <path d="M150 180 C198 123 260 126 314 180Z" fill="#2ec4b6" opacity=".42"/>"""
+    if icon == "plane":
+        return f"""
+        <path d="M74 132 L305 55 L242 188 L195 142 L135 181 L157 121Z" fill="{color}"/>
+        <path d="M157 121 L305 55 L195 142" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" opacity=".75"/>"""
+    if icon == "home":
+        return f"""
+        <path d="M88 132 L184 58 L280 132 V210 H106 V132Z" fill="{color}"/>
+        <path d="M154 210 V152 H214 V210" fill="#fff" opacity=".9"/>
+        <path d="M74 136 L184 50 L294 136" fill="none" stroke="{color}" stroke-width="18" stroke-linecap="round"/>"""
+    if icon == "game":
+        return f"""
+        <rect x="88" y="94" width="216" height="92" rx="38" fill="{color}"/>
+        <circle cx="144" cy="139" r="13" fill="#fff"/>
+        <path d="M128 139 h32 M144 123 v32" stroke="#fff" stroke-width="8" stroke-linecap="round"/>
+        <circle cx="244" cy="128" r="10" fill="#fff"/>
+        <circle cx="270" cy="151" r="10" fill="#fff"/>"""
+    if icon == "laptop":
+        return f"""
+        <rect x="95" y="72" width="202" height="122" rx="15" fill="{color}"/>
+        <rect x="118" y="94" width="156" height="78" rx="8" fill="#fff" opacity=".88"/>
+        <path d="M70 206 h252 l-28 31 H98Z" fill="{color}" opacity=".72"/>"""
+    if icon == "music":
+        return f"""
+        <path d="M210 62 v126" stroke="{color}" stroke-width="18" stroke-linecap="round"/>
+        <path d="M210 70 l74 24 v34 l-74-24Z" fill="{color}"/>
+        <circle cx="174" cy="190" r="34" fill="{color}"/>"""
+    if icon == "heart":
+        return f"""
+        <path d="M196 199 C108 145 83 107 111 75 C136 46 176 59 196 91 C216 59 256 46 281 75 C309 107 284 145 196 199Z" fill="{color}"/>"""
+    if icon == "shirt":
+        return f"""
+        <path d="M132 62 l37 22 h54 l37-22 l54 50 l-38 42 l-24-21 v94 H140 v-94 l-24 21 l-38-42Z" fill="{color}"/>"""
+    if icon == "ball":
+        return f"""
+        <circle cx="196" cy="130" r="76" fill="{color}"/>
+        <path d="M137 82 C171 103 217 103 255 82 M132 178 C171 154 222 154 260 178 M196 55 C180 91 180 165 196 205 M196 55 C214 94 214 166 196 205" fill="none" stroke="#fff" stroke-width="7" opacity=".78"/>"""
+    if icon == "bubble":
+        return f"""
+        <path d="M95 82 h202 c23 0 41 18 41 41 v30 c0 23-18 41-41 41 h-86 l-62 42 v-42 H95 c-23 0-41-18-41-41 v-30 c0-23 18-41 41-41Z" fill="{color}"/>
+        <circle cx="142" cy="138" r="9" fill="#fff"/><circle cx="196" cy="138" r="9" fill="#fff"/><circle cx="250" cy="138" r="9" fill="#fff"/>"""
+    if icon == "atom":
+        return f"""
+        <circle cx="196" cy="130" r="16" fill="{color}"/>
+        <ellipse cx="196" cy="130" rx="100" ry="35" fill="none" stroke="{color}" stroke-width="10"/>
+        <ellipse cx="196" cy="130" rx="100" ry="35" fill="none" stroke="{color}" stroke-width="10" transform="rotate(60 196 130)"/>
+        <ellipse cx="196" cy="130" rx="100" ry="35" fill="none" stroke="{color}" stroke-width="10" transform="rotate(120 196 130)"/>"""
+    if icon == "clock":
+        return f"""
+        <circle cx="196" cy="130" r="76" fill="{color}"/>
+        <path d="M196 84 v51 l42 25" stroke="#fff" stroke-width="12" stroke-linecap="round" fill="none"/>"""
+    return f"""
+    <path d="M196 52 l24 51 l56 8 l-40 40 l9 56 l-49-26 l-50 26 l10-56 l-41-40 l56-8Z" fill="{color}"/>"""
+
+
+def _word_image_svg(word: str, topic: str) -> str:
+    clean_word = " ".join(str(word or "word").split())[:48]
+    clean_topic = " ".join(str(topic or "basic").split())[:32]
+    seed = hashlib.sha1(f"{clean_word}:{clean_topic}".encode("utf-8")).hexdigest()
+    bg, color, icon = TOPIC_IMAGE_STYLES.get(clean_topic, ("#eef8ff", "#2481cc", "star"))
+    accent = f"#{seed[:6]}"
+    word_text = html_escape(clean_word)
+    topic_text = html_escape(clean_topic)
+    font_size = _svg_font_size(clean_word)
+    icon_svg = _topic_icon_svg(icon, color)
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="{word_text}">
+  <rect width="512" height="512" rx="54" fill="{bg}"/>
+  <circle cx="426" cy="78" r="54" fill="{accent}" opacity=".12"/>
+  <circle cx="82" cy="422" r="72" fill="{color}" opacity=".10"/>
+  <g transform="translate(60 42)">{icon_svg}</g>
+  <rect x="54" y="318" width="404" height="126" rx="34" fill="#fff" opacity=".92"/>
+  <text x="256" y="374" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="{font_size}" font-weight="800" fill="#111827">{word_text}</text>
+  <text x="256" y="416" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="{color}">{topic_text}</text>
+</svg>"""
+
+
 # ---------- Middleware ----------
 
 @web.middleware
@@ -107,14 +266,16 @@ def _word_dict(word) -> dict:
         transcription = word["transcription"] or ""
     except (KeyError, IndexError, TypeError):
         transcription = ""
+    topic = word["topic"] or "basic"
     return {
         "id": word["id"],
         "word": word["word"],
         "translation": word["translation"],
         "transcription": transcription,
         "example": word["example"] or "",
-        "topic": word["topic"] or "basic",
+        "topic": topic,
         "age_group": word["age_group"] or "",
+        "image_url": _word_image_url(word["word"], topic),
     }
 
 
@@ -151,6 +312,7 @@ def _problem_word_dict(word) -> dict:
         "translation": word["translation"],
         "transcription": _word_dict(word).get("transcription", ""),
         "example": word["example"] or "",
+        "image_url": _word_image_url(word["word"], word["topic"] or "basic"),
         "correct_count": int(word["correct_count"] or 0),
         "wrong_count": int(word["wrong_count"] or 0),
     }
@@ -563,6 +725,7 @@ async def _build_vocab_question(word, age_group: str) -> dict:
         "translation": word["translation"],
         "transcription": word["transcription"] or "",
         "example": word["example"] or "",
+        "image_url": _word_image_url(word["word"], word["topic"] or "basic"),
         "type": "picture" if age_group == "5_7" else "translation",
         "prompt": "Выбери перевод",
         "options": options,
@@ -579,6 +742,7 @@ async def _build_word_hunt_round(word, age_group: str) -> dict:
         "translation": word["translation"],
         "transcription": word["transcription"] or "",
         "example": word["example"] or "",
+        "image_url": _word_image_url(word["word"], word["topic"] or "basic"),
         "prompt": f"Поймай английское слово для: {word['translation']}",
         "options": options,
     }
@@ -1412,6 +1576,7 @@ async def api_vocab_finish(request: web.Request):
             "word": word["word"],
             "translation": word["translation"],
             "transcription": word["transcription"] or "",
+            "image_url": _word_image_url(word["word"], word["topic"] or "basic"),
             "correct": correct,
         })
 
@@ -1501,6 +1666,7 @@ async def api_word_hunt_finish(request: web.Request):
             "word": word["word"],
             "translation": word["translation"],
             "transcription": word["transcription"] or "",
+            "image_url": _word_image_url(word["word"], word["topic"] or "basic"),
             "selected_id": selected_id,
             "correct": correct,
         })
@@ -1545,6 +1711,7 @@ async def api_choice_next(request: web.Request):
         "word":    correct["word"],
         "word_id": correct["id"],
         "transcription": correct["transcription"] or "",
+        "image_url": _word_image_url(correct["word"], correct["topic"] or "basic"),
         "options": options,
         "focus": focus,
         "review_empty": review_empty,
@@ -1575,6 +1742,7 @@ async def api_choice_answer(request: web.Request):
         "word":        word["word"],
         "translation": word["translation"],
         "transcription": word["transcription"] or "",
+        "image_url":   _word_image_url(word["word"], word["topic"] or "basic"),
         "delta":       delta,
         "points":      user["points"],
     })
@@ -1596,6 +1764,7 @@ async def api_input_next(request: web.Request):
         "word_id":     word["id"],
         "translation": word["translation"],
         "transcription": word["transcription"] or "",
+        "image_url":   _word_image_url(word["word"], word["topic"] or "basic"),
         "focus": focus,
         "review_empty": review_empty,
     })
@@ -1626,6 +1795,7 @@ async def api_input_answer(request: web.Request):
         "word":        word["word"],
         "translation": word["translation"],
         "transcription": word["transcription"] or "",
+        "image_url":   _word_image_url(word["word"], word["topic"] or "basic"),
         "delta":       delta,
         "points":      user["points"],
     })
@@ -1931,6 +2101,18 @@ async def index_handler(request: web.Request):
     )
 
 
+async def word_image_handler(request: web.Request):
+    word = " ".join((request.query.get("w") or "word").split())[:48]
+    topic = " ".join((request.query.get("t") or "basic").split())[:32]
+    return web.Response(
+        text=_word_image_svg(word, topic),
+        content_type="image/svg+xml",
+        headers={
+            "Cache-Control": "public, max-age=604800",
+        },
+    )
+
+
 # ---------- App factory ----------
 
 def create_app(
@@ -1942,6 +2124,7 @@ def create_app(
     app = web.Application(middlewares=[auth_middleware], client_max_size=MAX_AUDIO_BYTES + 1024 * 1024)
 
     app.router.add_get("/",        index_handler)
+    app.router.add_get("/word-image.svg", word_image_handler)
     app.router.add_get("/api/me",  api_me)
     app.router.add_get("/api/leaderboard",              api_leaderboard)
     app.router.add_get("/api/learning/path",            api_learning_path)

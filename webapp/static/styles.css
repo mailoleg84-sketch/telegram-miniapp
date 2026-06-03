@@ -81,6 +81,29 @@ h2 { font-size: 18px; margin: 0 0 12px; font-weight: 600; }
   gap: 12px;
   min-height: 36px;
 }
+.word-image {
+  display: block;
+  width: 100%;
+  max-width: 240px;
+  aspect-ratio: 1;
+  justify-self: center;
+  margin: 0 auto;
+  object-fit: cover;
+  border-radius: 18px;
+  border: 1px solid var(--ink-soft);
+  background: var(--bg);
+  box-shadow: 0 8px 20px rgba(24, 39, 75, 0.08);
+}
+.word-card.compact .word-image {
+  max-width: 180px;
+}
+.word-image.small {
+  width: 58px;
+  height: 58px;
+  min-width: 58px;
+  border-radius: 14px;
+  box-shadow: none;
+}
 .word-main {
   margin-top: 2px;
   color: var(--text);
@@ -128,8 +151,8 @@ h2 { font-size: 18px; margin: 0 0 12px; font-weight: 600; }
   place-items: center;
   border: none;
   border-radius: 50%;
-  background: var(--bg);
-  color: var(--button);
+  background: var(--button);
+  color: var(--button-text);
   font-size: 17px;
   cursor: pointer;
   vertical-align: middle;
@@ -161,6 +184,7 @@ h2 { font-size: 18px; margin: 0 0 12px; font-weight: 600; }
 }
 .word-review-main {
   min-width: 0;
+  flex: 1;
 }
 .word-review-main b,
 .word-review-main span,
@@ -201,8 +225,12 @@ h2 { font-size: 18px; margin: 0 0 12px; font-weight: 600; }
 .btn:active   { opacity: 0.75; transform: scale(0.99); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
-.btn-secondary { background: var(--secondary-bg); color: var(--text); }
-.btn-danger { background: var(--red); color: #fff; }
+.btn-secondary {
+  background: rgba(47, 157, 244, 0.12);
+  color: var(--button);
+  border: 1.5px solid rgba(47, 157, 244, 0.35);
+}
+.btn-danger { background: var(--red) !important; color: #fff !important; }
 .btn-correct { background: var(--green) !important; color: #fff !important; }
 .btn-wrong   { background: var(--red)   !important; color: #fff !important; }
 
@@ -313,9 +341,9 @@ input[type="text"]:focus { border-color: var(--button); }
   width: 100%;
   min-height: 118px;
   padding: 16px;
-  border: 1px solid var(--ink-soft);
+  border: 1.5px solid rgba(47, 157, 244, 0.35);
   border-radius: 14px;
-  background: var(--bg);
+  background: linear-gradient(180deg, rgba(47, 157, 244, 0.13), rgba(47, 157, 244, 0.06));
   color: var(--text);
   box-shadow: var(--shadow-soft);
   font-family: inherit;
@@ -337,16 +365,16 @@ input[type="text"]:focus { border-color: var(--button); }
   background: var(--button);
 }
 .action-tile.primary::before,
-.action-row.primary::before { background: var(--sky); }
-.action-tile.learn::before { background: var(--green); }
-.action-tile.progress::before { background: var(--violet); }
-.action-tile.profile::before { background: var(--yellow); }
-.action-tile.review::before { background: var(--mint); }
-.action-tile.dictionary::before { background: var(--button); }
-.action-tile.game::before { background: var(--red); }
-.action-tile.report::before { background: var(--sky); }
-.action-tile.history::before { background: var(--mint); }
-.action-tile.leaderboard-tile::before { background: var(--yellow); }
+.action-row.primary::before,
+.action-tile.learn::before,
+.action-tile.progress::before,
+.action-tile.profile::before,
+.action-tile.review::before,
+.action-tile.dictionary::before,
+.action-tile.game::before,
+.action-tile.report::before,
+.action-tile.history::before,
+.action-tile.leaderboard-tile::before { background: var(--button); }
 .action-tile span,
 .action-row span {
   color: var(--hint);
@@ -541,6 +569,10 @@ input[type="text"]:focus { border-color: var(--button); }
   min-height: 160px;
   display: grid;
   align-content: center;
+}
+.word-hunt-card .word-image {
+  max-width: 170px;
+  margin-top: 12px;
 }
 .game-options {
   display: grid;
@@ -834,6 +866,11 @@ input[type="text"]:focus { border-color: var(--button); }
 .result-card { border-radius: 14px; padding: 20px; margin-bottom: 12px; color: #fff; }
 .result-card.correct { background: var(--green); }
 .result-card.wrong   { background: var(--red); }
+.result-card .word-image {
+  max-width: 150px;
+  margin: 8px auto 12px;
+  background: #fff;
+}
 
 code {
   background: rgba(0, 0, 0, 0.18);

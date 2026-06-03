@@ -298,6 +298,13 @@ function pronunciationButtonHtml(word, small = false) {
   return `<button type="button" class="pronounce-btn ${small ? "small" : ""}" data-word="${esc(word)}" aria-label="Озвучить ${esc(word)}">🔊</button>`;
 }
 
+function wordImageHtml(wordData, small = false) {
+  const src = wordData?.image_url || "";
+  if (!src) return "";
+  const label = wordData?.word || wordData?.translation || "word";
+  return `<img class="word-image ${small ? "small" : ""}" src="${esc(src)}" alt="${esc(label)}" loading="lazy">`;
+}
+
 function wordStudyCard(wordData, options = {}) {
   const badge = options.badge || "";
   const prompt = options.prompt || "";
@@ -307,6 +314,7 @@ function wordStudyCard(wordData, options = {}) {
         ${badge ? `<div class="daily-badge">${esc(badge)}</div>` : "<span></span>"}
         ${pronunciationButtonHtml(wordData.word)}
       </div>
+      ${wordImageHtml(wordData)}
       <div class="word-main">${esc(wordData.word)}</div>
       ${wordData.transcription ? `<div class="word-transcription">${esc(wordData.transcription)}</div>` : ""}
       ${wordData.translation ? `<div class="word-translation">${esc(wordData.translation)}</div>` : ""}
@@ -317,6 +325,7 @@ function wordStudyCard(wordData, options = {}) {
 function reviewWordRow(wordData) {
   return `
     <div class="word-review-row">
+      ${wordImageHtml(wordData, true)}
       <div class="word-review-main">
         <b>${esc(wordData.word)}</b>
         ${wordData.transcription ? `<small class="transcription">${esc(wordData.transcription)}</small>` : ""}
@@ -1066,6 +1075,7 @@ async function renderDictionary() {
           <div class="card dictionary-list">
             ${words.map(word => `
               <div class="dictionary-row ${word.status}">
+                ${wordImageHtml(word, true)}
                 <div class="dictionary-main">
                   <b>${esc(word.word)}</b>
                   ${word.transcription ? `<small class="transcription">${esc(word.transcription)}</small>` : ""}
@@ -1144,6 +1154,7 @@ async function renderChoiceTraining(focus = "all") {
             text: `${result.word} — ${result.translation}`,
             pronounceWord: result.word,
             transcription: result.transcription,
+            imageUrl: result.image_url,
             delta: result.delta,
             points: result.points,
             next: () => renderChoiceTraining(focus),
@@ -1194,6 +1205,7 @@ async function renderInputTraining(focus = "all") {
           text: `${result.translation} — ${result.word}`,
           pronounceWord: result.word,
           transcription: result.transcription,
+          imageUrl: result.image_url,
           delta: result.delta,
           points: result.points,
           next: () => renderInputTraining(focus),
@@ -1211,7 +1223,7 @@ async function renderInputTraining(focus = "all") {
   }
 }
 
-function renderTrainingResult({ correct, title, text, pronounceWord = "", transcription = "", delta, points, next, focus = "all" }) {
+function renderTrainingResult({ correct, title, text, pronounceWord = "", transcription = "", imageUrl = "", delta, points, next, focus = "all" }) {
   setBack(() => renderTrainingMenu(focus));
   const reviewMode = focus === "review";
   haptic(correct ? "success" : "error");
@@ -1219,6 +1231,7 @@ function renderTrainingResult({ correct, title, text, pronounceWord = "", transc
     <div class="screen">
       <div class="result-card ${correct ? "correct" : "wrong"}">
         <h1>${esc(title)}</h1>
+        ${wordImageHtml({ word: pronounceWord, image_url: imageUrl })}
         <p>${esc(text)}</p>
         ${pronounceWord ? `
           <div class="word-pronunciation result">

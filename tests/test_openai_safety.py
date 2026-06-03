@@ -12,6 +12,7 @@ from webapp.server import (
     _level_label,
     _motivation_payload,
     _parent_recommendations,
+    _word_image_url,
 )
 
 
@@ -19,6 +20,7 @@ class OpenAISafetyTests(unittest.TestCase):
     def test_navigation_has_no_duplicate_feature_entrypoints(self):
         root = Path(__file__).resolve().parents[1]
         app_js = (root / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
+        styles_css = (root / "webapp" / "static" / "styles.css").read_text(encoding="utf-8")
         server_py = (root / "webapp" / "server.py").read_text(encoding="utf-8")
 
         main_entry_ids = ("chat", "vocab", "training", "dictionary", "games")
@@ -82,6 +84,7 @@ class OpenAISafetyTests(unittest.TestCase):
             "<b>Работа над ошибками</b>",
             "<b>Карточки</b>",
             "learningPathLevelTest",
+            "wordImageHtml",
         )
         for marker in expected_single_labels:
             self.assertIn(marker, app_js, marker)
@@ -120,6 +123,12 @@ class OpenAISafetyTests(unittest.TestCase):
         )
         for marker in forbidden_server_routes:
             self.assertNotIn(marker, server_py, marker)
+
+        self.assertIn('app.router.add_get("/word-image.svg", word_image_handler)', server_py)
+        self.assertIn(".btn-secondary", styles_css)
+        self.assertIn("background: rgba(47, 157, 244, 0.12);", styles_css)
+        self.assertIn("color: var(--button);", styles_css)
+        self.assertIn(".btn-danger { background: var(--red) !important; color: #fff !important; }", styles_css)
 
     def test_config_status_does_not_expose_key_details(self):
         status = openai_config_status()
@@ -187,6 +196,8 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertEqual(payload["status"], "review")
         self.assertEqual(payload["status_label"], "повторить")
         self.assertEqual(payload["wrong_count"], 2)
+        self.assertTrue(payload["image_url"].startswith("/word-image.svg?"))
+        self.assertIn("w=apple", payload["image_url"])
 
     def test_activity_event_formats_word_test(self):
         row = {
@@ -333,6 +344,16 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertIn("headphones", words)
         self.assertNotIn("check the word amazing", words)
         self.assertNotIn("read the word suitable", words)
+
+    def test_learning_word_bank_has_images_for_all_5000_words(self):
+        urls = [
+            _word_image_url(word, topic)
+            for word, _translation, _example, topic, _age_group, _transcription in LEARNING_WORDS
+        ]
+
+        self.assertEqual(len(urls), 5000)
+        self.assertEqual(len(set(urls)), 5000)
+        self.assertTrue(all(url.startswith("/word-image.svg?") for url in urls))
 
     def test_generated_word_bank_filters_bad_phrase_pairs(self):
         words = {item[0] for item in INITIAL_WORDS}
