@@ -456,17 +456,6 @@ input[type="text"]:focus { border-color: var(--button); }
   white-space: nowrap;
 }
 
-.dictionary-filters {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-bottom: 12px;
-}
-.dictionary-filters .btn {
-  margin-bottom: 0;
-  padding: 11px 8px;
-  font-size: 14px;
-}
 .dictionary-list {
   padding: 8px;
 }
@@ -665,50 +654,6 @@ input[type="text"]:focus { border-color: var(--button); }
   border-radius: inherit;
   background: var(--green);
 }
-.path-steps {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-.path-step {
-  min-height: 82px;
-  padding: 10px;
-  border: none;
-  border-radius: 12px;
-  background: var(--bg);
-  color: var(--text);
-  font-family: inherit;
-  text-align: left;
-}
-.path-step span,
-.path-step b,
-.path-step small {
-  display: block;
-}
-.path-step span {
-  color: var(--hint);
-  font-weight: 700;
-}
-.path-step b {
-  margin-top: 4px;
-  font-size: 14px;
-}
-.path-step small {
-  margin-top: 3px;
-  color: var(--hint);
-  font-size: 12px;
-  line-height: 1.25;
-}
-.path-step.current {
-  box-shadow: inset 0 0 0 1.5px var(--button);
-}
-.path-step.current span {
-  color: var(--button);
-}
-.path-step.done span {
-  color: var(--green);
-}
-
 .motivation-preview {
   overflow: hidden;
 }
@@ -772,7 +717,6 @@ input[type="text"]:focus { border-color: var(--button); }
   color: var(--text);
   font-family: inherit;
   text-align: left;
-  cursor: pointer;
 }
 .badge-card.unlocked {
   box-shadow: inset 0 0 0 1.5px var(--green);

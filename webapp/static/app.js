@@ -438,29 +438,7 @@ function ageToGroup(age) {
   return "";
 }
 
-function routeLearningAction(action) {
-  if (action === "level") return renderLevelTestIntro();
-  if (action === "learn") return renderLearningHub();
-  if (action === "progress") return renderProgressHub();
-  if (action === "daily") return renderDailyLesson();
-  if (action === "vocab") return renderVocabStart();
-  if (action === "game") return renderGamesMenu();
-  if (action === "training") return renderTrainingMenu();
-  if (action === "review") return renderTrainingMenu("review");
-  if (action === "dictionary") return renderDictionary();
-  if (action === "motivation") return renderMotivation();
-  if (action === "chat") return renderChat();
-  return renderMenu();
-}
-
 function learningPathHtml(data) {
-  const steps = data.steps || [];
-  const action = data.next_action || "daily";
-  const statusIcon = status => {
-    if (status === "done") return "✓";
-    if (status === "current") return "●";
-    return "○";
-  };
   return `
     <div class="learning-path-head">
       <div>
@@ -470,17 +448,7 @@ function learningPathHtml(data) {
       <strong>${data.progress_percent || 0}%</strong>
     </div>
     <p class="hint">${esc(data.next_text || "Выбери следующий шаг.")}</p>
-    <div class="path-progress"><span style="width:${Math.max(0, Math.min(100, Number(data.progress_percent) || 0))}%"></span></div>
-    <div class="path-steps">
-      ${steps.map(step => `
-        <button class="path-step ${esc(step.status)}" data-action="${esc(step.action)}">
-          <span>${statusIcon(step.status)}</span>
-          <b>${esc(step.title)}</b>
-          <small>${esc(step.text)}</small>
-        </button>
-      `).join("")}
-    </div>
-    <button class="btn mt-12" id="learningPathNext" data-action="${esc(action)}">Продолжить</button>`;
+    <div class="path-progress"><span style="width:${Math.max(0, Math.min(100, Number(data.progress_percent) || 0))}%"></span></div>`;
 }
 
 async function loadLearningPath() {
@@ -491,12 +459,6 @@ async function loadLearningPath() {
     const data = await api("/api/learning/path", "GET");
     state.learningPath = data;
     box.innerHTML = learningPathHtml(data);
-    box.querySelectorAll("[data-action]").forEach(button => {
-      button.onclick = () => {
-        haptic();
-        routeLearningAction(button.dataset.action);
-      };
-    });
   } catch (_) {
     box.innerHTML = `
       <div class="learning-path-head">
@@ -505,10 +467,7 @@ async function loadLearningPath() {
           <h2>Начать короткий урок</h2>
         </div>
       </div>
-      <p class="hint">Не удалось обновить маршрут, но урок доступен.</p>
-      <button class="btn mt-12" id="learningPathFallback">Открыть урок</button>`;
-    const fallback = document.getElementById("learningPathFallback");
-    if (fallback) fallback.onclick = () => { haptic(); renderDailyLesson(); };
+      <p class="hint">Не удалось обновить маршрут. Открой раздел учебы ниже.</p>`;
   }
 }
 
@@ -529,8 +488,7 @@ function motivationPreviewHtml(data) {
       <span><b>${streak.longest || 0}</b><small>лучшая серия</small></span>
       <span><b>${summary.words_learned || 0}</b><small>слов</small></span>
       <span><b>${summary.accuracy || 0}%</b><small>точность</small></span>
-    </div>
-    <button class="btn mt-12" id="motivationOpen">Открыть достижения</button>`;
+    </div>`;
 }
 
 async function loadMotivationPreview() {
@@ -541,8 +499,6 @@ async function loadMotivationPreview() {
     const data = await api("/api/motivation/status", "GET");
     state.motivation = data;
     box.innerHTML = motivationPreviewHtml(data);
-    const open = document.getElementById("motivationOpen");
-    if (open) open.onclick = () => { haptic(); renderMotivation(); };
   } catch (_) {
     box.innerHTML = `
       <div class="motivation-head">
@@ -1067,11 +1023,9 @@ async function finishWordHunt() {
           </div>
         ` : `<div class="card center"><b>Отличная охота!</b><p class="hint">Все слова пойманы правильно.</p></div>`}
         <button class="btn" id="gameAgain">Играть еще</button>
-        <button class="btn btn-secondary" id="gameReview">Повторить слова</button>
         <button class="btn btn-secondary" id="gameHome">В меню</button>
       </div>`;
     document.getElementById("gameAgain").onclick = () => { haptic(); startWordHunt(); };
-    document.getElementById("gameReview").onclick = () => { haptic(); renderTrainingMenu(mistakes.length ? "review" : "all"); };
     document.getElementById("gameHome").onclick = () => { haptic(); renderMenu(); };
     bindPronunciationButtons();
   } catch (e) {
@@ -1118,11 +1072,7 @@ async function renderDictionary() {
             <p class="hint">Пройди набор новых слов или ежедневный урок, и слова появятся здесь.</p>
           </div>
         `}
-        <button class="btn" id="reviewWords" ${summary.review_words ? "" : "disabled"}>Повторить ошибки</button>
-        <button class="btn btn-secondary" id="allTraining">Тренировать все слова</button>
       </div>`;
-    document.getElementById("reviewWords").onclick = () => { haptic(); renderTrainingMenu("review"); };
-    document.getElementById("allTraining").onclick = () => { haptic(); renderTrainingMenu("all"); };
     bindPronunciationButtons();
   } catch (e) {
     renderError(e.message);
@@ -1454,10 +1404,8 @@ async function renderDailyFinish(phraseWasCorrect = true, phrase = "") {
           <p class="hint">Всего баллов: ${status.points ?? state.me?.user?.points ?? 0}</p>
         </div>
         <button class="btn" id="dailyHome">В меню</button>
-        <button class="btn btn-secondary" id="dailyLearn">К тренировкам</button>
       </div>`;
     document.getElementById("dailyHome").onclick = () => { haptic(); renderMenu(); };
-    document.getElementById("dailyLearn").onclick = () => { haptic(); renderLearningHub(); };
   } catch (e) {
     renderError(e.message);
   }
@@ -2641,7 +2589,7 @@ async function renderChat() {
 function motivationBadgeHtml(badge) {
   const progress = Math.max(0, Math.min(100, Number(badge.progress_percent) || 0));
   return `
-    <button class="badge-card ${badge.unlocked ? "unlocked" : ""}" data-action="${esc(badge.action || "daily")}">
+    <div class="badge-card ${badge.unlocked ? "unlocked" : ""}">
       <div class="badge-mark">${badge.unlocked ? "✓" : progress + "%"}</div>
       <div class="badge-main">
         <b>${esc(badge.title)}</b>
@@ -2649,7 +2597,7 @@ function motivationBadgeHtml(badge) {
         <div class="mini-progress"><span style="width:${progress}%"></span></div>
         <small>${Number(badge.value) || 0}/${Number(badge.target) || 0}</small>
       </div>
-    </button>`;
+    </div>`;
 }
 
 async function renderMotivation() {
@@ -2681,23 +2629,12 @@ async function renderMotivation() {
         <div class="card">
           <h2>${esc(data.next_title || "Следующий шаг")}</h2>
           <p class="hint">${esc(data.next_text || "Сделай короткое задание.")}</p>
-          <button class="btn mt-12" id="motivationNext">Продолжить</button>
         </div>
         <div class="badge-grid">
           ${badges.map(motivationBadgeHtml).join("")}
         </div>
         <button class="btn btn-secondary mt-12" id="motivationHome">В меню</button>
       </div>`;
-    document.getElementById("motivationNext").onclick = () => {
-      haptic();
-      routeLearningAction(data.next_action || "daily");
-    };
-    document.querySelectorAll(".badge-card").forEach(button => {
-      button.onclick = () => {
-        haptic();
-        routeLearningAction(button.dataset.action || "daily");
-      };
-    });
     document.getElementById("motivationHome").onclick = () => { haptic(); renderMenu(); };
   } catch (e) {
     renderError(e.message);
@@ -2743,7 +2680,6 @@ async function renderParentReport() {
               <div class="recommendation-row">
                 <b>${esc(item.title)}</b>
                 <p>${esc(item.text)}</p>
-                <button class="btn btn-secondary report-action" data-action="${esc(item.action)}">Открыть</button>
               </div>
             `).join("")}
           </div>
@@ -2759,22 +2695,8 @@ async function renderParentReport() {
             `).join("")}
           </div>
         ` : ""}
-        <button class="btn" id="reportHistory">История занятий</button>
         <button class="btn btn-secondary" id="reportHome">В меню</button>
       </div>`;
-    document.querySelectorAll(".report-action").forEach(button => {
-      button.onclick = () => {
-        haptic();
-        const action = button.dataset.action;
-        if (action === "daily") return renderDailyLesson();
-        if (action === "vocab") return renderVocabStart();
-        if (action === "game") return renderGamesMenu();
-        if (action === "review") return renderTrainingMenu("review");
-        if (action === "dictionary") return renderDictionary();
-        return renderMenu();
-      };
-    });
-    document.getElementById("reportHistory").onclick = () => { haptic(); renderActivityHistory(); };
     document.getElementById("reportHome").onclick = () => { haptic(); renderMenu(); };
   } catch (e) {
     renderError(e.message);
@@ -2831,10 +2753,8 @@ async function renderActivityHistory() {
             <p class="hint">Пройди ежедневный урок или тест по словам, и здесь появятся первые записи.</p>
           </div>
         `}
-        <button class="btn" id="historyDaily">Начать урок</button>
         <button class="btn btn-secondary" id="historyHome">В меню</button>
       </div>`;
-    document.getElementById("historyDaily").onclick = () => { haptic(); renderDailyLesson(); };
     document.getElementById("historyHome").onclick = () => { haptic(); renderMenu(); };
   } catch (e) {
     renderError(e.message);
@@ -2896,7 +2816,6 @@ async function renderProfile() {
         <div class="card">
           <h2>Аккаунт и данные</h2>
           <p class="hint">Сброс результатов обнулит баллы, уровень, выученные слова, тесты и ежедневные уроки. Профиль и чат с репетитором останутся.</p>
-          <button class="btn btn-secondary" id="profileLevelTest">${u.level_test_completed ? "Обновить уровень" : "Пройти тест уровня"}</button>
           <button class="btn btn-danger" id="resetResults">Обнулить результаты</button>
           <button class="btn btn-secondary" id="logout">Выйти из аккаунта</button>
         </div>
@@ -2921,7 +2840,6 @@ async function renderProfile() {
       const ok = await confirmAction("Выйти из аккаунта на этом устройстве? Для другого аккаунта переключитесь в Telegram и откройте приложение снова.");
       if (ok) logoutFromApp();
     };
-    document.getElementById("profileLevelTest").onclick = () => { haptic(); renderLevelTestIntro(); };
     document.getElementById("profileHome").onclick = () => { haptic(); renderMenu(); };
   } catch (e) {
     renderError(e.message);
