@@ -340,7 +340,7 @@ def _parent_recommendations(report: dict, dictionary_summary: dict, problem_word
     if not recommendations:
         recommendations.append({
             "title": "Продолжать текущий темп",
-            "text": "Прогресс выглядит ровно. Достаточно 5-10 минут в день: урок, повторение и короткий разговор.",
+            "text": "Прогресс выглядит ровно. Достаточно 5-10 минут в день: урок, повторение и короткая устная практика.",
             "action": "daily",
         })
     return recommendations[:4]
@@ -431,7 +431,7 @@ def _prompt_context_for_user(user) -> dict:
         "age": str(user["child_age"] or _age_label(user["age_group"])) if user else "не указан",
         "age_group": _normalized_age_group_for_user(user),
         "level": _level_for_user(user),
-        "goal": _goal_label(user["goal"]) if user else "разговорная практика",
+        "goal": _goal_label(user["goal"]) if user else "устная практика",
         "style": _style_for_user(user),
         "topics": _topics_for_user(user),
     }
@@ -832,7 +832,7 @@ def _learning_path_payload(user, daily_status, stats, dictionary_summary, report
     elif words_learned == 0:
         next_action = "vocab"
         next_title = "Добавить первые слова"
-        next_text = "Небольшой набор слов даст основу для игр и разговора с репетитором."
+        next_text = "Небольшой набор слов даст основу для игр и устной практики."
     elif review_words > 0:
         next_action = "review"
         next_title = f"Повторить {review_words} слов"
@@ -842,9 +842,9 @@ def _learning_path_payload(user, daily_status, stats, dictionary_summary, report
         next_title = "Закрепить слова в игре"
         next_text = "Словесная охота повторит новые слова без ощущения контрольной."
     else:
-        next_action = "chat"
-        next_title = "Поговорить с репетитором"
-        next_text = "Теперь можно применить слова в коротком живом диалоге."
+        next_action = "learn"
+        next_title = "Выбрать следующую тренировку"
+        next_text = "Маршрут дня готов. Можно взять новые слова, повторить сложные или закрепить их в игре."
 
     steps = [
         _path_step(
@@ -881,13 +881,6 @@ def _learning_path_payload(user, daily_status, stats, dictionary_summary, report
             f"{completed_games} пройдено",
             "game",
             "done" if completed_games > 0 else ("current" if words_learned > 0 and review_words == 0 else "ready"),
-        ),
-        _path_step(
-            "chat",
-            "Разговор",
-            "короткая практика",
-            "chat",
-            "current" if next_action == "chat" else "ready",
         ),
     ]
     done_count = sum(1 for step in steps if step["status"] == "done")
@@ -959,7 +952,7 @@ def _motivation_payload(user, stats, dictionary_summary, report, streak) -> dict
     elif words_learned < 10:
         next_action = "vocab"
         next_title = "Собрать первые 10 слов"
-        next_text = "Небольшой словарь даст материал для игр и разговоров."
+        next_text = "Небольшой словарь даст материал для игр и устной практики."
     elif current_streak < 3:
         next_action = "daily"
         next_title = "Дойти до серии 3 дня"
@@ -973,14 +966,14 @@ def _motivation_payload(user, stats, dictionary_summary, report, streak) -> dict
         next_title = "Пройти еще один тест"
         next_text = "Мини-тест покажет, какие слова уже стали уверенными."
     else:
-        next_action = "chat"
-        next_title = "Поговорить с репетитором"
-        next_text = "Попроси репетитора использовать новые слова в коротком диалоге."
+        next_action = "learn"
+        next_title = "Выбрать учебную тренировку"
+        next_text = "Можно взять новые слова, повторить сложные или закрепить словарь в игре."
 
     accuracy_total = total_correct + total_wrong
     accuracy = round(total_correct / accuracy_total * 100) if accuracy_total else 0
     coach_message = (
-        "Сегодня урок уже засчитан. Можно сделать легкое повторение или короткий разговор."
+        "Сегодня урок уже засчитан. Можно сделать легкое повторение или короткую тренировку."
         if today_completed else
         "Лучший темп для ребенка: 5 минут сегодня, без длинной теории."
     )

@@ -42,7 +42,7 @@ DATABASE_URL = _env("DATABASE_URL", "")
 
 # --- Mini App (Telegram WebApp) ---
 WEBAPP_URL = _env("WEBAPP_URL", "https://telegram-miniapp-1-r0sj.onrender.com")
-APP_VERSION = _env("APP_VERSION", "20260603-kids-v70")
+APP_VERSION = _env("APP_VERSION", "20260603-kids-v71")
 
 WEBAPP_HOST = os.getenv("WEBAPP_HOST", "0.0.0.0")
 # Render задаёт порт через переменную PORT — читаем её, иначе 8080.
@@ -76,7 +76,7 @@ AI_RATE_LIMIT_PER_MINUTE = int(os.getenv("AI_RATE_LIMIT_PER_MINUTE", "30"))
 OPENAI_INPUT_COST_PER_1M = float(os.getenv("OPENAI_INPUT_COST_PER_1M", "0.75"))
 OPENAI_OUTPUT_COST_PER_1M = float(os.getenv("OPENAI_OUTPUT_COST_PER_1M", "4.50"))
 
-# --- Настройки AI-репетитора для Prompt Variables ---
+# --- Настройки репетитора для Prompt Variables ---
 TUTOR_DEFAULT_LEVEL = _env("TUTOR_DEFAULT_LEVEL", "beginner")
 TUTOR_DEFAULT_STYLE = _env("TUTOR_DEFAULT_STYLE", "игровой, доброжелательный, короткими репликами")
 TUTOR_DEFAULT_TOPICS = _env("TUTOR_DEFAULT_TOPICS", "животные, еда, цвета, игры, школа, путешествия, истории")
@@ -102,7 +102,7 @@ AGE_GROUPS = [
 LEARNING_GOALS = [
     ("Первый английский", "first_steps"),
     ("Школьная программа", "school"),
-    ("Разговорная практика", "speaking"),
+    ("Устная практика", "speaking"),
     ("Путешествия", "travel"),
     ("Экзамены", "exams"),
 ]
