@@ -133,9 +133,19 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertEqual(app_js.count('id="motivationPreview"'), 1)
         self.assertIn("/api/dictionary?filter=all&limit=5000", app_js)
         self.assertEqual(app_js.count("showImage: true"), 2)
+        dictionary_start = app_js.index("async function renderDictionary")
+        dictionary_end = app_js.index("async function renderTrainingMenu", dictionary_start)
+        dictionary_block = app_js[dictionary_start:dictionary_end]
+        self.assertIn('id="dictionarySearch"', dictionary_block)
+        self.assertIn("data-search=", dictionary_block)
+        for marker in ("Всего слов", "Нужно повторить", "Выучено", "word-status", "correct_count", "wrong_count"):
+            self.assertNotIn(marker, dictionary_block, marker)
+
         self.assertIn(".btn-secondary", styles_css)
         self.assertIn("background: var(--button);", styles_css)
         self.assertIn("color: var(--button-text);", styles_css)
+        self.assertIn("background: linear-gradient(180deg, rgba(47, 157, 244, 0.13), rgba(47, 157, 244, 0.06));", styles_css)
+        self.assertIn("color: var(--text);", styles_css)
         self.assertIn(".btn-danger { background: var(--red) !important; color: #fff !important; }", styles_css)
 
         profile_start = app_js.index("async function renderProfile")
@@ -358,15 +368,17 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertNotIn("check the word amazing", words)
         self.assertNotIn("read the word suitable", words)
 
-    def test_learning_word_bank_has_images_for_all_5000_words(self):
-        urls = [
-            _word_image_url(word, topic)
-            for word, _translation, _example, topic, _age_group, _transcription in LEARNING_WORDS
-        ]
-
-        self.assertEqual(len(urls), 5000)
-        self.assertEqual(len(set(urls)), 5000)
-        self.assertTrue(all(url.startswith("/word-image.svg?") for url in urls))
+    def test_word_images_are_only_used_for_confident_matches(self):
+        self.assertTrue(_word_image_url("apple", "food").startswith("/word-image.svg?"))
+        self.assertTrue(_word_image_url("banana", "food").startswith("/word-image.svg?"))
+        self.assertTrue(_word_image_url("moon", "nature").startswith("/word-image.svg?"))
+        self.assertTrue(_word_image_url("guitar", "music").startswith("/word-image.svg?"))
+        self.assertTrue(_word_image_url("bus", "transport").startswith("/word-image.svg?"))
+        self.assertTrue(_word_image_url("train", "transport").startswith("/word-image.svg?"))
+        self.assertEqual(_word_image_url("breakfast", "food"), "")
+        self.assertEqual(_word_image_url("restaurant", "food"), "")
+        self.assertEqual(_word_image_url("amazing", "everyday"), "")
+        self.assertEqual(_word_image_url("suitable", "everyday"), "")
 
     def test_word_image_svg_contains_only_picture(self):
         svg = _word_image_svg("apple", "food")

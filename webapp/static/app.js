@@ -1056,20 +1056,17 @@ async function renderDictionary() {
   try {
     state.dictionaryFilter = "all";
     const data = await api("/api/dictionary?filter=all&limit=5000", "GET");
-    const summary = data.summary || {};
     const words = data.words || [];
     app.innerHTML = `
       <div class="screen">
         <h1>Словарь</h1>
         <div class="card">
-          <div class="stat-row"><span>Всего слов</span><b>${summary.total_words || 0}</b></div>
-          <div class="stat-row"><span>Нужно повторить</span><b>${summary.review_words || 0}</b></div>
-          <div class="stat-row"><span>Выучено</span><b>${summary.mastered_words || 0}</b></div>
+          <input id="dictionarySearch" type="text" placeholder="Найти слово..." autocomplete="off">
         </div>
         ${words.length ? `
           <div class="card dictionary-list">
             ${words.map(word => `
-              <div class="dictionary-row ${word.status}">
+              <div class="dictionary-row" data-search="${esc(`${word.word} ${word.translation} ${word.transcription || ""}`.toLowerCase())}">
                 <div class="dictionary-main">
                   <b>${esc(word.word)}</b>
                   ${word.transcription ? `<small class="transcription">${esc(word.transcription)}</small>` : ""}
@@ -1077,11 +1074,13 @@ async function renderDictionary() {
                 </div>
                 <div class="dictionary-side">
                   <button type="button" class="pronounce-btn small" data-word="${esc(word.word)}">🔊</button>
-                  <span class="word-status ${word.status}">${esc(word.status_label)}</span>
-                  <small>${word.correct_count || 0}✓ · ${word.wrong_count || 0}×</small>
                 </div>
               </div>
             `).join("")}
+          </div>
+          <div class="card center" id="dictionaryNoResults" style="display:none">
+            <b>Ничего не найдено</b>
+            <p class="hint">Попробуй другое слово или перевод.</p>
           </div>
         ` : `
           <div class="card center">
@@ -1090,6 +1089,20 @@ async function renderDictionary() {
           </div>
         `}
       </div>`;
+    const search = document.getElementById("dictionarySearch");
+    const rows = Array.from(document.querySelectorAll(".dictionary-row"));
+    const empty = document.getElementById("dictionaryNoResults");
+    const applySearch = () => {
+      const query = search.value.trim().toLowerCase();
+      let visible = 0;
+      rows.forEach(row => {
+        const matches = !query || row.dataset.search.includes(query);
+        row.hidden = !matches;
+        if (matches) visible += 1;
+      });
+      if (empty) empty.style.display = visible ? "none" : "block";
+    };
+    search.addEventListener("input", applySearch);
     bindPronunciationButtons();
   } catch (e) {
     renderError(e.message);

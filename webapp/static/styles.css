@@ -341,10 +341,10 @@ input[type="text"]:focus { border-color: var(--button); }
   width: 100%;
   min-height: 118px;
   padding: 16px;
-  border: none;
+  border: 1.5px solid rgba(47, 157, 244, 0.35);
   border-radius: 14px;
-  background: var(--button);
-  color: var(--button-text);
+  background: linear-gradient(180deg, rgba(47, 157, 244, 0.13), rgba(47, 157, 244, 0.06));
+  color: var(--text);
   box-shadow: var(--shadow-soft);
   font-family: inherit;
   text-align: left;
@@ -362,7 +362,7 @@ input[type="text"]:focus { border-color: var(--button); }
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--button);
 }
 .action-tile.primary::before,
 .action-row.primary::before,
@@ -374,10 +374,10 @@ input[type="text"]:focus { border-color: var(--button); }
 .action-tile.game::before,
 .action-tile.report::before,
 .action-tile.history::before,
-.action-tile.leaderboard-tile::before { background: rgba(255, 255, 255, 0.72); }
+.action-tile.leaderboard-tile::before { background: var(--button); }
 .action-tile span,
 .action-row span {
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--hint);
   font-size: 12px;
   font-weight: 800;
   text-transform: uppercase;
@@ -386,13 +386,12 @@ input[type="text"]:focus { border-color: var(--button); }
 .action-tile b,
 .action-row b {
   max-width: calc(100% - 18px);
-  color: var(--button-text);
   font-size: 16px;
   line-height: 1.18;
 }
 .action-tile small,
 .action-row small {
-  color: rgba(255, 255, 255, 0.84);
+  color: var(--hint);
   font-size: 13px;
   line-height: 1.28;
 }
@@ -499,17 +498,13 @@ input[type="text"]:focus { border-color: var(--button); }
 .dictionary-row + .dictionary-row {
   border-top: 1px solid var(--bg);
 }
-.dictionary-row.review {
-  background: rgba(255, 149, 0, 0.12);
-}
 .dictionary-main {
   min-width: 0;
   flex: 1;
 }
 .dictionary-main b,
 .dictionary-main span,
-.dictionary-main small,
-.dictionary-side small {
+.dictionary-main small {
   display: block;
 }
 .dictionary-main b {
@@ -518,8 +513,7 @@ input[type="text"]:focus { border-color: var(--button); }
 .dictionary-main span {
   margin-top: 3px;
 }
-.dictionary-main small,
-.dictionary-side small {
+.dictionary-main small {
   margin-top: 4px;
   color: var(--hint);
   font-size: 12px;
@@ -532,23 +526,6 @@ input[type="text"]:focus { border-color: var(--button); }
 .dictionary-main .transcription {
   color: var(--button);
   font-weight: 600;
-}
-.word-status {
-  display: inline-flex;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: var(--bg);
-  color: var(--hint);
-  font-size: 12px;
-  font-weight: 700;
-}
-.word-status.review {
-  background: #ff9500;
-  color: #fff;
-}
-.word-status.mastered {
-  background: var(--green);
-  color: #fff;
 }
 
 .game-score {
