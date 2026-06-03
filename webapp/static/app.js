@@ -1120,11 +1120,9 @@ async function renderDictionary() {
         `}
         <button class="btn" id="reviewWords" ${summary.review_words ? "" : "disabled"}>Повторить ошибки</button>
         <button class="btn btn-secondary" id="allTraining">Тренировать все слова</button>
-        <button class="btn btn-secondary" id="dictionaryNewWords">Новые слова + тест</button>
       </div>`;
     document.getElementById("reviewWords").onclick = () => { haptic(); renderTrainingMenu("review"); };
     document.getElementById("allTraining").onclick = () => { haptic(); renderTrainingMenu("all"); };
-    document.getElementById("dictionaryNewWords").onclick = () => { haptic(); renderVocabStart(); };
     bindPronunciationButtons();
   } catch (e) {
     renderError(e.message);
@@ -2834,11 +2832,9 @@ async function renderActivityHistory() {
           </div>
         `}
         <button class="btn" id="historyDaily">Начать урок</button>
-        <button class="btn btn-secondary" id="historyVocab">Новые слова + тест</button>
         <button class="btn btn-secondary" id="historyHome">В меню</button>
       </div>`;
     document.getElementById("historyDaily").onclick = () => { haptic(); renderDailyLesson(); };
-    document.getElementById("historyVocab").onclick = () => { haptic(); renderVocabStart(); };
     document.getElementById("historyHome").onclick = () => { haptic(); renderMenu(); };
   } catch (e) {
     renderError(e.message);
