@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from config import GAME_PERFECT_BONUS_POINTS, GAME_POINTS_CORRECT
 from data.words import INITIAL_WORDS, LEARNING_WORDS
@@ -15,6 +16,40 @@ from webapp.server import (
 
 
 class OpenAISafetyTests(unittest.TestCase):
+    def test_navigation_has_no_duplicate_feature_entrypoints(self):
+        root = Path(__file__).resolve().parents[1]
+        app_js = (root / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
+        server_py = (root / "webapp" / "server.py").read_text(encoding="utf-8")
+
+        main_entry_ids = ("chat", "vocab", "training", "dictionary", "games")
+        for entry_id in main_entry_ids:
+            self.assertEqual(app_js.count(f'id="{entry_id}"'), 1, entry_id)
+
+        forbidden_ui_entrypoints = (
+            "chatPractice",
+            "dailyChat",
+            "historyGame",
+            "wordHuntDictionary",
+            "trainingDictionary",
+            "reportDictionary",
+            "Поговорить с репетитором",
+            "AI-репетитор",
+            "Разговор",
+        )
+        for marker in forbidden_ui_entrypoints:
+            self.assertNotIn(marker, app_js, marker)
+
+        forbidden_server_routes = (
+            'next_action = "chat"',
+            'next_action = "game"',
+            '"action": "chat"',
+            '"action": "game"',
+            '"Разговор"',
+            '"Игра"',
+        )
+        for marker in forbidden_server_routes:
+            self.assertNotIn(marker, server_py, marker)
+
     def test_config_status_does_not_expose_key_details(self):
         status = openai_config_status()
 
