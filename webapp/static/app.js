@@ -768,7 +768,7 @@ function renderProgressHub() {
         <button class="action-tile history" id="history">
           <span>Журнал</span>
           <b>История занятий</b>
-          <small>уроки, игры, тесты</small>
+          <small>уроки, слова, тесты</small>
         </button>
         <button class="action-tile leaderboard-tile" id="leaderboard">
           <span>Рейтинг</span>
@@ -2846,12 +2846,10 @@ async function renderActivityHistory() {
         `}
         <button class="btn" id="historyDaily">Начать урок</button>
         <button class="btn btn-secondary" id="historyVocab">Новые слова + тест</button>
-        <button class="btn btn-secondary" id="historyGame">Игры со словами</button>
         <button class="btn btn-secondary" id="historyHome">В меню</button>
       </div>`;
     document.getElementById("historyDaily").onclick = () => { haptic(); renderDailyLesson(); };
     document.getElementById("historyVocab").onclick = () => { haptic(); renderVocabStart(); };
-    document.getElementById("historyGame").onclick = () => { haptic(); renderGamesMenu(); };
     document.getElementById("historyHome").onclick = () => { haptic(); renderMenu(); };
   } catch (e) {
     renderError(e.message);

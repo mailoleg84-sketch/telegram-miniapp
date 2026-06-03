@@ -294,7 +294,6 @@ def _parent_recommendations(report: dict, dictionary_summary: dict, problem_word
     words_learned = int(report.get("words_learned") or 0)
     completed_lessons = int(report.get("completed_lessons") or 0)
     completed_word_tests = int(report.get("completed_word_tests") or 0)
-    completed_games = int(report.get("completed_games") or 0)
     avg_score = int(report.get("avg_word_test_score") or 0)
     total_wrong = int(report.get("total_wrong") or 0)
     review_words = int((dictionary_summary or {}).get("review_words") or 0)
@@ -312,12 +311,6 @@ def _parent_recommendations(report: dict, dictionary_summary: dict, problem_word
             "text": "Запустите набор новых слов с тестом, чтобы появился базовый словарь и первые результаты.",
             "action": "vocab",
         })
-    if words_learned > 0 and completed_games == 0:
-        recommendations.append({
-            "title": "Закрепить слова в игре",
-            "text": "После первых слов лучше сыграть в короткую «Словесную охоту»: ребенок повторит перевод без ощущения контрольной.",
-            "action": "game",
-        })
     if review_words > 0:
         recommendations.append({
             "title": "Повторить слабые слова",
@@ -334,7 +327,7 @@ def _parent_recommendations(report: dict, dictionary_summary: dict, problem_word
         sample = ", ".join(word["word"] for word in problem_words[:3])
         recommendations.append({
             "title": "Фокус на конкретных словах",
-            "text": f"Чаще всего ошибается в словах: {sample}. Их стоит повторить в игре или голосовом диалоге.",
+            "text": f"Чаще всего ошибается в словах: {sample}. Их стоит повторить в короткой тренировке.",
             "action": "dictionary",
         })
     if not recommendations:
@@ -819,7 +812,6 @@ def _learning_path_payload(user, daily_status, stats, dictionary_summary, report
     daily_done = bool(_record_value(daily_status, "completed", False))
     words_learned = int(_record_value(stats, "words_learned", 0) or 0)
     review_words = int(_record_value(dictionary_summary, "review_words", 0) or 0)
-    completed_games = int(_record_value(report, "completed_games", 0) or 0)
 
     if not level_done:
         next_action = "level"
@@ -837,14 +829,10 @@ def _learning_path_payload(user, daily_status, stats, dictionary_summary, report
         next_action = "review"
         next_title = f"Повторить {review_words} слов"
         next_text = "Лучше закрепить ошибки короткой тренировкой, пока они свежие."
-    elif completed_games == 0:
-        next_action = "game"
-        next_title = "Закрепить слова в игре"
-        next_text = "Словесная охота повторит новые слова без ощущения контрольной."
     else:
         next_action = "learn"
         next_title = "Выбрать следующую тренировку"
-        next_text = "Маршрут дня готов. Можно взять новые слова, повторить сложные или закрепить их в игре."
+        next_text = "Маршрут дня готов. Можно взять новые слова или повторить сложные."
 
     steps = [
         _path_step(
@@ -874,13 +862,6 @@ def _learning_path_payload(user, daily_status, stats, dictionary_summary, report
             f"{review_words} слов ждут",
             "review",
             "current" if review_words > 0 else ("done" if words_learned > 0 else "ready"),
-        ),
-        _path_step(
-            "game",
-            "Игра",
-            f"{completed_games} пройдено",
-            "game",
-            "done" if completed_games > 0 else ("current" if words_learned > 0 and review_words == 0 else "ready"),
         ),
     ]
     done_count = sum(1 for step in steps if step["status"] == "done")
@@ -936,7 +917,7 @@ def _motivation_payload(user, stats, dictionary_summary, report, streak) -> dict
         _motivation_badge("word_collector", "10 слов", "Добавить первые десять слов в обучение.", words_learned, 10, "vocab"),
         _motivation_badge("word_builder", "50 слов", "Уверенно расширять словарь.", words_learned, 50, "vocab"),
         _motivation_badge("test_starter", "Первый тест", "Пройти тест по новым словам.", completed_word_tests, 1, "vocab"),
-        _motivation_badge("game_player", "Игрок слов", "Закрепить слова в трех играх.", completed_games, 3, "game"),
+        _motivation_badge("game_player", "Игровая практика", "Закрепить слова в игровой практике.", completed_games, 3, "learn"),
         _motivation_badge("careful_answer", "30 верных ответов", "Набрать 30 правильных ответов.", total_correct, 30, "training"),
     ]
     unlocked_count = sum(1 for badge in badges if badge["unlocked"])
@@ -958,9 +939,9 @@ def _motivation_payload(user, stats, dictionary_summary, report, streak) -> dict
         next_title = "Дойти до серии 3 дня"
         next_text = "Завтра приложение продолжит цепочку с короткого задания."
     elif completed_games < 3:
-        next_action = "game"
-        next_title = "Открыть игру со словами"
-        next_text = "Игра закрепляет слова легче, чем обычный тест."
+        next_action = "learn"
+        next_title = "Закрепить слова"
+        next_text = "Открой учебный раздел и выбери подходящую тренировку."
     elif completed_word_tests < 3:
         next_action = "vocab"
         next_title = "Пройти еще один тест"
@@ -968,7 +949,7 @@ def _motivation_payload(user, stats, dictionary_summary, report, streak) -> dict
     else:
         next_action = "learn"
         next_title = "Выбрать учебную тренировку"
-        next_text = "Можно взять новые слова, повторить сложные или закрепить словарь в игре."
+        next_text = "Можно взять новые слова или повторить сложные."
 
     accuracy_total = total_correct + total_wrong
     accuracy = round(total_correct / accuracy_total * 100) if accuracy_total else 0

@@ -156,6 +156,7 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertEqual(payload["next_action"], "review")
         self.assertIn("Повторить", payload["next_title"])
         self.assertTrue(any(step["id"] == "review" and step["status"] == "current" for step in payload["steps"]))
+        self.assertFalse(any(step["id"] == "game" for step in payload["steps"]))
 
     def test_motivation_payload_unlocks_streak_badges(self):
         payload = _motivation_payload(
@@ -167,7 +168,7 @@ class OpenAISafetyTests(unittest.TestCase):
         )
 
         self.assertEqual(payload["streak"]["current"], 3)
-        self.assertEqual(payload["next_action"], "game")
+        self.assertEqual(payload["next_action"], "learn")
         unlocked = {badge["id"] for badge in payload["badges"] if badge["unlocked"]}
         self.assertIn("three_day_streak", unlocked)
         self.assertIn("word_collector", unlocked)
