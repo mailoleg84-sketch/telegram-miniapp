@@ -162,6 +162,12 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertGreaterEqual(server_py.count("age_group = _normalized_age_group_for_user(user)"), 7)
         self.assertIn(".action-tile::after,\n.action-row::after {\n  display: none;", styles_css)
 
+        self.assertEqual(app_js.count("showTranslation: false"), 3)
+        vocab_question_start = server_py.index("async def _build_vocab_question")
+        vocab_question_end = server_py.index("async def _build_word_hunt_round", vocab_question_start)
+        vocab_question_block = server_py[vocab_question_start:vocab_question_end]
+        self.assertNotIn('\n        "translation": word["translation"],', vocab_question_block)
+
         history_start = app_js.index("async function renderActivityHistory")
         history_end = app_js.index("async function renderLeaderboard", history_start)
         history_block = app_js[history_start:history_end]

@@ -1050,7 +1050,6 @@ async def _build_vocab_question(word, age_group: str) -> dict:
     return {
         "word_id": word["id"],
         "word": word["word"],
-        "translation": word["translation"],
         "transcription": word["transcription"] or "",
         "example": word["example"] or "",
         "image_url": _word_image_url(word["word"], word["topic"] or "basic"),

@@ -332,6 +332,7 @@ function wordImageHtml(wordData, small = false) {
 function wordStudyCard(wordData, options = {}) {
   const badge = options.badge || "";
   const prompt = options.prompt || "";
+  const showTranslation = options.showTranslation !== false;
   return `
     <div class="card word-card ${options.compact ? "compact" : ""}">
       <div class="word-card-top">
@@ -341,7 +342,7 @@ function wordStudyCard(wordData, options = {}) {
       ${options.showImage ? wordImageHtml(wordData) : ""}
       <div class="word-main">${esc(wordData.word)}</div>
       ${wordData.transcription ? `<div class="word-transcription">${esc(wordData.transcription)}</div>` : ""}
-      ${wordData.translation ? `<div class="word-translation">${esc(wordData.translation)}</div>` : ""}
+      ${showTranslation && wordData.translation ? `<div class="word-translation">${esc(wordData.translation)}</div>` : ""}
       ${prompt ? `<p class="hint mt-12">${esc(prompt)}</p>` : ""}
     </div>`;
 }
@@ -908,7 +909,7 @@ function renderQuizQuestion(index) {
   app.innerHTML = `
     <div class="screen">
       <h1>Тест по словам</h1>
-      ${wordStudyCard(q, { badge: progress, prompt: q.prompt, compact: true })}
+      ${wordStudyCard(q, { badge: progress, prompt: q.prompt, compact: true, showTranslation: false })}
       ${q.options.map(o => `
         <button class="btn btn-secondary answer" data-id="${o.id}">${esc(o.translation)}</button>
       `).join("")}
@@ -1169,7 +1170,7 @@ async function renderChoiceTraining(focus = "all") {
       <div class="screen">
         <h1>Выбери перевод</h1>
         ${task.review_empty ? `<div class="card"><p class="hint">Ошибок для повторения пока нет, поэтому даю обычное слово.</p></div>` : ""}
-        ${wordStudyCard(task, { compact: true })}
+        ${wordStudyCard(task, { compact: true, showTranslation: false })}
         ${task.options.map(option => `
           <button class="btn btn-secondary choice-answer" data-id="${option.id}">${esc(option.translation)}</button>
         `).join("")}
@@ -1379,7 +1380,7 @@ function renderDailyQuizQuestion(index) {
   app.innerHTML = `
     <div class="screen">
       <h1>Урок: мини-тест</h1>
-      ${wordStudyCard(q, { badge: `Шаг 2 из 4 · ${index + 1}/${state.dailyQuiz.questions.length}`, prompt: "Выбери перевод", compact: true })}
+      ${wordStudyCard(q, { badge: `Шаг 2 из 4 · ${index + 1}/${state.dailyQuiz.questions.length}`, prompt: "Выбери перевод", compact: true, showTranslation: false })}
       ${q.options.map(o => `
         <button class="btn btn-secondary daily-answer" data-id="${o.id}">${esc(o.translation)}</button>
       `).join("")}
