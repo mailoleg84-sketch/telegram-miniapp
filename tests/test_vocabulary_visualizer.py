@@ -81,6 +81,30 @@ class VocabularyVisualizerTests(unittest.TestCase):
             self.assertIn("child-safe", prompt)
             self.assertIn("educational", prompt)
 
+    def test_complex_words_use_full_learning_context_not_naive_picture(self):
+        complex_words = {
+            "brave": "a brave child",
+            "honest": "an honest student",
+            "careful": "a careful child",
+            "although": "although text",
+            "should": "the word should",
+            "usually": "the word usually",
+        }
+
+        for word, bad_prompt in complex_words.items():
+            with self.subTest(word=word):
+                visual = build_vocabulary_visual(word, "перевод", "Let's learn the word.", "basic", "14_18", "advanced")
+                prompt = visual["image_prompt"].lower()
+
+                self.assertTrue(visual["needs_review"])
+                self.assertTrue(visual["show_russian_hint"])
+                self.assertTrue(visual["example_sentence"])
+                self.assertTrue(visual["simple_meaning"])
+                self.assertTrue(visual["russian_hint"])
+                self.assertIn("support the example sentence", prompt)
+                self.assertIn("rather than replace the translation", prompt)
+                self.assertNotIn(bad_prompt, prompt)
+
     def test_all_learning_words_can_build_complete_visual_cards(self):
         for word, translation, example, topic, age_group, _transcription in LEARNING_WORDS:
             with self.subTest(word=word):

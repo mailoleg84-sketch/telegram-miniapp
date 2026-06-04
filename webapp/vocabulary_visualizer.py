@@ -20,6 +20,13 @@ VISUAL_TYPES = {
     "grammar_diagram",
     "no_good_visual",
 }
+COMPLEX_VISUAL_TYPES = {
+    "situation",
+    "cause_effect",
+    "two_panel_comic",
+    "grammar_diagram",
+    "no_good_visual",
+}
 
 BASE_IMAGE_STYLE = (
     "premium friendly educational illustration, soft 3D/cartoon style, "
@@ -65,6 +72,7 @@ SPATIAL_WORDS = {
 SITUATION_WORDS = {
     "brave", "kind", "honest", "careful", "lazy", "proud", "worried",
     "polite", "helpful", "friendly", "responsible", "patient", "confident",
+    "careless", "generous", "shy", "unfair", "vulnerable", "urgent",
 }
 CAUSE_EFFECT_WORDS = {"because", "so", "therefore", "reason", "result"}
 TWO_PANEL_WORDS = {"although", "but", "however", "before", "after", "while", "already", "yet"}
@@ -177,7 +185,19 @@ SIMPLE_MEANINGS = {
     "kind": "He helps someone and cares about them.",
     "honest": "He tells the truth and returns what is not his.",
     "careful": "He does something slowly and safely.",
+    "careless": "He does something too fast and makes a mistake.",
+    "confident": "He believes he can do it.",
+    "generous": "She happily shares with other people.",
+    "helpful": "She helps someone do something.",
+    "lazy": "He does not want to do the work.",
+    "patient": "He waits calmly.",
+    "polite": "She uses kind words and good manners.",
     "proud": "She feels happy about something she did.",
+    "responsible": "She takes care of her task.",
+    "shy": "He feels quiet and unsure around people.",
+    "unfair": "One person gets a worse deal than another.",
+    "urgent": "It needs to be done soon.",
+    "vulnerable": "Someone can be hurt or needs extra care.",
     "worried": "He thinks something may go wrong.",
     "although": "Something happens, but the result is different from what we expect.",
     "however": "This word introduces a different or surprising idea.",
@@ -197,7 +217,19 @@ RUSSIAN_HINTS = {
     "kind": "Он помогает другому человеку.",
     "honest": "Он говорит правду и возвращает чужую вещь.",
     "careful": "Он делает это аккуратно и безопасно.",
+    "careless": "Он делает слишком быстро и ошибается.",
+    "confident": "Он верит, что справится.",
+    "generous": "Она с радостью делится с другими.",
+    "helpful": "Она помогает другому человеку.",
+    "lazy": "Он не хочет делать работу.",
+    "patient": "Он спокойно ждёт.",
+    "polite": "Она говорит вежливо и ведёт себя уважительно.",
     "proud": "Она рада тому, что сделала сама.",
+    "responsible": "Она отвечает за своё дело.",
+    "shy": "Он стесняется рядом с людьми.",
+    "unfair": "К одному человеку относятся хуже, чем к другому.",
+    "urgent": "Это нужно сделать скоро.",
+    "vulnerable": "Человека легко задеть, ему нужна забота.",
     "worried": "Он переживает, что что-то может случиться.",
     "although": "Хотя идёт дождь, он счастлив.",
     "however": "Слово показывает другую или неожиданную мысль.",
@@ -211,15 +243,29 @@ RUSSIAN_HINTS = {
 }
 
 SCENE_PROMPTS = {
-    "brave": "A child holding a flashlight and calmly entering a dim but safe room, showing courage",
+    "brave": "A child who looks a little scared but calmly enters a dim safe room with a flashlight, showing courage through action",
     "kind": "A child helping a friend pick up dropped school books, showing kindness",
     "honest": "A child giving a lost wallet back to a teacher, showing honesty",
     "careful": "A child carefully carrying a full glass of water without spilling it, focused expression",
+    "careless": "A child rushing with an open backpack while pencils safely spill onto a desk, showing a careless action",
+    "confident": "A child calmly raising a hand in class with a relaxed smile, ready to answer",
+    "generous": "A child happily sharing colored pencils with classmates",
+    "helpful": "A child helping another child tie a shoelace before a game",
+    "patient": "A child waiting calmly in a line while others go first",
+    "polite": "A child holding a door open and smiling respectfully",
     "proud": "A child happily showing a finished drawing to a parent, showing healthy pride",
+    "responsible": "A child watering a classroom plant and checking a small task list without any written text",
+    "shy": "A child standing near a friendly group with a gentle quiet expression, safe and supportive mood",
+    "unfair": "Two children receiving clearly unequal piles of toy blocks, showing an unfair situation without conflict",
+    "urgent": "A child quickly but safely putting on a backpack while a clock-like shape suggests time is short",
+    "vulnerable": "A younger child being gently protected with an umbrella in light rain, showing need for care",
     "worried": "A child looking at a clock while waiting safely at a bus stop, worried expression",
-    "polite": "A child holding a door open for another person, showing politeness",
     "lazy": "A child resting on a sofa while a school bag and tidy task wait nearby",
 }
+
+
+def is_complex_visual_type(visual_type: str) -> bool:
+    return visual_type in COMPLEX_VISUAL_TYPES
 
 
 def _clean(value: str) -> str:
@@ -409,7 +455,11 @@ def create_image_prompt(word: str, visual_type: str, age_group: str = "") -> str
     elif visual_type == "spatial_relation":
         scene = f"A red ball and two blue boxes arranged to clearly show the spatial relationship {word}"
     elif visual_type == "situation":
-        scene = f"A safe everyday scene where a child's action demonstrates the quality {word}"
+        scene = (
+            f"A concrete safe everyday situation for the vocabulary idea {word}; "
+            "show meaning through a child's action, facial expression, and context, "
+            "not as a single labeled object and not as a generic portrait"
+        )
     elif visual_type == "cause_effect":
         scene = "A clear two-step scene where rain causes a child with an umbrella to get wet"
     elif visual_type == "two_panel_comic":
@@ -418,7 +468,13 @@ def create_image_prompt(word: str, visual_type: str, age_group: str = "") -> str
         scene = f"A safe everyday situation where the grammar idea {word} is naturally useful"
     else:
         scene = "A simple context-learning scene with a child, two objects, and a clear relationship"
-    return f"{scene}, {age_note}, {BASE_IMAGE_STYLE}."
+    support_note = (
+        "The picture is only a memory cue; it must support the example sentence, "
+        "simple meaning, and Russian hint rather than replace the translation."
+        if is_complex_visual_type(visual_type)
+        else "The picture should be clear enough to support quick recognition."
+    )
+    return f"{scene}, {age_note}, {support_note} {BASE_IMAGE_STYLE}."
 
 
 def create_image_alt(word: str, visual_type: str) -> str:
@@ -460,6 +516,12 @@ def build_vocabulary_visual(
     visual_type = determine_visual_type(word, part_of_speech, topic)
     confidence = image_confidence_for(visual_type, word)
     needs_review = confidence < 0.7
+    if is_complex_visual_type(visual_type):
+        needs_review = True
+    show_russian_hint = (
+        is_complex_visual_type(visual_type)
+        or str(level or "beginner").lower() in {"starter", "beginner", "elementary", "a0", "a1", "a2"}
+    )
     return {
         "word": word,
         "translation": translation,
@@ -474,5 +536,5 @@ def build_vocabulary_visual(
         "image_confidence": confidence,
         "needs_review": needs_review,
         "generation_status": "needs_review" if needs_review else "generated",
-        "show_russian_hint": str(level or "beginner").lower() in {"starter", "beginner", "elementary", "a0", "a1", "a2"},
+        "show_russian_hint": show_russian_hint,
     }
