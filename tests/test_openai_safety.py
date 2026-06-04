@@ -158,6 +158,7 @@ class OpenAISafetyTests(unittest.TestCase):
 
         profile_start = app_js.index("async function renderProfile")
         profile_block = app_js[profile_start:profile_start + 2500]
+        self.assertIn("Возраст — ${esc(ageYearsLabel(u.child_age))}", profile_block)
         for marker in ("Слов в обучении", "Правильных ответов", "Ошибок"):
             self.assertNotIn(marker, profile_block, marker)
 

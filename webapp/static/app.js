@@ -303,6 +303,21 @@ function normalizeDictionarySearch(value) {
     .trim();
 }
 
+function ageYearsLabel(value) {
+  const age = Number(value);
+  if (!Number.isInteger(age) || age <= 0) return "не указан";
+  const lastTwo = age % 100;
+  const last = age % 10;
+  const suffix = lastTwo >= 11 && lastTwo <= 14
+    ? "лет"
+    : last === 1
+      ? "год"
+      : last >= 2 && last <= 4
+        ? "года"
+        : "лет";
+  return `${age} ${suffix}`;
+}
+
 function pronunciationButtonHtml(word, small = false) {
   return `<button type="button" class="pronounce-btn ${small ? "small" : ""}" data-word="${esc(word)}" aria-label="Озвучить ${esc(word)}">🔊</button>`;
 }
@@ -2846,7 +2861,7 @@ async function renderProfile() {
         <h1>Профиль</h1>
         <div class="card center">
           <h2>${esc(u.child_name)}</h2>
-          <p class="hint">${esc(u.age_label)} · ${esc(u.goal_label)}</p>
+          <p class="hint">Возраст — ${esc(ageYearsLabel(u.child_age))}</p>
           <div class="big" style="color: var(--button)">${u.points} 💎</div>
         </div>
         <div class="card">
