@@ -32,6 +32,12 @@ from config import (
     WEBAPP_PORT,
 )
 from webapp.auth import verify_fallback_auth, verify_init_data
+from webapp.lesson_engine import (
+    advance_lesson_state,
+    create_lesson_state,
+    lesson_prompt_context,
+    public_lesson_state,
+)
 from webapp.openai_service import chat_reply, create_realtime_call, create_realtime_client_secret, public_openai_error, synthesize_speech, transcribe_audio
 
 log = logging.getLogger(__name__)
@@ -992,13 +998,13 @@ def _voice_lesson_focus(messages: list[dict]) -> str:
     )
 
 
-def _voice_prompt_context(user, messages: list[dict]) -> dict:
+def _voice_prompt_context(user, messages: list[dict], lesson_state: dict | None = None) -> dict:
     topics = _choose_voice_topics(user, messages)
     lesson_focus = _voice_lesson_focus(messages)
     has_history = any(str(message.get("content") or "").strip() for message in messages)
     recent_user_messages = [m["content"] for m in messages if m["role"] == "user"][-3:]
     recent_assistant_messages = [m["content"] for m in messages if m["role"] == "assistant"][-3:]
-    return {
+    context = {
         "lesson_focus": lesson_focus,
         "topic_suggestions": (
             "не меняй текущую тему; запасные темы только если ребенок явно просит сменить тему: "
@@ -1033,6 +1039,33 @@ def _voice_prompt_context(user, messages: list[dict]) -> dict:
             "7) Если ребенок спрашивает по-русски, ответить по-русски и дать одну маленькую английскую фразу."
         ),
     }
+    if lesson_state:
+        context.update(lesson_prompt_context(lesson_state))
+    return context
+
+
+async def _ensure_voice_lesson_state(user_id: int, user) -> dict:
+    row = await database.get_voice_lesson_state(user_id)
+    age_group = _normalized_age_group_for_user(user)
+    if row and row["age_group"] == age_group:
+        return dict(row)
+    state = create_lesson_state(
+        age_group=age_group,
+        goal=user["goal"] if user else "",
+        seed=str(user_id),
+    )
+    await database.save_voice_lesson_state(user_id, state)
+    return state
+
+
+async def _advance_voice_lesson_state(user_id: int, user, role: str, text: str) -> dict:
+    state = await _ensure_voice_lesson_state(user_id, user)
+    previous_phase = state.get("phase")
+    state = advance_lesson_state(state, role, text)
+    await database.save_voice_lesson_state(user_id, state)
+    if previous_phase != "wrapup" and state.get("phase") == "wrapup":
+        await database.save_completed_voice_lesson(user_id, state)
+    return state
 
 
 async def _current_user_or_404(request: web.Request):
@@ -2139,12 +2172,15 @@ async def api_input_answer(request: web.Request):
 
 async def api_chat_history(request: web.Request):
     user_id = request["tg_user"]["id"]
+    user = await _current_user_or_404(request)
     rows = await database.get_recent_messages(user_id, limit=CHAT_HISTORY_LIMIT * 2)
     messages = [{"role": r["role"], "content": r["content"]} for r in rows]
     stats = await database.get_ai_usage_today(user_id)
+    lesson_state = await _ensure_voice_lesson_state(user_id, user)
     return web.json_response({
         "messages": messages,
         "usage": _chat_usage_payload(stats),
+        "lesson_state": public_lesson_state(lesson_state),
     })
 
 
@@ -2165,6 +2201,9 @@ async def api_chat_send(request: web.Request):
 
     # Сохраняем сообщение пользователя
     await database.add_message(user_id, "user", text)
+    lesson_state = None
+    if mode == "voice":
+        lesson_state = await _advance_voice_lesson_state(user_id, user, "user", text)
 
     # Берём последние сообщения как контекст для модели
     rows = await database.get_recent_messages(user_id, limit=CHAT_HISTORY_LIMIT)
@@ -2174,10 +2213,12 @@ async def api_chat_send(request: web.Request):
     prompt_context = _prompt_context_for_user(user) if user else {}
     prompt_context["mode"] = mode
     if mode == "voice":
-        prompt_context.update(_voice_prompt_context(user, history))
+        prompt_context.update(_voice_prompt_context(user, history, lesson_state))
     reply = await chat_reply(history, user_name, age_label, prompt_context)
 
     await database.add_message(user_id, "assistant", reply.text)
+    if mode == "voice":
+        lesson_state = await _advance_voice_lesson_state(user_id, user, "assistant", reply.text)
     if reply.total_tokens > 0:
         await database.add_ai_usage(
             user_id=user_id,
@@ -2192,6 +2233,7 @@ async def api_chat_send(request: web.Request):
     return web.json_response({
         "reply": reply.text,
         "usage": _chat_usage_payload(stats),
+        "lesson_state": public_lesson_state(lesson_state),
     })
 
 
@@ -2246,16 +2288,18 @@ async def _voice_text_turn_payload(user_id: int, text: str) -> dict:
     user_name = user["name"] if user else "друг"
 
     await database.add_message(user_id, "user", text)
+    lesson_state = await _advance_voice_lesson_state(user_id, user, "user", text)
     rows = await database.get_recent_messages(user_id, limit=CHAT_HISTORY_LIMIT)
     history = [{"role": r["role"], "content": r["content"]} for r in rows]
 
     age_label = _age_label(user["age_group"]) if user else ""
     prompt_context = _prompt_context_for_user(user) if user else {}
     prompt_context["mode"] = "voice"
-    prompt_context.update(_voice_prompt_context(user, history))
+    prompt_context.update(_voice_prompt_context(user, history, lesson_state))
 
     reply = await chat_reply(history, user_name, age_label, prompt_context)
     await database.add_message(user_id, "assistant", reply.text)
+    lesson_state = await _advance_voice_lesson_state(user_id, user, "assistant", reply.text)
     if reply.total_tokens > 0:
         await database.add_ai_usage(
             user_id=user_id,
@@ -2284,6 +2328,7 @@ async def _voice_text_turn_payload(user_id: int, text: str) -> dict:
         "audio_content_type": "audio/mpeg" if audio_b64 else "",
         "audio_error": audio_error,
         "usage": _chat_usage_payload(stats),
+        "lesson_state": public_lesson_state(lesson_state),
     }
 
 
@@ -2350,7 +2395,8 @@ async def api_realtime_call(request: web.Request):
     rows = await database.get_recent_messages(user_id, limit=CHAT_HISTORY_LIMIT)
     history = [{"role": r["role"], "content": r["content"]} for r in rows]
     age_label = _age_label(user["age_group"]) if user else ""
-    prompt_context = _realtime_prompt_context(user, history)
+    lesson_state = await _ensure_voice_lesson_state(user_id, user)
+    prompt_context = _realtime_prompt_context(user, history, lesson_state)
 
     try:
         answer_sdp = await create_realtime_call(
@@ -2371,11 +2417,11 @@ async def api_realtime_call(request: web.Request):
     )
 
 
-def _realtime_prompt_context(user, history: list[dict]) -> dict:
+def _realtime_prompt_context(user, history: list[dict], lesson_state: dict | None = None) -> dict:
     prompt_context = _prompt_context_for_user(user) if user else {}
     prompt_context["mode"] = "voice"
     prompt_context["age_group"] = _normalized_age_group_for_user(user) if user else "8_10"
-    prompt_context.update(_voice_prompt_context(user, history))
+    prompt_context.update(_voice_prompt_context(user, history, lesson_state))
     return prompt_context
 
 
@@ -2385,7 +2431,8 @@ async def api_realtime_token(request: web.Request):
     rows = await database.get_recent_messages(user_id, limit=CHAT_HISTORY_LIMIT)
     history = [{"role": r["role"], "content": r["content"]} for r in rows]
     age_label = _age_label(user["age_group"]) if user else ""
-    prompt_context = _realtime_prompt_context(user, history)
+    lesson_state = await _ensure_voice_lesson_state(user_id, user)
+    prompt_context = _realtime_prompt_context(user, history, lesson_state)
 
     try:
         token = await create_realtime_client_secret(
@@ -2403,6 +2450,7 @@ async def api_realtime_token(request: web.Request):
 
 async def api_realtime_log(request: web.Request):
     user_id = request["tg_user"]["id"]
+    user = await _current_user_or_404(request)
     body = await _safe_json(request)
     role = "assistant" if body.get("role") == "assistant" else "user"
     content = " ".join(str(body.get("content") or "").split())
@@ -2411,12 +2459,17 @@ async def api_realtime_log(request: web.Request):
     if len(content) > 1000:
         content = content[:1000]
     await database.add_message(user_id, role, content)
-    return web.json_response({"ok": True})
+    lesson_state = await _advance_voice_lesson_state(user_id, user, role, content)
+    return web.json_response({
+        "ok": True,
+        "lesson_state": public_lesson_state(lesson_state),
+    })
 
 
 async def api_chat_reset(request: web.Request):
     user_id = request["tg_user"]["id"]
     await database.clear_conversation(user_id)
+    await database.clear_voice_lesson_state(user_id)
     return web.json_response({"ok": True})
 
 

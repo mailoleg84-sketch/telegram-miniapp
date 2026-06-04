@@ -1011,6 +1011,60 @@ code {
   font-size: 12px;
 }
 
+.voice-lesson-strip {
+  width: min(100%, 360px);
+  display: grid;
+  gap: 7px;
+  padding: 9px 11px;
+  border: 1px solid var(--secondary-bg);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 3px 12px rgba(24, 39, 75, 0.06);
+}
+
+.voice-lesson-copy {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.voice-lesson-copy span,
+.voice-lesson-copy b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voice-lesson-copy span {
+  color: var(--hint);
+  font-size: 11px;
+}
+
+.voice-lesson-copy b {
+  color: var(--text);
+  font-size: 12px;
+  text-align: right;
+}
+
+.voice-lesson-progress {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--secondary-bg);
+}
+
+.voice-lesson-progress span {
+  display: block;
+  width: 5%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--button);
+  transition: width 0.35s ease;
+}
+
 .tutor-face {
   position: relative;
   width: 76px;
@@ -1093,6 +1147,21 @@ code {
   animation: talk 0.24s ease-in-out infinite alternate;
 }
 
+.tutor-face.praising {
+  animation: facePraise 0.8s ease-in-out 2;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.08), 0 0 0 7px rgba(52, 199, 89, 0.16);
+}
+
+.tutor-face.correcting {
+  animation: faceThink 1.2s ease-in-out infinite;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.08), 0 0 0 7px rgba(255, 149, 0, 0.14);
+}
+
+.tutor-face.encouraging {
+  animation: faceListen 1.3s ease-in-out infinite;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.08), 0 0 0 7px rgba(46, 196, 182, 0.14);
+}
+
 @keyframes faceFloat {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-3px); }
@@ -1104,6 +1173,10 @@ code {
 @keyframes faceThink {
   0%, 100% { transform: rotate(-2deg); }
   50% { transform: rotate(2deg); }
+}
+@keyframes facePraise {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-3px) scale(1.05); }
 }
 @keyframes blink {
   0%, 92%, 100% { transform: scaleY(1); }

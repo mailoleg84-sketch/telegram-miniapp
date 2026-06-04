@@ -117,6 +117,42 @@ async def init_db() -> None:
             )
         """)
         await conn.execute("""
+            CREATE TABLE IF NOT EXISTS voice_lesson_state (
+                user_id             BIGINT PRIMARY KEY,
+                age_group           TEXT NOT NULL,
+                phase               TEXT NOT NULL DEFAULT 'welcome',
+                current_topic       TEXT DEFAULT '',
+                current_topic_label TEXT DEFAULT '',
+                topic_suggestions   TEXT[] NOT NULL DEFAULT '{}',
+                lesson_goal         TEXT DEFAULT '',
+                target_phrase       TEXT DEFAULT '',
+                target_words        TEXT[] NOT NULL DEFAULT '{}',
+                turn_count          INTEGER DEFAULT 0,
+                correction_count    INTEGER DEFAULT 0,
+                last_language       TEXT DEFAULT 'unknown',
+                support_mode        TEXT DEFAULT '',
+                started_at          TIMESTAMP DEFAULT NOW(),
+                updated_at          TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS voice_lesson_sessions (
+                id               SERIAL PRIMARY KEY,
+                user_id          BIGINT NOT NULL,
+                started_at       TIMESTAMP NOT NULL,
+                completed_at     TIMESTAMP DEFAULT NOW(),
+                age_group        TEXT NOT NULL,
+                topic            TEXT NOT NULL,
+                topic_label      TEXT DEFAULT '',
+                lesson_goal      TEXT DEFAULT '',
+                target_phrase    TEXT DEFAULT '',
+                target_words     TEXT[] NOT NULL DEFAULT '{}',
+                correction_count INTEGER DEFAULT 0,
+                last_language    TEXT DEFAULT 'unknown',
+                UNIQUE (user_id, started_at)
+            )
+        """)
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS ai_usage (
                 id             SERIAL PRIMARY KEY,
                 user_id        BIGINT NOT NULL,
@@ -302,6 +338,8 @@ async def reset_learning_results(user_id: int) -> None:
             await conn.execute("DELETE FROM vocabulary_sessions WHERE user_id = $1", user_id)
             await conn.execute("DELETE FROM game_sessions WHERE user_id = $1", user_id)
             await conn.execute("DELETE FROM training_attempts WHERE user_id = $1", user_id)
+            await conn.execute("DELETE FROM voice_lesson_state WHERE user_id = $1", user_id)
+            await conn.execute("DELETE FROM voice_lesson_sessions WHERE user_id = $1", user_id)
 
 
 # ---------- Слова ----------
@@ -928,6 +966,108 @@ async def clear_conversation(user_id: int) -> None:
 
 
 # ---------- Учет расходов ИИ ----------
+
+async def get_voice_lesson_state(user_id: int):
+    pool = await _get_pool()
+    return await pool.fetchrow(
+        "SELECT * FROM voice_lesson_state WHERE user_id = $1",
+        user_id,
+    )
+
+
+async def save_voice_lesson_state(user_id: int, state: dict) -> None:
+    pool = await _get_pool()
+    await pool.execute("""
+        INSERT INTO voice_lesson_state (
+            user_id,
+            age_group,
+            phase,
+            current_topic,
+            current_topic_label,
+            topic_suggestions,
+            lesson_goal,
+            target_phrase,
+            target_words,
+            turn_count,
+            correction_count,
+            last_language,
+            support_mode,
+            updated_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+        ON CONFLICT (user_id)
+        DO UPDATE SET
+            age_group = EXCLUDED.age_group,
+            phase = EXCLUDED.phase,
+            current_topic = EXCLUDED.current_topic,
+            current_topic_label = EXCLUDED.current_topic_label,
+            topic_suggestions = EXCLUDED.topic_suggestions,
+            lesson_goal = EXCLUDED.lesson_goal,
+            target_phrase = EXCLUDED.target_phrase,
+            target_words = EXCLUDED.target_words,
+            turn_count = EXCLUDED.turn_count,
+            correction_count = EXCLUDED.correction_count,
+            last_language = EXCLUDED.last_language,
+            support_mode = EXCLUDED.support_mode,
+            updated_at = NOW()
+    """,
+    user_id,
+    state.get("age_group") or "8_10",
+    state.get("phase") or "welcome",
+    state.get("current_topic") or "",
+    state.get("current_topic_label") or "",
+    list(state.get("topic_suggestions") or []),
+    state.get("lesson_goal") or "",
+    state.get("target_phrase") or "",
+    list(state.get("target_words") or []),
+    int(state.get("turn_count") or 0),
+    int(state.get("correction_count") or 0),
+    state.get("last_language") or "unknown",
+    state.get("support_mode") or "",
+    )
+
+
+async def clear_voice_lesson_state(user_id: int) -> None:
+    pool = await _get_pool()
+    await pool.execute("DELETE FROM voice_lesson_state WHERE user_id = $1", user_id)
+
+
+async def save_completed_voice_lesson(user_id: int, state: dict) -> None:
+    if not state.get("current_topic") or not state.get("started_at"):
+        return
+    pool = await _get_pool()
+    await pool.execute("""
+        INSERT INTO voice_lesson_sessions (
+            user_id,
+            started_at,
+            age_group,
+            topic,
+            topic_label,
+            lesson_goal,
+            target_phrase,
+            target_words,
+            correction_count,
+            last_language
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ON CONFLICT (user_id, started_at)
+        DO UPDATE SET
+            completed_at = NOW(),
+            correction_count = EXCLUDED.correction_count,
+            last_language = EXCLUDED.last_language
+    """,
+    user_id,
+    state["started_at"],
+    state.get("age_group") or "8_10",
+    state.get("current_topic") or "",
+    state.get("current_topic_label") or "",
+    state.get("lesson_goal") or "",
+    state.get("target_phrase") or "",
+    list(state.get("target_words") or []),
+    int(state.get("correction_count") or 0),
+    state.get("last_language") or "unknown",
+    )
+
 
 async def add_ai_usage(
     user_id: int,

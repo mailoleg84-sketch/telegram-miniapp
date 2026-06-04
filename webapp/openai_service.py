@@ -393,6 +393,14 @@ def _runtime_instructions(
     recent_user_messages = context.get("recent_user_messages") or "нет"
     recent_assistant_messages = context.get("recent_assistant_messages") or "нет"
     lesson_focus = context.get("lesson_focus") or "урок только начинается"
+    lesson_phase = context.get("lesson_phase") or "welcome"
+    lesson_phase_label = context.get("lesson_phase_label") or "начало урока"
+    current_topic = context.get("current_topic") or "тема еще не выбрана"
+    lesson_goal = context.get("lesson_goal") or "начать короткий полезный урок"
+    target_phrase = context.get("target_phrase") or "пока не выбрана"
+    target_words = context.get("target_words") or "пока не выбраны"
+    support_mode = context.get("support_mode") or "обычный темп"
+    lesson_state_instruction = context.get("lesson_state_instruction") or lesson_focus
     if mode == "voice" and _looks_like_legacy_voice_template(str(recent_assistant_messages)):
         recent_assistant_messages = "в истории есть старые шаблонные ответы; не копируй их стиль"
     conversation_plan = context.get("conversation_plan") or (
@@ -408,7 +416,7 @@ def _runtime_instructions(
         "try: попроси сказать или выбрать одно; review: иногда верни одно прошлое слово."
     )
     if mode == "voice":
-        return _voice_module_prompt(
+        voice_prompt = _voice_module_prompt(
             user_name=user_name,
             age=str(age),
             level=str(level),
@@ -424,6 +432,23 @@ def _runtime_instructions(
             activity_menu=str(activity_menu),
             lesson_loop=str(lesson_loop),
         )
+        return voice_prompt + f"""
+
+AUTHORITATIVE LESSON STATE:
+- Phase: {lesson_phase} ({lesson_phase_label}).
+- Current topic: {current_topic}.
+- Lesson goal: {lesson_goal}.
+- Target phrase: {target_phrase}.
+- Target words: {target_words}.
+- Support mode: {support_mode}.
+- Required next move: {lesson_state_instruction}.
+
+Treat this lesson state as authoritative. Do not invent a new topic or restart the lesson.
+Advance only the current phase. In wrapup, give one success, one gentle growth point, and stop.
+If the child mentions something outside the topic, connect it naturally to the current topic.
+Never tell the child "we must stay on topic", "back to the topic", or describe the lesson plan.
+In a Russian turn, use natural Russian grammar and put the English teaching phrase in a separate sentence.
+Bad: "Какая у тебя favorite game?" Good: "Какая игра у тебя любимая? По-английски: My favorite game is..."."""
     voice_rules = (
         "Режим сейчас: ГОЛОС. Отвечай как живой человек в короткой живой беседе: 2-4 короткие фразы, "
         "сначала по сути реплики ребенка, затем обязательный учебный шаг: одна полезная английская фраза, исправление, выбор или микро-задание. "
@@ -718,6 +743,13 @@ def build_voice_realtime_instructions(
     lesson_focus = context.get("lesson_focus") or "lesson is just starting"
     recent_user = context.get("recent_user_messages") or "none"
     recent_assistant = context.get("recent_assistant_messages") or "none"
+    lesson_phase = context.get("lesson_phase") or "welcome"
+    current_topic = context.get("current_topic") or "not selected yet"
+    lesson_goal = context.get("lesson_goal") or "choose a topic and begin a useful mini-lesson"
+    target_phrase = context.get("target_phrase") or "not selected yet"
+    target_words = context.get("target_words") or "not selected yet"
+    support_mode = context.get("support_mode") or "normal"
+    lesson_state_instruction = context.get("lesson_state_instruction") or lesson_focus
 
     if age_group in {"5_7", "8_10"}:
         age_style = (
@@ -737,6 +769,9 @@ def build_voice_realtime_instructions(
     return f"""You are Alex, a live voice English tutor for a child.
 Student: {name}. Age: {age}. Level: {level}. Goal: {goal}. Fresh topics: {topics}.
 Current lesson thread: {lesson_focus}.
+Authoritative lesson phase: {lesson_phase}. Current topic: {current_topic}. Goal: {lesson_goal}.
+Target phrase: {target_phrase}. Target words: {target_words}. Support mode: {support_mode}.
+Required next move: {lesson_state_instruction}.
 Recent student messages: {recent_user}.
 Recent tutor messages: {recent_assistant}.
 
@@ -753,7 +788,12 @@ Hard language rule:
 Conversation behavior:
 - First answer the child's actual message. Do not ignore it to follow a lesson plan.
 - Keep the current lesson thread. Do not jump to a new topic because time passed or a new response starts.
-- Change topic only if the child asks, seems tired, stays silent, or the current mini-scene is clearly finished.
+- Treat the authoritative lesson state above as the source of truth. Never restart or replace its topic.
+- Move only inside the current phase. In wrapup, name one success and one gentle growth point, then stop.
+- If the child mentions something outside the topic, bridge it naturally into the current topic without saying that you are returning to the lesson.
+- In Russian turns, keep Russian grammar natural and say the English teaching phrase as a separate short sentence.
+- Change topic only if the child explicitly asks or the lesson is reset.
+- If the child seems tired, stays silent, or struggles, simplify the activity inside the same topic.
 - Every turn must teach English in a tiny way: model one phrase, correct one error, ask one practice question, give one word choice, or review one previous word.
 - Do not just chat. Plain conversation is allowed only as the bridge into the learning step.
 - Lead the conversation yourself, but never list menu options or say what buttons exist.
@@ -1036,6 +1076,15 @@ def _prompt_variables(user_name: str, age_label: str = "", prompt_context: dict 
         "recent_assistant_messages": str(context.get("recent_assistant_messages") or ""),
         "activity_menu": str(context.get("activity_menu") or ""),
         "lesson_loop": str(context.get("lesson_loop") or ""),
+        "lesson_phase": str(context.get("lesson_phase") or "welcome"),
+        "lesson_phase_label": str(context.get("lesson_phase_label") or ""),
+        "lesson_progress": str(context.get("lesson_progress") or "5"),
+        "current_topic": str(context.get("current_topic") or ""),
+        "lesson_goal": str(context.get("lesson_goal") or ""),
+        "target_phrase": str(context.get("target_phrase") or ""),
+        "target_words": str(context.get("target_words") or ""),
+        "support_mode": str(context.get("support_mode") or ""),
+        "lesson_state_instruction": str(context.get("lesson_state_instruction") or ""),
     }
 
 

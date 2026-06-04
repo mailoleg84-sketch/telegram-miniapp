@@ -1502,6 +1502,13 @@ async function renderChat() {
             </button>
             <div class="voice-mode-status" id="voiceStatus">Обычный режим</div>
           </div>
+          <div class="voice-lesson-strip" id="voiceLessonStrip">
+            <div class="voice-lesson-copy">
+              <span id="voiceLessonPhase">Начало урока</span>
+              <b id="voiceLessonTopic">Выбираем тему</b>
+            </div>
+            <div class="voice-lesson-progress" aria-hidden="true"><span id="voiceLessonProgress"></span></div>
+          </div>
         </div>
         <div class="chat-messages" id="messages"></div>
         <div class="chat-input-row">
@@ -1518,6 +1525,10 @@ async function renderChat() {
     const voiceModeButton = document.getElementById("voiceMode");
     const voiceModeText = document.getElementById("voiceModeText");
     const voiceStatus = document.getElementById("voiceStatus");
+    const voiceLessonPhase = document.getElementById("voiceLessonPhase");
+    const voiceLessonTopic = document.getElementById("voiceLessonTopic");
+    const voiceLessonProgress = document.getElementById("voiceLessonProgress");
+    let lessonState = data.lesson_state || {};
     let recorder = null;
     let audioChunks = [];
     let recordingStream = null;
@@ -1655,6 +1666,17 @@ async function renderChat() {
       voiceModeText.textContent = voiceModeActive ? "Стоп" : "Говорить";
       voiceStatus.textContent = status || (voiceModeActive ? "Слушаю..." : "Обычный режим");
       if (!sending) mic.disabled = voiceModeActive;
+    }
+
+    function renderLessonState(nextState) {
+      if (nextState && Object.keys(nextState).length) lessonState = nextState;
+      const progress = Math.max(5, Math.min(100, Number(lessonState?.progress_percent) || 5));
+      voiceLessonPhase.textContent = lessonState?.phase_label || "Начало урока";
+      voiceLessonTopic.textContent = lessonState?.topic_label || "Выбираем тему";
+      voiceLessonProgress.style.width = `${progress}%`;
+      if (!voiceModeActive && lessonState?.avatar_state && lessonState.avatar_state !== "idle") {
+        setFace(lessonState.avatar_state);
+      }
     }
 
     function nextRotatingItem(storageKey, items) {
@@ -1825,7 +1847,8 @@ async function renderChat() {
       realtimeLogged.add(key);
       realtimeLogged.add(textKey);
       try {
-        await api("/api/realtime/log", "POST", { role, content: clean });
+        const result = await api("/api/realtime/log", "POST", { role, content: clean });
+        renderLessonState(result.lesson_state);
       } catch (_) {}
     }
 
@@ -2228,6 +2251,7 @@ async function renderChat() {
     } else {
       data.messages.forEach(m => bubble(m.role, m.content));
     }
+    renderLessonState(data.lesson_state);
 
     async function send(textOverride, options = {}) {
       const text = typeof textOverride === "string" ? textOverride.trim() : input.value.trim();
@@ -2248,6 +2272,7 @@ async function renderChat() {
         });
         typing.remove();
         bubble("assistant", reply.reply);
+        renderLessonState(reply.lesson_state);
         speakTutor(
           reply.reply,
           options.autoContinue ? () => scheduleVoiceListen(650) : null,
@@ -2283,6 +2308,7 @@ async function renderChat() {
       if (box.querySelector(".chat-empty")) box.innerHTML = "";
       if (showUser && text) bubble("user", text);
       if (reply) bubble("assistant", reply);
+      renderLessonState(result.lesson_state);
       const onDone = wasAuto ? () => scheduleVoiceListen(VOICE_RESTART_DELAY_MS) : null;
       if (result.audio_base64) {
         const audioBlob = base64ToBlob(result.audio_base64, result.audio_content_type || "audio/mpeg");
@@ -2548,7 +2574,7 @@ async function renderChat() {
         setFace("listening");
         const ageGroup = state.me?.user?.age_group || "default";
         const childName = state.me?.user?.child_name || "друг";
-        const continueCurrentLesson = hasLessonHistory();
+        const continueCurrentLesson = Boolean(lessonState?.current_topic || hasLessonHistory());
         const ageGreetings = {
           "5_7": `Поздоровайся с ${childName} по-русски, очень медленно и тепло. Сразу начни суперлегкий английский мини-урок: дай один выбор с двумя словами, например cat — кошка или dog — собака. Один вопрос.`,
           "8_10": `Поздоровайся с ${childName} по-русски, дружелюбно и не быстро. Сразу начни мини-урок английского: дай одну короткую фразу или выбор из двух тем, например game или food. Один вопрос.`,
@@ -2557,9 +2583,11 @@ async function renderChat() {
           "under_12": `Поздоровайся с ${childName} по-русски, дружелюбно и не быстро. Сразу начни мини-урок английского: дай одну короткую фразу или выбор из двух тем. Один вопрос.`,
           "default": `Начни по-русски: поздоровайся с ${childName} тепло, затем сразу дай маленький английский шаг и один легкий вопрос.`,
         };
-        const greeting = continueCurrentLesson
-          ? `Не здоровайся заново и не начинай новую тему. Коротко продолжи текущий урок с ${childName} по последней теме из истории. Дай один маленький учебный шаг и один вопрос.`
-          : (ageGreetings[ageGroup] || ageGreetings["default"]);
+        const greeting = lessonState?.current_topic
+          ? `Не здоровайся заново и не начинай новую тему. Продолжи урок с ${childName}. Текущая тема: ${lessonState.topic_label}. Этап: ${lessonState.phase_label}. Дай только один подходящий учебный шаг и один вопрос.`
+          : continueCurrentLesson
+            ? `Не здоровайся заново. Продолжи текущий урок с ${childName}, предложи выбрать одну из уже заданных тем и задай один вопрос.`
+            : (ageGreetings[ageGroup] || ageGreetings["default"]);
         sendRealtimeEvent({
           type: "response.create",
           response: {
