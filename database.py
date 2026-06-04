@@ -101,10 +101,12 @@ async def init_db() -> None:
                 word_id        INTEGER,
                 correct_count  INTEGER DEFAULT 0,
                 wrong_count    INTEGER DEFAULT 0,
+                review_streak  INTEGER DEFAULT 0,
                 last_seen      TIMESTAMP DEFAULT NOW(),
                 PRIMARY KEY (user_id, word_id)
             )
         """)
+        await conn.execute("ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS review_streak INTEGER DEFAULT 0")
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS conversations (
                 id          SERIAL PRIMARY KEY,
@@ -454,18 +456,10 @@ async def get_review_word(
         WHERE up.user_id = $1
           AND ($2::INTEGER IS NULL OR w.id != $2)
           AND ($3::TEXT IS NULL OR w.age_group = $3)
-          AND (
-            COALESCE(up.wrong_count, 0) > 0
-            OR up.last_seen < NOW() - (
-                INTERVAL '1 hour' * POWER(2, LEAST(COALESCE(up.correct_count, 0), 8))
-            )
-          )
+          AND COALESCE(up.wrong_count, 0) > 0
+          AND COALESCE(up.review_streak, 0) < 2
         ORDER BY
-            CASE
-                WHEN COALESCE(up.wrong_count, 0) > COALESCE(up.correct_count, 0) THEN 3
-                WHEN COALESCE(up.wrong_count, 0) > 0 THEN 2
-                ELSE 1
-            END DESC,
+            COALESCE(up.review_streak, 0) ASC,
             COALESCE(up.wrong_count, 0) DESC,
             up.last_seen ASC,
             RANDOM()
@@ -479,15 +473,8 @@ async def get_user_dictionary(user_id: int, filter_mode: str = "all", limit: int
     if filter_mode == "review":
         filter_sql = """
           AND up.word_id IS NOT NULL
-          AND (
-            COALESCE(up.wrong_count, 0) > 0
-            OR (
-              up.last_seen IS NOT NULL
-              AND up.last_seen < NOW() - (
-                  INTERVAL '1 hour' * POWER(2, LEAST(COALESCE(up.correct_count, 0), 8))
-              )
-            )
-          )
+          AND COALESCE(up.wrong_count, 0) > 0
+          AND COALESCE(up.review_streak, 0) < 2
         """
     elif filter_mode == "mastered":
         filter_sql = """
@@ -506,15 +493,11 @@ async def get_user_dictionary(user_id: int, filter_mode: str = "all", limit: int
             w.age_group,
             COALESCE(up.correct_count, 0)::INT AS correct_count,
             COALESCE(up.wrong_count, 0)::INT AS wrong_count,
+            COALESCE(up.review_streak, 0)::INT AS review_streak,
             up.last_seen,
             (
               COALESCE(up.wrong_count, 0) > 0
-              OR (
-                up.last_seen IS NOT NULL
-                AND up.last_seen < NOW() - (
-                    INTERVAL '1 hour' * POWER(2, LEAST(COALESCE(up.correct_count, 0), 8))
-                )
-              )
+              AND COALESCE(up.review_streak, 0) < 2
             ) AS needs_review,
             (
               COALESCE(up.correct_count, 0) >= 3
@@ -552,9 +535,7 @@ async def get_dictionary_summary(user_id: int):
             )::INT AS mastered_words,
             COUNT(*) FILTER (
               WHERE COALESCE(wrong_count, 0) > 0
-                 OR last_seen < NOW() - (
-                    INTERVAL '1 hour' * POWER(2, LEAST(COALESCE(correct_count, 0), 8))
-                 )
+                AND COALESCE(review_streak, 0) < 2
             )::INT AS review_words
         FROM user_progress
         WHERE user_id = $1
@@ -678,18 +659,20 @@ async def update_progress(user_id: int, word_id: int, correct: bool) -> None:
     pool = await _get_pool()
     if correct:
         await pool.execute("""
-            INSERT INTO user_progress (user_id, word_id, correct_count)
-            VALUES ($1, $2, 1)
+            INSERT INTO user_progress (user_id, word_id, correct_count, review_streak)
+            VALUES ($1, $2, 1, 1)
             ON CONFLICT (user_id, word_id)
             DO UPDATE SET correct_count = user_progress.correct_count + 1,
+                          review_streak = LEAST(COALESCE(user_progress.review_streak, 0) + 1, 2),
                           last_seen = NOW()
         """, user_id, word_id)
     else:
         await pool.execute("""
-            INSERT INTO user_progress (user_id, word_id, wrong_count)
-            VALUES ($1, $2, 1)
+            INSERT INTO user_progress (user_id, word_id, wrong_count, review_streak)
+            VALUES ($1, $2, 1, 0)
             ON CONFLICT (user_id, word_id)
             DO UPDATE SET wrong_count = user_progress.wrong_count + 1,
+                          review_streak = 0,
                           last_seen = NOW()
         """, user_id, word_id)
 

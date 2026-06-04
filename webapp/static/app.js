@@ -294,6 +294,15 @@ function esc(value) {
   })[c]);
 }
 
+function normalizeDictionarySearch(value) {
+  return String(value ?? "")
+    .normalize("NFKC")
+    .toLocaleLowerCase("ru-RU")
+    .replaceAll("ё", "е")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function pronunciationButtonHtml(word, small = false) {
   return `<button type="button" class="pronounce-btn ${small ? "small" : ""}" data-word="${esc(word)}" aria-label="Озвучить ${esc(word)}">🔊</button>`;
 }
@@ -702,7 +711,7 @@ function renderLearningHub() {
 
   document.getElementById("daily").onclick = () => { haptic(); renderDailyLesson(); };
   document.getElementById("vocab").onclick = () => { haptic(); renderVocabStart(); };
-  document.getElementById("training").onclick = () => { haptic(); renderTrainingMenu(); };
+  document.getElementById("training").onclick = () => { haptic(); renderTrainingMenu("review"); };
   document.getElementById("dictionary").onclick = () => { haptic(); renderDictionary(); };
   document.getElementById("games").onclick = () => { haptic(); renderGamesMenu(); };
   document.getElementById("levelTest").onclick = () => { haptic(); renderLevelTestIntro(); };
@@ -1060,13 +1069,13 @@ async function renderDictionary() {
     app.innerHTML = `
       <div class="screen">
         <h1>Словарь</h1>
-        <div class="card">
+        <div class="card dictionary-search-card">
           <input id="dictionarySearch" type="text" placeholder="Найти слово..." autocomplete="off">
         </div>
         ${words.length ? `
           <div class="card dictionary-list">
             ${words.map(word => `
-              <div class="dictionary-row" data-search="${esc(`${word.word} ${word.translation} ${word.transcription || ""}`.toLowerCase())}">
+              <div class="dictionary-row" data-search="${esc(normalizeDictionarySearch(`${word.word} ${word.translation} ${word.transcription || ""}`))}">
                 <div class="dictionary-main">
                   <b>${esc(word.word)}</b>
                   ${word.transcription ? `<small class="transcription">${esc(word.transcription)}</small>` : ""}
@@ -1093,7 +1102,7 @@ async function renderDictionary() {
     const rows = Array.from(document.querySelectorAll(".dictionary-row"));
     const empty = document.getElementById("dictionaryNoResults");
     const applySearch = () => {
-      const query = search.value.trim().toLowerCase();
+      const query = normalizeDictionarySearch(search.value);
       let visible = 0;
       rows.forEach(row => {
         const matches = !query || row.dataset.search.includes(query);
@@ -1102,7 +1111,14 @@ async function renderDictionary() {
       });
       if (empty) empty.style.display = visible ? "none" : "block";
     };
-    search.addEventListener("input", applySearch);
+    let searchFrame = null;
+    search.addEventListener("input", () => {
+      if (searchFrame !== null) cancelAnimationFrame(searchFrame);
+      searchFrame = requestAnimationFrame(() => {
+        searchFrame = null;
+        applySearch();
+      });
+    });
     bindPronunciationButtons();
   } catch (e) {
     renderError(e.message);

@@ -23,6 +23,7 @@ class OpenAISafetyTests(unittest.TestCase):
         app_js = (root / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
         styles_css = (root / "webapp" / "static" / "styles.css").read_text(encoding="utf-8")
         server_py = (root / "webapp" / "server.py").read_text(encoding="utf-8")
+        database_py = (root / "database.py").read_text(encoding="utf-8")
 
         main_entry_ids = ("chat", "vocab", "training", "dictionary", "games")
         for entry_id in main_entry_ids:
@@ -138,8 +139,15 @@ class OpenAISafetyTests(unittest.TestCase):
         dictionary_block = app_js[dictionary_start:dictionary_end]
         self.assertIn('id="dictionarySearch"', dictionary_block)
         self.assertIn("data-search=", dictionary_block)
+        self.assertIn("normalizeDictionarySearch", dictionary_block)
         for marker in ("Всего слов", "Нужно повторить", "Выучено", "word-status", "correct_count", "wrong_count"):
             self.assertNotIn(marker, dictionary_block, marker)
+
+        self.assertIn('renderTrainingMenu("review")', app_js)
+        self.assertIn(".dictionary-row[hidden]", styles_css)
+        self.assertNotIn("overflow-wrap: anywhere", styles_css)
+        self.assertIn("review_streak", database_py)
+        self.assertIn("COALESCE(up.review_streak, 0) < 2", database_py)
 
         self.assertIn(".btn-secondary", styles_css)
         self.assertIn("background: var(--button);", styles_css)
