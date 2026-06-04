@@ -1940,7 +1940,6 @@ h1::after {
   --tile-tint: rgba(47, 157, 244, 0.08);
   min-height: 118px;
   padding: 17px;
-  padding-right: 56px;
   border-color: color-mix(in srgb, var(--tile-accent) 25%, transparent);
   background: var(--tile-tint);
   box-shadow: 0 5px 14px rgba(24, 39, 75, 0.07);
@@ -2010,25 +2009,12 @@ h1::after {
 .action-tile.report::before,
 .action-tile.history::before,
 .action-tile.leaderboard-tile::before {
-  top: 15px;
-  right: 15px;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  background: var(--tile-accent);
-  opacity: 0.14;
+  display: none;
 }
 
 .action-tile::after,
 .action-row::after {
-  content: "";
-  position: absolute;
-  top: 27px;
-  right: 27px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--tile-accent);
+  display: none;
 }
 
 .action-tile b,
@@ -2085,11 +2071,6 @@ h1::after {
 }
 
 @media (max-width: 420px) {
-  .action-tile,
-  .action-row {
-    padding-right: 52px;
-  }
-
   .word-main {
     font-size: 27px;
   }

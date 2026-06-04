@@ -160,6 +160,7 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertIn("review_streak", database_py)
         self.assertIn("COALESCE(up.review_streak, 0) < 2", database_py)
         self.assertGreaterEqual(server_py.count("age_group = _normalized_age_group_for_user(user)"), 7)
+        self.assertIn(".action-tile::after,\n.action-row::after {\n  display: none;", styles_css)
 
         self.assertIn(".btn-secondary", styles_css)
         self.assertIn("background: var(--button);", styles_css)
