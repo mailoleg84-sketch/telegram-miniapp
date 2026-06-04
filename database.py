@@ -181,6 +181,20 @@ async def init_db() -> None:
             CREATE INDEX IF NOT EXISTS game_sessions_user_created_idx
             ON game_sessions (user_id, created_at DESC)
         """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS training_attempts (
+                id          SERIAL PRIMARY KEY,
+                user_id     BIGINT NOT NULL,
+                mode        TEXT NOT NULL,
+                focus       TEXT NOT NULL DEFAULT 'all',
+                correct     BOOLEAN NOT NULL,
+                created_at  TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS training_attempts_user_created_idx
+            ON training_attempts (user_id, created_at DESC)
+        """)
         await _seed_words(conn)
 
 
@@ -287,6 +301,7 @@ async def reset_learning_results(user_id: int) -> None:
             await conn.execute("DELETE FROM daily_lessons WHERE user_id = $1", user_id)
             await conn.execute("DELETE FROM vocabulary_sessions WHERE user_id = $1", user_id)
             await conn.execute("DELETE FROM game_sessions WHERE user_id = $1", user_id)
+            await conn.execute("DELETE FROM training_attempts WHERE user_id = $1", user_id)
 
 
 # ---------- Слова ----------
@@ -770,7 +785,7 @@ async def get_activity_history(user_id: int, limit: int = 30):
                 NULL::TEXT AS game_type
             FROM daily_lessons
             WHERE user_id = $1
-              AND (completed = TRUE OR completed_steps > 0)
+              AND completed = TRUE
 
             UNION ALL
 
@@ -792,7 +807,7 @@ async def get_activity_history(user_id: int, limit: int = 30):
                 NULL::TEXT AS game_type
             FROM vocabulary_sessions
             WHERE user_id = $1
-              AND (completed = TRUE OR CARDINALITY(word_ids) > 0)
+              AND completed = TRUE
 
             UNION ALL
 
@@ -814,11 +829,60 @@ async def get_activity_history(user_id: int, limit: int = 30):
                 game_type
             FROM game_sessions
             WHERE user_id = $1
-              AND (completed = TRUE OR CARDINALITY(word_ids) > 0)
+              AND completed = TRUE
+
+            UNION ALL
+
+            SELECT
+                CASE
+                    WHEN focus = 'review' THEN 'review_training'::TEXT
+                    ELSE 'word_training'::TEXT
+                END AS event_type,
+                MAX(created_at) AS event_at,
+                created_at::DATE::TEXT AS event_date,
+                TRUE AS completed,
+                NULL::INT AS completed_steps,
+                ROUND(
+                    COUNT(*) FILTER (WHERE correct)::NUMERIC / COUNT(*) * 100
+                )::INT AS score,
+                COUNT(*) FILTER (WHERE correct)::INT AS correct_count,
+                COUNT(*) FILTER (WHERE NOT correct)::INT AS wrong_count,
+                COUNT(*)::INT AS word_count,
+                FALSE AS rewarded,
+                NULL::TEXT AS game_type
+            FROM training_attempts
+            WHERE user_id = $1
+            GROUP BY created_at::DATE, focus
+
+            UNION ALL
+
+            SELECT
+                'level_test'::TEXT AS event_type,
+                level_test_completed_at AS event_at,
+                level_test_completed_at::DATE::TEXT AS event_date,
+                TRUE AS completed,
+                NULL::INT AS completed_steps,
+                level_test_score::INT AS score,
+                NULL::INT AS correct_count,
+                NULL::INT AS wrong_count,
+                NULL::INT AS word_count,
+                FALSE AS rewarded,
+                NULL::TEXT AS game_type
+            FROM users
+            WHERE user_id = $1
+              AND level_test_completed_at IS NOT NULL
         ) events
         ORDER BY event_at DESC
         LIMIT $2
     """, user_id, limit)
+
+
+async def add_training_attempt(user_id: int, mode: str, focus: str, correct: bool) -> None:
+    pool = await _get_pool()
+    await pool.execute("""
+        INSERT INTO training_attempts (user_id, mode, focus, correct)
+        VALUES ($1, $2, $3, $4)
+    """, user_id, mode, focus, correct)
 
 
 async def get_leaderboard(limit: int = 10):

@@ -1184,6 +1184,7 @@ async function renderChoiceTraining(focus = "all") {
           const result = await api("/api/training/choice/answer", "POST", {
             word_id: task.word_id,
             selected_id: selectedId,
+            focus,
           });
           if (state.me?.user) state.me.user.points = result.points;
           renderTrainingResult({
@@ -1234,6 +1235,7 @@ async function renderInputTraining(focus = "all") {
         const result = await api("/api/training/input/answer", "POST", {
           word_id: task.word_id,
           answer,
+          focus,
         });
         if (state.me?.user) state.me.user.points = result.points;
         renderTrainingResult({
@@ -2764,15 +2766,46 @@ async function renderParentReport() {
   }
 }
 
-function formatEventDate(value) {
+function historyDayLabel(value) {
   if (!value) return "";
   try {
-    const date = new Date(value);
+    const date = new Date(`${value}T00:00:00`);
     if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleDateString("ru-RU", { day: "2-digit", month: "short" });
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    if (date.getTime() === today.getTime()) return "Сегодня";
+    if (date.getTime() === yesterday.getTime()) return "Вчера";
+    return date.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
   } catch (_) {
     return value;
   }
+}
+
+function formatEventTime(value) {
+  if (!value) return "";
+  try {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  } catch (_) {
+    return "";
+  }
+}
+
+function groupHistoryEvents(events) {
+  const groups = [];
+  events.forEach(event => {
+    const date = event.date || "";
+    let group = groups.find(item => item.date === date);
+    if (!group) {
+      group = { date, events: [] };
+      groups.push(group);
+    }
+    group.events.push(event);
+  });
+  return groups;
 }
 
 async function renderActivityHistory() {
@@ -2781,37 +2814,29 @@ async function renderActivityHistory() {
   try {
     const data = await api("/api/activity/history", "GET");
     const events = data.events || [];
+    const groups = groupHistoryEvents(events);
     app.innerHTML = `
       <div class="screen">
         <h1>История занятий</h1>
-        <div class="card">
-          <div class="stat-row"><span>Записей</span><b>${data.summary?.total_events || 0}</b></div>
-          <div class="stat-row"><span>Завершено</span><b>${data.summary?.completed_events || 0}</b></div>
-        </div>
-        ${events.length ? `
-          <div class="activity-list">
-            ${events.map(event => `
-              <div class="card activity-card ${event.completed ? "done" : "open"}">
-                <div class="activity-head">
-                  <div>
+        ${groups.length ? groups.map(group => `
+          <section class="history-day">
+            <div class="history-day-label">${esc(historyDayLabel(group.date))}</div>
+            <div class="activity-list">
+              ${group.events.map(event => `
+                <div class="card activity-card">
+                  <div class="activity-head">
                     <b>${esc(event.title)}</b>
-                    <span>${esc(formatEventDate(event.event_at || event.date))}</span>
+                    <span>${esc(formatEventTime(event.event_at))}</span>
                   </div>
-                  ${event.score === null || event.score === undefined ? "" : `<strong>${event.score}%</strong>`}
+                  <p>${esc(event.description)}</p>
                 </div>
-                <p class="hint mt-8">${esc(event.description)}</p>
-                <div class="activity-meta">
-                  ${event.word_count ? `<span>${event.word_count} слов</span>` : ""}
-                  ${event.points_delta ? `<span>${event.points_delta > 0 ? "+" : ""}${event.points_delta} 💎</span>` : ""}
-                  ${event.completed_steps && event.total_steps ? `<span>${event.completed_steps}/${event.total_steps} шагов</span>` : ""}
-                </div>
-              </div>
-            `).join("")}
-          </div>
-        ` : `
+              `).join("")}
+            </div>
+          </section>
+        `).join("") : `
           <div class="card center">
             <b>История пока пустая</b>
-            <p class="hint">Пройди ежедневный урок или тест по словам, и здесь появятся первые записи.</p>
+            <p class="hint">Заверши урок, тренировку, тест или игру — результат появится здесь.</p>
           </div>
         `}
         <button class="btn btn-secondary" id="historyHome">К прогрессу</button>

@@ -741,33 +741,27 @@ def _date_text(value) -> str:
 
 def _activity_event_dict(row) -> dict:
     event_type = row["event_type"]
-    completed = bool(row["completed"])
     if event_type == "daily_lesson":
-        steps = int(row["completed_steps"] or 0)
-        title = "Ежедневный урок"
-        description = "Урок завершен" if completed else f"Пройдено шагов: {steps}/{DAILY_LESSON_STEPS}"
-        points_delta = DAILY_LESSON_REWARD_POINTS if row["rewarded"] else 0
+        title = "Урок дня"
+        description = "Урок завершён"
     elif event_type == "word_game":
         correct_count = int(row["correct_count"] or 0)
         wrong_count = int(row["wrong_count"] or 0)
-        word_count = int(row["word_count"] or 0)
-        title = _game_title(row["game_type"] or "word_hunt")
-        description = (
-            f"Поймано слов: {correct_count} из {correct_count + wrong_count}"
-            if completed else f"Начата игра: {word_count} слов"
-        )
-        perfect_bonus = GAME_PERFECT_BONUS_POINTS if completed and word_count > 0 and correct_count == word_count else 0
-        points_delta = correct_count * GAME_POINTS_CORRECT + perfect_bonus if completed else 0
-    else:
+        title = "Игровая практика"
+        description = f"{correct_count} из {correct_count + wrong_count} правильных · {int(row['score'] or 0)}%"
+    elif event_type == "word_test":
         correct_count = int(row["correct_count"] or 0)
         wrong_count = int(row["wrong_count"] or 0)
-        word_count = int(row["word_count"] or 0)
-        title = "Тест по словам"
-        description = (
-            f"{correct_count} правильно из {correct_count + wrong_count}"
-            if completed else f"Начат набор: {word_count} слов"
-        )
-        points_delta = correct_count * POINTS_CORRECT + wrong_count * POINTS_WRONG if completed else 0
+        title = "Учим слова"
+        description = f"{correct_count} из {correct_count + wrong_count} правильных · {int(row['score'] or 0)}%"
+    elif event_type in {"review_training", "word_training"}:
+        correct_count = int(row["correct_count"] or 0)
+        wrong_count = int(row["wrong_count"] or 0)
+        title = "Работа над ошибками" if event_type == "review_training" else "Тренировка слов"
+        description = f"{correct_count} из {correct_count + wrong_count} правильных · {int(row['score'] or 0)}%"
+    else:
+        title = "Тест уровня"
+        description = f"Результат: {int(row['score'] or 0)}%"
 
     return {
         "type": event_type,
@@ -775,14 +769,7 @@ def _activity_event_dict(row) -> dict:
         "event_at": _date_text(row["event_at"]),
         "title": title,
         "description": description,
-        "completed": completed,
-        "completed_steps": int(row["completed_steps"] or 0),
-        "total_steps": DAILY_LESSON_STEPS if event_type == "daily_lesson" else None,
         "score": row["score"],
-        "correct_count": row["correct_count"],
-        "wrong_count": row["wrong_count"],
-        "word_count": row["word_count"],
-        "points_delta": points_delta,
     }
 
 
@@ -1751,7 +1738,7 @@ async def api_activity_history(request: web.Request):
         "events": events,
         "summary": {
             "total_events": len(events),
-            "completed_events": sum(1 for event in events if event["completed"]),
+            "active_days": len({event["date"] for event in events if event["date"]}),
         },
     })
 
@@ -2076,9 +2063,11 @@ async def api_choice_answer(request: web.Request):
         return web.json_response({"error": "word not found"}, status=404)
 
     correct = selected_id == word_id
+    focus = "review" if body.get("focus") == "review" else "all"
     delta = POINTS_CORRECT if correct else POINTS_WRONG
     await database.update_points(user_id, delta)
     await database.update_progress(user_id, word_id, correct=correct)
+    await database.add_training_attempt(user_id, "choice", focus, correct)
 
     user = await database.get_user(user_id)
     return web.json_response({
@@ -2129,9 +2118,11 @@ async def api_input_answer(request: web.Request):
         return web.json_response({"error": "word not found"}, status=404)
 
     correct = answer == word["word"].lower()
+    focus = "review" if body.get("focus") == "review" else "all"
     delta = POINTS_CORRECT if correct else POINTS_WRONG
     await database.update_points(user_id, delta)
     await database.update_progress(user_id, word_id, correct=correct)
+    await database.add_training_attempt(user_id, "input", focus, correct)
 
     user = await database.get_user(user_id)
     return web.json_response({

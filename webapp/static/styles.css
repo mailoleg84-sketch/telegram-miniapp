@@ -572,44 +572,39 @@ input[type="text"]:focus { border-color: var(--button); }
   margin-bottom: 12px;
 }
 .activity-card {
+  padding: 15px 16px;
   margin-bottom: 0;
+  border-left: 3px solid var(--mint);
 }
-.activity-card.open {
-  box-shadow: inset 0 0 0 1.5px rgba(255, 149, 0, 0.35);
+.history-day {
+  margin-bottom: 18px;
+}
+.history-day-label {
+  margin: 0 0 8px 2px;
+  color: var(--hint);
+  font-size: 13px;
+  font-weight: 800;
 }
 .activity-head {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
 }
-.activity-head b,
-.activity-head span {
-  display: block;
+.activity-head b {
+  font-family: var(--font-display);
+  font-size: 16px;
 }
 .activity-head span {
-  margin-top: 3px;
+  flex: 0 0 auto;
   color: var(--hint);
   font-size: 13px;
 }
-.activity-head strong {
-  flex: 0 0 auto;
-  color: var(--button);
-  font-size: 22px;
-}
-.activity-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 10px;
-}
-.activity-meta span {
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: var(--bg);
+.activity-card p {
+  margin: 6px 0 0;
   color: var(--hint);
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.35;
 }
 
 .report-recommendations {
@@ -1596,15 +1591,6 @@ input[type="text"]:focus {
 
 .activity-card {
   box-shadow: var(--shadow-card);
-}
-
-.activity-card.open {
-  box-shadow: inset 3px 0 0 #ff9500, var(--shadow-card);
-}
-
-.activity-meta span {
-  border: 1px solid var(--line);
-  background: var(--canvas);
 }
 
 .result-card {

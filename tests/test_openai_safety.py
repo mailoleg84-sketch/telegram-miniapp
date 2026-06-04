@@ -162,6 +162,19 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertGreaterEqual(server_py.count("age_group = _normalized_age_group_for_user(user)"), 7)
         self.assertIn(".action-tile::after,\n.action-row::after {\n  display: none;", styles_css)
 
+        history_start = app_js.index("async function renderActivityHistory")
+        history_end = app_js.index("async function renderLeaderboard", history_start)
+        history_block = app_js[history_start:history_end]
+        self.assertIn("groupHistoryEvents", history_block)
+        self.assertIn("historyDayLabel", history_block)
+        for marker in ("Записей", "Завершено", "activity-meta", "points_delta", "word_count", "completed_steps"):
+            self.assertNotIn(marker, history_block, marker)
+
+        self.assertIn("CREATE TABLE IF NOT EXISTS training_attempts", database_py)
+        self.assertGreaterEqual(database_py.count("AND completed = TRUE"), 3)
+        self.assertNotIn("completed = TRUE OR completed_steps > 0", database_py)
+        self.assertNotIn("completed = TRUE OR CARDINALITY(word_ids) > 0", database_py)
+
         self.assertIn(".btn-secondary", styles_css)
         self.assertIn("background: var(--button);", styles_css)
         self.assertIn("color: var(--button-text);", styles_css)
@@ -260,9 +273,9 @@ class OpenAISafetyTests(unittest.TestCase):
 
         payload = _activity_event_dict(row)
 
-        self.assertEqual(payload["title"], "Тест по словам")
-        self.assertEqual(payload["description"], "3 правильно из 4")
-        self.assertEqual(payload["points_delta"], 27)
+        self.assertEqual(payload["title"], "Учим слова")
+        self.assertEqual(payload["description"], "3 из 4 правильных · 75%")
+        self.assertNotIn("points_delta", payload)
 
     def test_activity_event_formats_word_game(self):
         row = {
@@ -281,9 +294,29 @@ class OpenAISafetyTests(unittest.TestCase):
 
         payload = _activity_event_dict(row)
 
-        self.assertEqual(payload["title"], "Словесная охота")
-        self.assertEqual(payload["description"], "Поймано слов: 4 из 4")
-        self.assertEqual(payload["points_delta"], 4 * GAME_POINTS_CORRECT + GAME_PERFECT_BONUS_POINTS)
+        self.assertEqual(payload["title"], "Игровая практика")
+        self.assertEqual(payload["description"], "4 из 4 правильных · 100%")
+        self.assertNotIn("points_delta", payload)
+
+    def test_activity_event_formats_review_training(self):
+        row = {
+            "event_type": "review_training",
+            "event_at": "2026-06-01T11:00:00",
+            "event_date": "2026-06-01",
+            "completed": True,
+            "completed_steps": None,
+            "score": 80,
+            "correct_count": 4,
+            "wrong_count": 1,
+            "word_count": 5,
+            "rewarded": False,
+            "game_type": None,
+        }
+
+        payload = _activity_event_dict(row)
+
+        self.assertEqual(payload["title"], "Работа над ошибками")
+        self.assertEqual(payload["description"], "4 из 5 правильных · 80%")
 
     def test_parent_recommendations_prioritize_review(self):
         report = {
