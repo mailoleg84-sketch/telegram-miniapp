@@ -2101,6 +2101,146 @@ h1::after {
   border-top: 4px solid var(--sky);
 }
 
+.word-visual {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  max-width: 260px;
+  aspect-ratio: 1;
+  justify-self: center;
+  margin: 2px auto 4px;
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 22% 18%, rgba(47, 157, 244, 0.16), transparent 38%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.86), rgba(47, 157, 244, 0.08));
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-card);
+}
+
+.word-visual.small {
+  width: 58px;
+  height: 58px;
+  min-width: 58px;
+  border-radius: 14px;
+  margin: 0;
+}
+
+.word-visual .word-image {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.word-visual.loading .word-image,
+.word-visual.failed .word-image {
+  opacity: 0;
+}
+
+.word-image-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  color: var(--hint);
+  font-size: 14px;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.word-visual.loaded .word-image-placeholder,
+.word-visual.loaded .word-image-retry,
+.word-visual.loading .word-image-retry {
+  display: none;
+}
+
+.word-image-retry {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 12px;
+  min-height: 36px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--button);
+  color: var(--button-text);
+  font-weight: 800;
+  box-shadow: var(--shadow-control);
+}
+
+.visual-note {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(255, 149, 0, 0.12);
+  color: #9a5a00;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.word-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.word-detail span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--hint);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.word-detail b {
+  display: block;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.35;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
+}
+
+.word-explain,
+.word-hint {
+  padding: 11px 12px;
+  border-radius: var(--radius-card);
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
+}
+
+.word-explain {
+  background: rgba(47, 157, 244, 0.08);
+  color: var(--text);
+}
+
+.word-hint {
+  background: rgba(46, 196, 182, 0.10);
+  color: var(--text);
+}
+
 .dictionary-search-card {
   position: sticky;
   top: 8px;

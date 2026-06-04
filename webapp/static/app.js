@@ -252,6 +252,36 @@ function bindPronunciationButtons(root = document) {
       playWordAudio(button.dataset.word, button);
     };
   });
+  bindWordImageStates(root);
+}
+
+function bindWordImageStates(root = document) {
+  root.querySelectorAll(".word-visual").forEach(box => {
+    const image = box.querySelector("img");
+    const retry = box.querySelector(".word-image-retry");
+    if (!image) return;
+    const markLoaded = () => {
+      box.classList.remove("loading", "failed");
+      box.classList.add("loaded");
+    };
+    const markFailed = () => {
+      box.classList.remove("loading", "loaded");
+      box.classList.add("failed");
+    };
+    if (image.complete && image.naturalWidth > 0) markLoaded();
+    image.onload = markLoaded;
+    image.onerror = markFailed;
+    if (retry) {
+      retry.onclick = () => {
+        haptic();
+        box.classList.remove("failed", "loaded");
+        box.classList.add("loading");
+        const base = image.dataset.src || image.src.split("&retry=")[0];
+        image.dataset.src = base;
+        image.src = `${base}${base.includes("?") ? "&" : "?"}retry=${Date.now()}`;
+      };
+    }
+  });
 }
 
 async function apiSdp(path, sdp) {
@@ -324,15 +354,29 @@ function pronunciationButtonHtml(word, small = false) {
 
 function wordImageHtml(wordData, small = false) {
   const src = wordData?.image_url || "";
-  if (!src) return "";
-  const label = wordData?.word || wordData?.translation || "word";
-  return `<img class="word-image ${small ? "small" : ""}" src="${esc(src)}" alt="${esc(label)}" loading="lazy">`;
+  const label = wordData?.image_alt || wordData?.word || wordData?.translation || "word";
+  if (!src) {
+    return `
+      <div class="word-visual failed ${small ? "small" : ""}">
+        <div class="word-image-placeholder">Сцена появится позже</div>
+      </div>`;
+  }
+  return `
+    <div class="word-visual loading ${small ? "small" : ""}">
+      <img class="word-image ${small ? "small" : ""}" src="${esc(src)}" data-src="${esc(src)}" alt="${esc(label)}" loading="lazy">
+      <div class="word-image-placeholder">Готовим сцену…</div>
+      <button type="button" class="word-image-retry">Загрузить картинку ещё раз</button>
+    </div>`;
 }
 
 function wordStudyCard(wordData, options = {}) {
   const badge = options.badge || "";
   const prompt = options.prompt || "";
   const showTranslation = options.showTranslation !== false;
+  const showLearningDetails = options.showLearningDetails !== false;
+  const example = wordData.example_sentence || wordData.example || "";
+  const showRussianHint = wordData.show_russian_hint !== false && wordData.russian_hint;
+  const conditionalVisual = wordData.image_needs_review || wordData.needs_review || Number(wordData.image_confidence || 1) < 0.7;
   return `
     <div class="card word-card ${options.compact ? "compact" : ""}">
       <div class="word-card-top">
@@ -340,9 +384,22 @@ function wordStudyCard(wordData, options = {}) {
         ${pronunciationButtonHtml(wordData.word)}
       </div>
       ${options.showImage ? wordImageHtml(wordData) : ""}
+      ${options.showImage && conditionalVisual ? `<div class="visual-note">Условная сцена: смотри пример и подсказку</div>` : ""}
       <div class="word-main">${esc(wordData.word)}</div>
       ${wordData.transcription ? `<div class="word-transcription">${esc(wordData.transcription)}</div>` : ""}
       ${showTranslation && wordData.translation ? `<div class="word-translation">${esc(wordData.translation)}</div>` : ""}
+      ${showLearningDetails && example ? `
+        <div class="word-detail">
+          <div>
+            <span>Пример</span>
+            <b>${esc(example)}</b>
+          </div>
+          ${pronunciationButtonHtml(example, true)}
+        </div>` : ""}
+      ${showLearningDetails && wordData.simple_meaning ? `
+        <div class="word-explain">${esc(wordData.simple_meaning)}</div>` : ""}
+      ${showLearningDetails && showRussianHint ? `
+        <div class="word-hint">${esc(wordData.russian_hint)}</div>` : ""}
       ${prompt ? `<p class="hint mt-12">${esc(prompt)}</p>` : ""}
     </div>`;
 }
@@ -909,7 +966,7 @@ function renderQuizQuestion(index) {
   app.innerHTML = `
     <div class="screen">
       <h1>Тест по словам</h1>
-      ${wordStudyCard(q, { badge: progress, prompt: q.prompt, compact: true, showTranslation: false })}
+      ${wordStudyCard(q, { badge: progress, prompt: q.prompt, compact: true, showTranslation: false, showLearningDetails: false })}
       ${q.options.map(o => `
         <button class="btn btn-secondary answer" data-id="${o.id}">${esc(o.translation)}</button>
       `).join("")}
@@ -1170,7 +1227,7 @@ async function renderChoiceTraining(focus = "all") {
       <div class="screen">
         <h1>Выбери перевод</h1>
         ${task.review_empty ? `<div class="card"><p class="hint">Ошибок для повторения пока нет, поэтому даю обычное слово.</p></div>` : ""}
-        ${wordStudyCard(task, { compact: true, showTranslation: false })}
+        ${wordStudyCard(task, { compact: true, showTranslation: false, showLearningDetails: false })}
         ${task.options.map(option => `
           <button class="btn btn-secondary choice-answer" data-id="${option.id}">${esc(option.translation)}</button>
         `).join("")}
@@ -1380,7 +1437,7 @@ function renderDailyQuizQuestion(index) {
   app.innerHTML = `
     <div class="screen">
       <h1>Урок: мини-тест</h1>
-      ${wordStudyCard(q, { badge: `Шаг 2 из 4 · ${index + 1}/${state.dailyQuiz.questions.length}`, prompt: "Выбери перевод", compact: true, showTranslation: false })}
+      ${wordStudyCard(q, { badge: `Шаг 2 из 4 · ${index + 1}/${state.dailyQuiz.questions.length}`, prompt: "Выбери перевод", compact: true, showTranslation: false, showLearningDetails: false })}
       ${q.options.map(o => `
         <button class="btn btn-secondary daily-answer" data-id="${o.id}">${esc(o.translation)}</button>
       `).join("")}

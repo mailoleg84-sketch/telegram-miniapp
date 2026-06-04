@@ -39,6 +39,7 @@ from webapp.lesson_engine import (
     public_lesson_state,
 )
 from webapp.openai_service import chat_reply, create_realtime_call, create_realtime_client_secret, public_openai_error, synthesize_speech, transcribe_audio
+from webapp.vocabulary_visualizer import build_vocabulary_visual, vocabulary_image_url
 
 log = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
@@ -577,6 +578,119 @@ def _word_image_svg(word: str, topic: str) -> str:
 </svg>"""
 
 
+def _vocabulary_visual_svg(word: str, topic: str, visual_type: str) -> str:
+    clean_word = " ".join(str(word or "word").split()).lower()[:48]
+    clean_topic = " ".join(str(topic or "basic").split()).lower()[:32]
+    clean_type = " ".join(str(visual_type or "object").split()).lower()
+    seed = hashlib.sha1(f"{clean_word}:{clean_topic}:{clean_type}".encode("utf-8")).hexdigest()
+    bg, color, icon = _word_image_style(clean_word, clean_topic, seed)
+    accent = f"#{seed[:6]}"
+    icon_svg = _topic_icon_svg(icon, color)
+
+    def panel(x: int, y: int, w: int = 156, h: int = 210) -> str:
+        return f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="28" fill="#fff" opacity=".82" stroke="{color}" stroke-opacity=".14"/>'
+
+    if clean_type == "object":
+        return _word_image_svg(clean_word, clean_topic)
+    if clean_type == "action":
+        scene = f"""
+        <circle cx="190" cy="128" r="36" fill="{color}"/>
+        <path d="M190 164 l-38 70 M190 164 l50 58 M188 178 l-65 10 M188 178 l76-22" stroke="{color}" stroke-width="18" stroke-linecap="round"/>
+        <path d="M78 218 C124 202 166 202 214 218 C250 230 294 230 334 218" fill="none" stroke="#34c759" stroke-width="14" opacity=".55" stroke-linecap="round"/>
+        <path d="M92 124 h46 M78 164 h54 M280 106 h42" stroke="{accent}" stroke-width="12" opacity=".42" stroke-linecap="round"/>
+        <g transform="translate(214 62) scale(.42)">{icon_svg}</g>"""
+    elif clean_type == "contrast":
+        scene = f"""
+        <circle cx="156" cy="174" r="82" fill="{color}" opacity=".86"/>
+        <circle cx="286" cy="205" r="34" fill="{accent}" opacity=".62"/>
+        <path d="M108 274 h220" stroke="#34c759" stroke-width="14" opacity=".45" stroke-linecap="round"/>
+        <path d="M130 130 C146 106 176 106 193 130" fill="none" stroke="#fff" stroke-width="9" opacity=".6" stroke-linecap="round"/>"""
+    elif clean_type == "emotion":
+        mouth = "M162 174 C178 206 226 206 242 174" if clean_word not in {"sad", "angry", "scared", "worried", "tired"} else "M162 199 C182 176 222 176 242 199"
+        brows = "M139 120 l45-12 M208 108 l45 12" if clean_word in {"angry", "worried"} else "M139 110 h45 M208 110 h45"
+        scene = f"""
+        <circle cx="196" cy="164" r="96" fill="{color}" opacity=".9"/>
+        <circle cx="160" cy="148" r="12" fill="#1f2933"/>
+        <circle cx="232" cy="148" r="12" fill="#1f2933"/>
+        <path d="{mouth}" fill="none" stroke="#1f2933" stroke-width="12" stroke-linecap="round"/>
+        <path d="{brows}" stroke="#1f2933" stroke-width="9" stroke-linecap="round" opacity=".7"/>
+        <circle cx="302" cy="88" r="34" fill="{accent}" opacity=".18"/>"""
+    elif clean_type == "spatial_relation":
+        positions = {
+            "in": (180, 160),
+            "on": (190, 88),
+            "under": (190, 248),
+            "behind": (146, 156),
+            "between": (196, 160),
+            "above": (190, 70),
+        }
+        bx, by = positions.get(clean_word, (196, 160))
+        extra_box = '<rect x="252" y="128" width="90" height="90" rx="16" fill="#bfe7ff" stroke="#2481cc" stroke-width="8" opacity=".72"/>' if clean_word == "between" else ""
+        scene = f"""
+        <rect x="112" y="126" width="132" height="112" rx="22" fill="#dff3ff" stroke="{color}" stroke-width="10"/>
+        {extra_box}
+        <circle cx="{bx}" cy="{by}" r="34" fill="{accent}"/>
+        <path d="M92 276 h230" stroke="#34c759" stroke-width="14" opacity=".42" stroke-linecap="round"/>"""
+    elif clean_type == "situation":
+        if clean_word == "honest":
+            prop = '<rect x="186" y="166" width="48" height="34" rx="8" fill="#8a5a2b"/><circle cx="222" cy="176" r="6" fill="#ffcc00"/>'
+        elif clean_word == "careful":
+            prop = '<path d="M184 150 h54 v74 c0 15-12 27-27 27s-27-12-27-27Z" fill="#bfe7ff" stroke="#2481cc" stroke-width="7"/><path d="M190 184 h42" stroke="#fff" stroke-width="8" opacity=".8"/>'
+        elif clean_word == "proud":
+            prop = '<rect x="168" y="135" width="74" height="60" rx="10" fill="#fff" stroke="#ffcc00" stroke-width="8"/><circle cx="205" cy="165" r="15" fill="#ffcc00"/>'
+        elif clean_word == "worried":
+            prop = '<circle cx="218" cy="152" r="38" fill="#fff" stroke="#7c5cff" stroke-width="8"/><path d="M218 130 v25 l18 12" stroke="#7c5cff" stroke-width="8" stroke-linecap="round"/>'
+        else:
+            prop = '<path d="M196 158 C154 126 113 164 144 202 C163 226 186 223 196 245 C206 223 229 226 248 202 C279 164 238 126 196 158Z" fill="#ff5c8a"/>'
+        scene = f"""
+        <circle cx="136" cy="124" r="34" fill="{color}"/>
+        <path d="M82 248 C92 196 111 168 136 168 C164 168 184 197 194 248Z" fill="{color}" opacity=".78"/>
+        <circle cx="270" cy="124" r="34" fill="{accent}" opacity=".7"/>
+        <path d="M216 248 C226 196 245 168 270 168 C298 168 318 197 328 248Z" fill="{accent}" opacity=".5"/>
+        {prop}
+        <path d="M118 270 h172" stroke="#34c759" stroke-width="13" opacity=".38" stroke-linecap="round"/>"""
+    elif clean_type == "cause_effect":
+        scene = f"""
+        {panel(74, 66)}{panel(244, 66)}
+        <path d="M104 120 h95c21 0 38-17 38-38s-17-38-38-38c-7 0-14 2-20 5c-12-18-33-29-56-29c-36 0-65 27-69 62c-24 3-42 23-42 47c0 26 21 47 47 47Z" fill="{color}" opacity=".78"/>
+        <path d="M112 190 l-13 31 M162 190 l-13 31 M210 190 l-13 31" stroke="{color}" stroke-width="9" stroke-linecap="round"/>
+        <circle cx="306" cy="122" r="31" fill="{accent}" opacity=".72"/>
+        <path d="M306 153 v58 M306 170 l-42 36 M306 170 l42 36" stroke="{accent}" stroke-width="13" stroke-linecap="round"/>
+        <path d="M206 172 h48" stroke="#1f2933" stroke-width="10" opacity=".35" stroke-linecap="round"/>"""
+    elif clean_type == "two_panel_comic":
+        scene = f"""
+        {panel(72, 58)}{panel(246, 58)}
+        <path d="M104 116 h104c18 0 32-14 32-32s-14-32-32-32c-7 0-14 2-20 6c-11-16-29-26-50-26c-33 0-60 24-65 57" fill="{color}" opacity=".7"/>
+        <path d="M114 170 l-12 30 M158 170 l-12 30 M202 170 l-12 30" stroke="{color}" stroke-width="8" stroke-linecap="round"/>
+        <circle cx="320" cy="124" r="55" fill="#ffcc00"/>
+        <circle cx="302" cy="110" r="7" fill="#1f2933"/><circle cx="338" cy="110" r="7" fill="#1f2933"/>
+        <path d="M298 136 C311 154 334 154 347 136" fill="none" stroke="#1f2933" stroke-width="8" stroke-linecap="round"/>
+        <path d="M224 162 h38" stroke="#1f2933" stroke-width="10" opacity=".22" stroke-linecap="round"/>"""
+    elif clean_type == "grammar_diagram":
+        scene = f"""
+        <circle cx="156" cy="126" r="35" fill="{color}"/>
+        <path d="M156 160 v68 M156 182 l-52 40 M156 182 l62 34" stroke="{color}" stroke-width="16" stroke-linecap="round"/>
+        <circle cx="272" cy="196" r="48" fill="none" stroke="{accent}" stroke-width="14"/>
+        <path d="M250 160 C262 128 301 128 314 160" fill="{accent}" opacity=".55"/>
+        <path d="M245 106 C262 78 304 78 321 106" fill="none" stroke="{accent}" stroke-width="14" stroke-linecap="round"/>
+        <path d="M103 262 h205" stroke="#34c759" stroke-width="14" opacity=".4" stroke-linecap="round"/>"""
+    else:
+        scene = f"""
+        <rect x="102" y="86" width="188" height="140" rx="24" fill="#fff" stroke="{color}" stroke-width="10" opacity=".86"/>
+        <circle cx="328" cy="118" r="38" fill="{accent}" opacity=".32"/>
+        <path d="M138 132 h82 M138 170 h118" stroke="{color}" stroke-width="13" stroke-linecap="round" opacity=".28"/>
+        <g transform="translate(144 142) scale(.38)">{icon_svg}</g>
+        <path d="M92 260 h220" stroke="#34c759" stroke-width="14" opacity=".38" stroke-linecap="round"/>"""
+
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="vocabulary visual scene">
+  <rect width="512" height="512" rx="54" fill="{bg}"/>
+  <circle cx="428" cy="80" r="58" fill="{accent}" opacity=".12"/>
+  <circle cx="84" cy="418" r="82" fill="{color}" opacity=".09"/>
+  <circle cx="256" cy="256" r="176" fill="#fff" opacity=".64"/>
+  <g transform="translate(60 94) scale(1.02)">{scene}</g>
+</svg>"""
+
+
 # ---------- Middleware ----------
 
 @web.middleware
@@ -606,14 +720,26 @@ async def auth_middleware(request: web.Request, handler):
 
 # ---------- Helpers ----------
 
-def _word_dict(word) -> dict:
+def _word_dict(word, learner_level: str = "beginner") -> dict:
     if not word:
         return {}
-    try:
-        transcription = word["transcription"] or ""
-    except (KeyError, IndexError, TypeError):
-        transcription = ""
+    def value(key: str, default=""):
+        try:
+            item = word[key]
+        except (KeyError, IndexError, TypeError):
+            return default
+        return default if item is None else item
+
+    transcription = value("transcription", "")
     topic = word["topic"] or "basic"
+    visual = build_vocabulary_visual(
+        word=value("word", ""),
+        translation=value("translation", ""),
+        example_sentence=value("example", ""),
+        topic=topic,
+        age_group=value("age_group", ""),
+        level=learner_level,
+    )
     return {
         "id": word["id"],
         "word": word["word"],
@@ -622,7 +748,19 @@ def _word_dict(word) -> dict:
         "example": word["example"] or "",
         "topic": topic,
         "age_group": word["age_group"] or "",
-        "image_url": _word_image_url(word["word"], topic),
+        "part_of_speech": visual["part_of_speech"],
+        "visual_type": visual["visual_type"],
+        "image_prompt": visual["image_prompt"],
+        "image_url": visual["image_url"],
+        "image_alt": visual["image_alt"],
+        "example_sentence": visual["example_sentence"],
+        "simple_meaning": visual["simple_meaning"],
+        "russian_hint": visual["russian_hint"],
+        "image_confidence": visual["image_confidence"],
+        "image_needs_review": visual["needs_review"],
+        "needs_review": visual["needs_review"],
+        "generation_status": visual["generation_status"],
+        "show_russian_hint": visual["show_russian_hint"],
     }
 
 
@@ -1820,7 +1958,7 @@ async def api_learn_next(request: web.Request):
     exclude_id = body.get("current_id")
     age_group = _normalized_age_group_for_user(user)
     word = await database.get_practice_word(user_id, exclude_id=exclude_id, age_group=age_group)
-    return web.json_response(_word_dict(word))
+    return web.json_response(_word_dict(word, _level_for_user(user)))
 
 
 async def api_dictionary(request: web.Request):
@@ -1872,7 +2010,7 @@ async def api_vocab_start(request: web.Request):
         "session_id": session["id"],
         "age_group": age_group,
         "age_label": _age_label(age_group),
-        "words": [_word_dict(w) for w in words],
+        "words": [_word_dict(w, _level_for_user(user)) for w in words],
     })
 
 
@@ -2500,6 +2638,19 @@ async def word_image_handler(request: web.Request):
     )
 
 
+async def vocabulary_visual_handler(request: web.Request):
+    word = " ".join((request.query.get("w") or "word").split())[:48]
+    topic = " ".join((request.query.get("t") or "basic").split())[:32]
+    visual_type = " ".join((request.query.get("v") or "object").split())[:32]
+    return web.Response(
+        text=_vocabulary_visual_svg(word, topic, visual_type),
+        content_type="image/svg+xml",
+        headers={
+            "Cache-Control": "public, max-age=604800",
+        },
+    )
+
+
 # ---------- App factory ----------
 
 def create_app(
@@ -2512,6 +2663,7 @@ def create_app(
 
     app.router.add_get("/",        index_handler)
     app.router.add_get("/word-image.svg", word_image_handler)
+    app.router.add_get("/vocabulary-visual.svg", vocabulary_visual_handler)
     app.router.add_get("/api/me",  api_me)
     app.router.add_get("/api/leaderboard",              api_leaderboard)
     app.router.add_get("/api/learning/path",            api_learning_path)

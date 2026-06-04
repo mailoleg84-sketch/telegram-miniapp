@@ -339,7 +339,7 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertEqual(payload["status"], "review")
         self.assertEqual(payload["status_label"], "повторить")
         self.assertEqual(payload["wrong_count"], 2)
-        self.assertTrue(payload["image_url"].startswith("/word-image.svg?"))
+        self.assertTrue(payload["image_url"].startswith("/vocabulary-visual.svg?"))
         self.assertIn("w=apple", payload["image_url"])
 
     def test_activity_event_formats_word_test(self):

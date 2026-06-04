@@ -11,6 +11,7 @@ import asyncpg
 
 from config import DATABASE_URL
 from data.words import LEARNING_WORDS
+from webapp.vocabulary_visualizer import build_vocabulary_visual
 
 # Глобальный пул соединений
 _pool: asyncpg.Pool | None = None
@@ -95,6 +96,17 @@ async def init_db() -> None:
         await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS transcription TEXT")
         await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS topic TEXT DEFAULT 'basic'")
         await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS age_group TEXT DEFAULT '8_10'")
+        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS part_of_speech TEXT")
+        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS visual_type TEXT")
+        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS image_prompt TEXT")
+        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS image_url TEXT")
+        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS image_alt TEXT")
+        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS example_sentence TEXT")
+        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS simple_meaning TEXT")
+        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS russian_hint TEXT")
+        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS image_confidence REAL DEFAULT 0")
+        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS needs_review BOOLEAN DEFAULT FALSE")
+        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS generation_status TEXT DEFAULT 'pending'")
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS user_progress (
                 user_id        BIGINT,
@@ -236,19 +248,76 @@ async def init_db() -> None:
 
 async def _seed_words(conn) -> None:
     active_words = [item[0] for item in LEARNING_WORDS]
+    seed_rows = []
+    for word, translation, example, topic, age_group, transcription in LEARNING_WORDS:
+        visual = build_vocabulary_visual(
+            word=word,
+            translation=translation,
+            example_sentence=example,
+            topic=topic,
+            age_group=age_group,
+        )
+        seed_rows.append((
+            word,
+            translation,
+            example,
+            topic,
+            age_group,
+            transcription,
+            visual["part_of_speech"],
+            visual["visual_type"],
+            visual["image_prompt"],
+            visual["image_url"],
+            visual["image_alt"],
+            visual["example_sentence"],
+            visual["simple_meaning"],
+            visual["russian_hint"],
+            visual["image_confidence"],
+            visual["needs_review"],
+            visual["generation_status"],
+        ))
     await conn.executemany(
         """
-        INSERT INTO words (word, translation, example, topic, age_group, transcription)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO words (
+            word,
+            translation,
+            example,
+            topic,
+            age_group,
+            transcription,
+            part_of_speech,
+            visual_type,
+            image_prompt,
+            image_url,
+            image_alt,
+            example_sentence,
+            simple_meaning,
+            russian_hint,
+            image_confidence,
+            needs_review,
+            generation_status
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
         ON CONFLICT (word)
         DO UPDATE SET
             translation = EXCLUDED.translation,
             transcription = EXCLUDED.transcription,
             example = EXCLUDED.example,
             topic = EXCLUDED.topic,
-            age_group = EXCLUDED.age_group
+            age_group = EXCLUDED.age_group,
+            part_of_speech = EXCLUDED.part_of_speech,
+            visual_type = EXCLUDED.visual_type,
+            image_prompt = EXCLUDED.image_prompt,
+            image_url = EXCLUDED.image_url,
+            image_alt = EXCLUDED.image_alt,
+            example_sentence = EXCLUDED.example_sentence,
+            simple_meaning = EXCLUDED.simple_meaning,
+            russian_hint = EXCLUDED.russian_hint,
+            image_confidence = EXCLUDED.image_confidence,
+            needs_review = EXCLUDED.needs_review,
+            generation_status = EXCLUDED.generation_status
         """,
-        LEARNING_WORDS,
+        seed_rows,
     )
     await conn.execute(
         """
