@@ -39,6 +39,8 @@ class LessonEngineTests(unittest.TestCase):
         state = advance_lesson_state(state, "assistant", "Поговорим про любимую еду.")
         state = advance_lesson_state(state, "user", "А у меня еще есть собака")
         self.assertEqual(state["current_topic"], "food")
+        self.assertEqual(state["support_mode"], "bridge")
+        self.assertIn("Естественно свяжи", lesson_prompt_context(state)["lesson_state_instruction"])
 
         state = advance_lesson_state(state, "user", "Давай сменим тему на животных")
         self.assertEqual(state["current_topic"], "animals")

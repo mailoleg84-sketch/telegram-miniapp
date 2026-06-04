@@ -61,7 +61,7 @@ TOPIC_PLANS = {
         _topic("friends", "Друзья", "описать друга доброй фразой", "My friend is funny.", ["friend", "kind", "funny"], ["friends", "friend", "друзья", "друг"]),
         _topic("games", "Игры", "рассказать о любимой игре", "I like this game because it is fun.", ["game", "level", "team"], ["games", "game", "игры", "игра"]),
         _topic("sports", "Спорт", "сказать, каким спортом нравится заниматься", "I like playing football.", ["sport", "team", "score"], ["sports", "sport", "спорт", "футбол"]),
-        _topic("animals", "Животные", "описать любимое животное", "My favorite animal is a dolphin.", ["wild", "fast", "friendly"], ["animals", "animal", "животные", "животное", "животных"]),
+        _topic("animals", "Животные", "описать любимое животное", "My favorite animal is a dolphin.", ["wild", "fast", "friendly"], ["animals", "animal", "животные", "животное", "животных", "кошка", "собака"]),
         _topic("superheroes", "Супергерои", "описать способность героя", "My hero can fly.", ["hero", "power", "brave"], ["superheroes", "superhero", "супергерой", "герой"]),
         _topic("holidays", "Каникулы", "рассказать об идеальном дне каникул", "On holiday, I want to swim.", ["holiday", "trip", "beach"], ["holidays", "holiday", "каникулы", "отпуск"]),
         _topic("food", "Любимая еда", "заказать любимую еду", "Can I have a pizza, please?", ["menu", "pizza", "juice"], ["food", "еда", "еду", "пицца", "кафе"]),
@@ -269,6 +269,10 @@ def advance_lesson_state(state: dict[str, Any], role: str, text: str) -> dict[st
             topic_id = _detect_topic(updated, clean)
             if topic_id:
                 return _select_topic(updated, topic_id)
+        else:
+            mentioned_topic = _detect_topic(updated, clean)
+            if mentioned_topic and mentioned_topic != updated.get("current_topic"):
+                updated["support_mode"] = "bridge"
 
         if not updated.get("current_topic") and _contains_marker(clean, AUTO_CHOOSE_MARKERS):
             suggestions = updated.get("topic_suggestions") or []
@@ -356,13 +360,18 @@ def lesson_prompt_context(state: dict[str, Any] | None) -> dict[str, str]:
         instruction += " Ребенок устал: сохрани тему, но замени следующий шаг на очень легкую игру или закончи урок."
     elif support_mode == "correction":
         instruction += " Исправь только одну главную ошибку мягко: похвали попытку, дай естественный вариант и одну легкую практику."
+    elif support_mode == "bridge":
+        instruction += (
+            " Ребенок упомянул другую тему. Не переключай урок и не говори, что возвращаешь его к теме. "
+            "Естественно свяжи его мысль с текущей темой через один живой вопрос."
+        )
 
     avatar_state = "idle"
     if state.get("phase") == "wrapup":
         avatar_state = "praising"
     elif state.get("support_mode") == "correction":
         avatar_state = "correcting"
-    elif state.get("support_mode") in {"confused", "tired"}:
+    elif state.get("support_mode") in {"confused", "tired", "bridge"}:
         avatar_state = "encouraging"
     return {
         "lesson_phase": phase,
