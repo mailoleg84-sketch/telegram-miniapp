@@ -2161,6 +2161,25 @@ h1::after {
   display: none;
 }
 
+.word-visual.generating {
+  border-color: rgba(47, 157, 244, 0.42);
+}
+
+.word-visual.generating .word-image {
+  opacity: 0.72;
+}
+
+.word-visual.generating .word-image-placeholder {
+  display: grid;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(8px);
+  font-weight: 800;
+}
+
+.word-visual.generated-ai {
+  background: #fff;
+}
+
 .word-image-retry {
   position: absolute;
   left: 14px;

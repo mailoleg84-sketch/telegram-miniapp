@@ -1,4 +1,5 @@
 """Обёртка над OpenAI API: ИИ-репетитор английского."""
+import base64
 from dataclasses import dataclass
 import hashlib
 from io import BytesIO
@@ -13,6 +14,12 @@ from config import (
     CHAT_MAX_TOKENS,
     OPENAI_INPUT_COST_PER_1M,
     OPENAI_API_KEY,
+    OPENAI_IMAGE_FORMAT,
+    OPENAI_IMAGE_MAX_RETRIES,
+    OPENAI_IMAGE_MODEL,
+    OPENAI_IMAGE_QUALITY,
+    OPENAI_IMAGE_SIZE,
+    OPENAI_IMAGE_VISION_MODEL,
     OPENAI_MODEL,
     OPENAI_OUTPUT_COST_PER_1M,
     OPENAI_PROMPT_FOR_VOICE,
@@ -62,6 +69,11 @@ def openai_config_status() -> dict:
         "realtime_voice": OPENAI_REALTIME_VOICE,
         "realtime_transcribe_model": OPENAI_REALTIME_TRANSCRIBE_MODEL,
         "realtime_reasoning_effort": OPENAI_REALTIME_REASONING_EFFORT,
+        "image_model": OPENAI_IMAGE_MODEL,
+        "image_size": OPENAI_IMAGE_SIZE,
+        "image_quality": OPENAI_IMAGE_QUALITY,
+        "image_format": OPENAI_IMAGE_FORMAT,
+        "image_vision_model": OPENAI_IMAGE_VISION_MODEL,
         "prompt_id_configured": bool(OPENAI_PROMPT_ID),
         "prompt_version": OPENAI_PROMPT_VERSION,
         "prompt_for_voice": OPENAI_PROMPT_FOR_VOICE,
@@ -132,6 +144,221 @@ class ChatReply:
     output_tokens: int = 0
     total_tokens: int = 0
     cost_usd: float = 0.0
+
+
+@dataclass(frozen=True)
+class VocabularyImageResult:
+    image_bytes: bytes
+    content_type: str
+    model: str
+    prompt: str
+    review: dict
+    generation_status: str
+    attempts: int = 1
+
+
+def _default_image_review(reason: str = "") -> dict:
+    return {
+        "is_safe": True,
+        "has_text": False,
+        "supports_meaning": True,
+        "ambiguity_level": "unknown",
+        "should_regenerate": False,
+        "reason": reason or "Vision review was not available.",
+    }
+
+
+def _extract_json_object(text: str) -> dict:
+    clean_text = (text or "").strip()
+    try:
+        return json.loads(clean_text)
+    except Exception:
+        pass
+    match = re.search(r"\{.*\}", clean_text, re.DOTALL)
+    if not match:
+        return {}
+    try:
+        return json.loads(match.group(0))
+    except Exception:
+        return {}
+
+
+def _normalized_image_format() -> str:
+    image_format = (OPENAI_IMAGE_FORMAT or "png").lower()
+    return image_format if image_format in {"png", "jpeg", "webp"} else "png"
+
+
+def _image_content_type(image_format: str) -> str:
+    return {
+        "jpeg": "image/jpeg",
+        "webp": "image/webp",
+    }.get(image_format, "image/png")
+
+
+def _image_generation_prompt(visual: dict, retry_reason: str = "") -> str:
+    word = str(visual.get("word") or "").strip()
+    translation = str(visual.get("translation") or "").strip()
+    visual_type = str(visual.get("visual_type") or "situation").strip()
+    prompt = str(visual.get("image_prompt") or "").strip()
+    example = str(visual.get("example_sentence") or visual.get("example") or "").strip()
+    simple_meaning = str(visual.get("simple_meaning") or "").strip()
+    russian_hint = str(visual.get("russian_hint") or "").strip()
+    retry_note = (
+        f"\nPrevious review problem to fix: {retry_reason[:280]}"
+        if retry_reason
+        else ""
+    )
+    return f"""Create one high-quality educational vocabulary card illustration.
+
+English word: {word}
+Russian translation: {translation}
+Visual type: {visual_type}
+Example sentence: {example}
+Simple meaning: {simple_meaning}
+Russian hint: {russian_hint}
+
+Scene prompt:
+{prompt}
+
+Important:
+- The image must contain no text, no letters, no captions, no labels, no logo, and no watermark.
+- For complex words, the image is only a memory cue. It must support the example and meaning, not replace the translation.
+- Keep it child-safe, friendly, non-scary, and suitable for children 5-18.
+- Use one consistent premium EdTech illustration style.
+- Avoid generic portraits for abstract words; show a concrete situation instead.{retry_note}"""
+
+
+async def evaluate_vocabulary_image(image_bytes: bytes, visual: dict) -> dict:
+    """Checks whether a generated vocabulary image is safe and useful enough."""
+    if _client is None:
+        raise RuntimeError("OPENAI_API_KEY is not configured")
+
+    image_format = _normalized_image_format()
+    data_url = (
+        f"data:{_image_content_type(image_format)};base64,"
+        + base64.b64encode(image_bytes).decode("ascii")
+    )
+    word = str(visual.get("word") or "").strip()
+    payload = {
+        "word": word,
+        "translation": str(visual.get("translation") or ""),
+        "example_sentence": str(visual.get("example_sentence") or ""),
+        "simple_meaning": str(visual.get("simple_meaning") or ""),
+        "visual_type": str(visual.get("visual_type") or ""),
+    }
+    response = await _client.responses.create(
+        model=OPENAI_IMAGE_VISION_MODEL,
+        input=[{
+            "role": "user",
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": (
+                        "Does this image help a child understand and remember the English word "
+                        f"{word!r} in the context of this card?\n\n"
+                        f"Card JSON:\n{json.dumps(payload, ensure_ascii=False)}\n\n"
+                        "Evaluate:\n"
+                        "1. Is the image child-safe?\n"
+                        "2. Is there any text, letters, logos, or watermark?\n"
+                        "3. Does the image support the meaning?\n"
+                        "4. Is the image too ambiguous?\n"
+                        "5. Should it be regenerated?\n\n"
+                        "Return only JSON with keys: is_safe, has_text, supports_meaning, "
+                        "ambiguity_level, should_regenerate, reason."
+                    ),
+                },
+                {"type": "input_image", "image_url": data_url},
+            ],
+        }],
+        instructions="You are a strict quality checker for child-safe EdTech vocabulary images. Return valid JSON only.",
+        max_output_tokens=260,
+    )
+    review = _extract_json_object(response.output_text or "")
+    if not review:
+        review = _default_image_review("Vision model did not return parseable JSON.")
+    review["is_safe"] = bool(review.get("is_safe", True))
+    review["has_text"] = bool(review.get("has_text", False))
+    review["supports_meaning"] = bool(review.get("supports_meaning", True))
+    review["should_regenerate"] = bool(review.get("should_regenerate", False))
+    review["ambiguity_level"] = str(review.get("ambiguity_level") or "unknown")
+    review["reason"] = str(review.get("reason") or "")
+    return review
+
+
+def _review_accepts_image(review: dict) -> bool:
+    if not review.get("is_safe", True):
+        return False
+    if review.get("has_text", False):
+        return False
+    if review.get("should_regenerate", False) and not review.get("supports_meaning", True):
+        return False
+    return True
+
+
+async def generate_vocabulary_image(visual: dict, user_id: int | str) -> VocabularyImageResult:
+    """Generates one vocabulary image and runs a vision quality check."""
+    if _client is None:
+        raise RuntimeError("OPENAI_API_KEY is not configured")
+
+    image_format = _normalized_image_format()
+    content_type = _image_content_type(image_format)
+    retry_reason = ""
+    last_bytes = b""
+    last_review: dict = {}
+    max_attempts = max(1, min(3, 1 + OPENAI_IMAGE_MAX_RETRIES))
+
+    for attempt in range(1, max_attempts + 1):
+        prompt = _image_generation_prompt(visual, retry_reason=retry_reason)
+        request = {
+            "model": OPENAI_IMAGE_MODEL,
+            "prompt": prompt,
+            "size": OPENAI_IMAGE_SIZE,
+            "quality": OPENAI_IMAGE_QUALITY,
+            "output_format": image_format,
+            "n": 1,
+            "user": _safety_identifier(user_id),
+        }
+        if not OPENAI_IMAGE_MODEL.startswith("gpt-image"):
+            request["response_format"] = "b64_json"
+        try:
+            response = await _client.images.generate(**request)
+        except BadRequestError:
+            request.pop("quality", None)
+            response = await _client.images.generate(**request)
+
+        item = response.data[0] if getattr(response, "data", None) else None
+        b64_json = getattr(item, "b64_json", "") if item else ""
+        if not b64_json:
+            raise RuntimeError("OpenAI image generation returned no image data")
+        image_bytes = base64.b64decode(b64_json)
+        last_bytes = image_bytes
+        try:
+            review = await evaluate_vocabulary_image(image_bytes, visual)
+        except Exception as exc:
+            log.warning("Vocabulary image vision review failed: %s", exc)
+            review = _default_image_review(str(exc)[:180])
+        last_review = review
+        if _review_accepts_image(review):
+            return VocabularyImageResult(
+                image_bytes=image_bytes,
+                content_type=content_type,
+                model=OPENAI_IMAGE_MODEL,
+                prompt=prompt,
+                review=review,
+                generation_status="generated" if not review.get("should_regenerate") else "needs_review",
+                attempts=attempt,
+            )
+        retry_reason = str(review.get("reason") or "The image failed quality review.")
+
+    return VocabularyImageResult(
+        image_bytes=last_bytes,
+        content_type=content_type,
+        model=OPENAI_IMAGE_MODEL,
+        prompt=_image_generation_prompt(visual, retry_reason=retry_reason),
+        review=last_review or _default_image_review("Image failed quality review."),
+        generation_status="failed",
+        attempts=max_attempts,
+    )
 
 
 def _supports_reasoning(model: str) -> bool:

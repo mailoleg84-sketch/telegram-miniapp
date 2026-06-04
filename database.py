@@ -107,6 +107,12 @@ async def init_db() -> None:
         await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS image_confidence REAL DEFAULT 0")
         await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS needs_review BOOLEAN DEFAULT FALSE")
         await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS generation_status TEXT DEFAULT 'pending'")
+        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS generated_image_url TEXT")
+        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS generated_image_prompt_hash TEXT")
+        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS generated_image_review TEXT")
+        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS generated_image_status TEXT DEFAULT 'missing'")
+        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS generated_image_model TEXT")
+        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS generated_image_checked_at TIMESTAMP")
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS user_progress (
                 user_id        BIGINT,
@@ -416,6 +422,28 @@ async def reset_learning_results(user_id: int) -> None:
 async def get_word_by_id(word_id: int):
     pool = await _get_pool()
     return await pool.fetchrow("SELECT * FROM words WHERE id = $1", word_id)
+
+
+async def update_word_generated_image(
+    word_id: int,
+    *,
+    image_url: str,
+    prompt_hash: str,
+    review_json: str,
+    status: str,
+    model: str,
+) -> None:
+    pool = await _get_pool()
+    await pool.execute("""
+        UPDATE words
+        SET generated_image_url = $2,
+            generated_image_prompt_hash = $3,
+            generated_image_review = $4,
+            generated_image_status = $5,
+            generated_image_model = $6,
+            generated_image_checked_at = NOW()
+        WHERE id = $1
+    """, word_id, image_url, prompt_hash, review_json, status, model)
 
 
 async def get_random_word(exclude_id: int | None = None):

@@ -93,6 +93,7 @@ let wordUtterance = null;
 let englishSpeechVoice = null;
 const wordAudioCache = new Map();
 const WORD_AUDIO_CACHE_LIMIT = 80;
+const generatingWordImages = new Set();
 
 function speechSynthesisApi() {
   return window.speechSynthesis || null;
@@ -272,8 +273,12 @@ function bindWordImageStates(root = document) {
     image.onload = markLoaded;
     image.onerror = markFailed;
     if (retry) {
-      retry.onclick = () => {
+      retry.onclick = async () => {
         haptic();
+        if (box.dataset.generate === "1" && box.dataset.wordId) {
+          await requestGeneratedWordImage(box, image, true);
+          return;
+        }
         box.classList.remove("failed", "loaded");
         box.classList.add("loading");
         const base = image.dataset.src || image.src.split("&retry=")[0];
@@ -281,7 +286,58 @@ function bindWordImageStates(root = document) {
         image.src = `${base}${base.includes("?") ? "&" : "?"}retry=${Date.now()}`;
       };
     }
+    if (
+      box.dataset.generate === "1" &&
+      box.dataset.wordId &&
+      !box.dataset.generationRequested &&
+      !["generated", "needs_review"].includes(box.dataset.generationStatus || "")
+    ) {
+      requestGeneratedWordImage(box, image, false);
+    }
   });
+}
+
+async function requestGeneratedWordImage(box, image, force = false) {
+  const wordId = box.dataset.wordId;
+  if (!wordId || (box.dataset.generate !== "1" && !force)) return;
+  if (generatingWordImages.has(wordId)) return;
+  generatingWordImages.add(wordId);
+  box.dataset.generationRequested = "1";
+  const previousStatus = box.dataset.generationStatus || "";
+  const previousSrc = image.dataset.src || image.src;
+  box.classList.remove("failed");
+  box.classList.add("generating");
+  try {
+    const data = await api("/api/vocab/image/generate", "POST", {
+      word_id: Number(wordId),
+      force,
+    });
+    const nextUrl = data?.image_url || "";
+    const fallbackUrl = data?.fallback_image_url || box.dataset.fallbackSrc || previousSrc;
+    const status = data?.generation_status || "missing";
+    box.dataset.generationStatus = status;
+    if (nextUrl && status !== "failed") {
+      const imageUrl = force
+        ? `${nextUrl}${nextUrl.includes("?") ? "&" : "?"}v=${Date.now()}`
+        : nextUrl;
+      image.dataset.src = nextUrl;
+      image.src = imageUrl;
+      box.classList.remove("failed");
+      box.classList.add("generated-ai");
+    } else if (fallbackUrl) {
+      image.dataset.src = fallbackUrl;
+      image.src = fallbackUrl;
+      box.classList.add("generation-fallback");
+    }
+  } catch (e) {
+    box.dataset.generationStatus = previousStatus || "failed";
+    if (previousSrc) image.src = previousSrc;
+    box.classList.add("generation-fallback");
+    console.warn("Vocabulary image generation failed", e);
+  } finally {
+    box.classList.remove("generating");
+    generatingWordImages.delete(wordId);
+  }
 }
 
 async function apiSdp(path, sdp) {
@@ -354,15 +410,20 @@ function pronunciationButtonHtml(word, small = false) {
 
 function wordImageHtml(wordData, small = false) {
   const src = wordData?.image_url || "";
+  const fallbackSrc = wordData?.fallback_image_url || src;
+  const wordId = wordData?.id || wordData?.word_id || "";
+  const canGenerate = wordData?.image_can_generate ? "1" : "0";
+  const generationStatus = wordData?.image_generation_status || "";
+  const promptHash = wordData?.image_prompt_hash || "";
   const label = wordData?.image_alt || wordData?.word || wordData?.translation || "word";
   if (!src) {
     return `
-      <div class="word-visual failed ${small ? "small" : ""}">
+      <div class="word-visual failed ${small ? "small" : ""}" data-word-id="${esc(wordId)}" data-generate="${canGenerate}" data-generation-status="${esc(generationStatus)}" data-prompt-hash="${esc(promptHash)}" data-fallback-src="${esc(fallbackSrc)}">
         <div class="word-image-placeholder">Сцена появится позже</div>
       </div>`;
   }
   return `
-    <div class="word-visual loading ${small ? "small" : ""}">
+    <div class="word-visual loading ${small ? "small" : ""}" data-word-id="${esc(wordId)}" data-generate="${canGenerate}" data-generation-status="${esc(generationStatus)}" data-prompt-hash="${esc(promptHash)}" data-fallback-src="${esc(fallbackSrc)}">
       <img class="word-image ${small ? "small" : ""}" src="${esc(src)}" data-src="${esc(src)}" alt="${esc(label)}" loading="lazy">
       <div class="word-image-placeholder">Готовим сцену…</div>
       <button type="button" class="word-image-retry">Загрузить картинку ещё раз</button>

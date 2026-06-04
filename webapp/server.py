@@ -2,6 +2,7 @@
 import base64
 from collections import defaultdict, deque
 import hashlib
+import json
 import logging
 import random
 import time
@@ -38,11 +39,20 @@ from webapp.lesson_engine import (
     lesson_prompt_context,
     public_lesson_state,
 )
-from webapp.openai_service import chat_reply, create_realtime_call, create_realtime_client_secret, public_openai_error, synthesize_speech, transcribe_audio
+from webapp.openai_service import (
+    chat_reply,
+    create_realtime_call,
+    create_realtime_client_secret,
+    generate_vocabulary_image,
+    public_openai_error,
+    synthesize_speech,
+    transcribe_audio,
+)
 from webapp.vocabulary_visualizer import build_vocabulary_visual, vocabulary_image_url
 
 log = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
+GENERATED_VOCAB_DIR = STATIC_DIR / "generated" / "vocabulary"
 MAX_AUDIO_BYTES = 8 * 1024 * 1024
 MAX_SDP_BYTES = 512 * 1024
 PUBLIC_API_PATHS = {"/api/me", "/api/register"}
@@ -52,6 +62,7 @@ AI_API_PATHS = {
     "/api/audio/speech",
     "/api/voice/text-turn",
     "/api/voice/turn",
+    "/api/vocab/image/generate",
     "/api/realtime/token",
     "/api/realtime/call",
 }
@@ -720,6 +731,43 @@ async def auth_middleware(request: web.Request, handler):
 
 # ---------- Helpers ----------
 
+def _vocabulary_image_prompt_hash(visual: dict) -> str:
+    payload = {
+        key: str(visual.get(key) or "")
+        for key in (
+            "word",
+            "translation",
+            "visual_type",
+            "image_prompt",
+            "example_sentence",
+            "simple_meaning",
+            "russian_hint",
+        )
+    }
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()
+
+
+def _generated_vocab_url_exists(url: str) -> bool:
+    if not url or not url.startswith("/static/generated/vocabulary/"):
+        return False
+    filename = url.rsplit("/", 1)[-1]
+    if not filename or "/" in filename or "\\" in filename:
+        return False
+    return (GENERATED_VOCAB_DIR / filename).is_file()
+
+
+def _generated_vocab_extension(content_type: str) -> str:
+    return {
+        "image/jpeg": "jpg",
+        "image/webp": "webp",
+    }.get((content_type or "").lower(), "png")
+
+
+def _generated_vocab_static_url(filename: str) -> str:
+    return f"/static/generated/vocabulary/{filename}"
+
+
 def _word_dict(word, learner_level: str = "beginner") -> dict:
     if not word:
         return {}
@@ -740,6 +788,27 @@ def _word_dict(word, learner_level: str = "beginner") -> dict:
         age_group=value("age_group", ""),
         level=learner_level,
     )
+    visual.update({
+        "word": value("word", ""),
+        "translation": value("translation", ""),
+    })
+    fallback_image_url = visual["image_url"]
+    image_prompt_hash = _vocabulary_image_prompt_hash(visual)
+    generated_image_url = value("generated_image_url", "")
+    generated_image_status = value("generated_image_status", "missing") or "missing"
+    generated_prompt_hash = value("generated_image_prompt_hash", "")
+    if (
+        generated_image_url
+        and generated_prompt_hash == image_prompt_hash
+        and generated_image_status in {"generated", "needs_review"}
+        and _generated_vocab_url_exists(generated_image_url)
+    ):
+        image_url = generated_image_url
+    else:
+        image_url = fallback_image_url
+        if generated_image_status in {"generated", "needs_review"}:
+            generated_image_status = "missing"
+
     return {
         "id": word["id"],
         "word": word["word"],
@@ -751,7 +820,12 @@ def _word_dict(word, learner_level: str = "beginner") -> dict:
         "part_of_speech": visual["part_of_speech"],
         "visual_type": visual["visual_type"],
         "image_prompt": visual["image_prompt"],
-        "image_url": visual["image_url"],
+        "image_url": image_url,
+        "fallback_image_url": fallback_image_url,
+        "generated_image_url": generated_image_url if image_url == generated_image_url else "",
+        "image_can_generate": True,
+        "image_generation_status": generated_image_status,
+        "image_prompt_hash": image_prompt_hash,
         "image_alt": visual["image_alt"],
         "example_sentence": visual["example_sentence"],
         "simple_meaning": visual["simple_meaning"],
@@ -1961,6 +2035,109 @@ async def api_learn_next(request: web.Request):
     return web.json_response(_word_dict(word, _level_for_user(user)))
 
 
+async def api_vocab_image_generate(request: web.Request):
+    user_id = request["tg_user"]["id"]
+    user = await _current_user_or_404(request)
+    body = await _safe_json(request)
+    try:
+        word_id = int(body.get("word_id"))
+    except (TypeError, ValueError):
+        return web.json_response({"error": "bad payload"}, status=400)
+
+    force = bool(body.get("force"))
+    word = await database.get_word_by_id(word_id)
+    if not word:
+        return web.json_response({"error": "word not found"}, status=404)
+
+    word_payload = _word_dict(word, _level_for_user(user))
+    fallback_image_url = word_payload["fallback_image_url"]
+    prompt_hash = word_payload["image_prompt_hash"]
+    stored_url = word_payload.get("generated_image_url", "")
+    stored_status = word_payload.get("image_generation_status", "missing")
+    if not force and stored_url and _generated_vocab_url_exists(stored_url):
+        return web.json_response({
+            "image_url": stored_url,
+            "fallback_image_url": fallback_image_url,
+            "generation_status": stored_status,
+            "image_review": {},
+            "cached": True,
+        })
+
+    if not force and GENERATED_VOCAB_DIR.exists():
+        for cached_path in GENERATED_VOCAB_DIR.glob(f"{prompt_hash}.*"):
+            if not cached_path.is_file():
+                continue
+            cached_url = _generated_vocab_static_url(cached_path.name)
+            await database.update_word_generated_image(
+                word_id,
+                image_url=cached_url,
+                prompt_hash=prompt_hash,
+                review_json="{}",
+                status="generated",
+                model="local-cache",
+            )
+            return web.json_response({
+                "image_url": cached_url,
+                "fallback_image_url": fallback_image_url,
+                "generation_status": "generated",
+                "image_review": {},
+                "cached": True,
+            })
+
+    try:
+        result = await generate_vocabulary_image(word_payload, user_id)
+    except Exception as exc:
+        log.exception("Vocabulary image generation failed for word_id=%s", word_id)
+        return web.json_response({
+            "error": public_openai_error(exc),
+            "image_url": fallback_image_url,
+            "fallback_image_url": fallback_image_url,
+            "generation_status": "failed",
+            "image_review": {"reason": str(exc)[:220]},
+        }, status=502)
+
+    review_json = json.dumps(result.review, ensure_ascii=False)
+    if result.generation_status == "failed" or not result.image_bytes:
+        await database.update_word_generated_image(
+            word_id,
+            image_url="",
+            prompt_hash=prompt_hash,
+            review_json=review_json,
+            status="failed",
+            model=result.model,
+        )
+        return web.json_response({
+            "image_url": fallback_image_url,
+            "fallback_image_url": fallback_image_url,
+            "generation_status": "failed",
+            "image_review": result.review,
+            "attempts": result.attempts,
+        })
+
+    GENERATED_VOCAB_DIR.mkdir(parents=True, exist_ok=True)
+    extension = _generated_vocab_extension(result.content_type)
+    filename = f"{prompt_hash}.{extension}"
+    image_path = GENERATED_VOCAB_DIR / filename
+    image_path.write_bytes(result.image_bytes)
+    image_url = _generated_vocab_static_url(filename)
+    await database.update_word_generated_image(
+        word_id,
+        image_url=image_url,
+        prompt_hash=prompt_hash,
+        review_json=review_json,
+        status=result.generation_status,
+        model=result.model,
+    )
+    return web.json_response({
+        "image_url": image_url,
+        "fallback_image_url": fallback_image_url,
+        "generation_status": result.generation_status,
+        "image_review": result.review,
+        "attempts": result.attempts,
+        "cached": False,
+    })
+
+
 async def api_dictionary(request: web.Request):
     user_id = request["tg_user"]["id"]
     filter_mode = (request.query.get("filter") or "all").strip()
@@ -2678,6 +2855,7 @@ def create_app(
     app.router.add_post("/api/register",               api_register)
     app.router.add_get("/api/dictionary",              api_dictionary)
     app.router.add_post("/api/learn/next",             api_learn_next)
+    app.router.add_post("/api/vocab/image/generate",   api_vocab_image_generate)
     app.router.add_post("/api/vocab/start",            api_vocab_start)
     app.router.add_post("/api/vocab/quiz",             api_vocab_quiz)
     app.router.add_post("/api/vocab/finish",           api_vocab_finish)

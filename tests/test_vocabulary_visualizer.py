@@ -145,17 +145,30 @@ class VocabularyVisualizerTests(unittest.TestCase):
             "image_confidence",
             "needs_review",
             "generation_status",
+            "generated_image_url",
+            "generated_image_prompt_hash",
+            "generated_image_review",
+            "generated_image_status",
+            "generated_image_model",
+            "generated_image_checked_at",
         ):
             self.assertIn(f"ADD COLUMN IF NOT EXISTS {column}", database_py)
 
         self.assertIn("/vocabulary-visual.svg", server_py)
+        self.assertIn("/api/vocab/image/generate", server_py)
+        self.assertIn("generate_vocabulary_image", server_py)
+        self.assertIn("GENERATED_VOCAB_DIR", server_py)
         self.assertIn("word-image-placeholder", app_js)
         self.assertIn("word-image-retry", app_js)
+        self.assertIn("requestGeneratedWordImage", app_js)
+        self.assertIn("image_generation_status", app_js)
+        self.assertIn("fallback_image_url", app_js)
         self.assertIn("word-detail", app_js)
         self.assertIn("word-explain", app_js)
         self.assertIn("word-hint", app_js)
         self.assertIn("showLearningDetails: false", app_js)
         self.assertIn(".word-visual", styles_css)
+        self.assertIn(".word-visual.generating", styles_css)
 
     def test_part_of_speech_fallbacks_are_reasonable(self):
         self.assertEqual(determine_part_of_speech("improve", "улучшать", "learning"), "verb")
