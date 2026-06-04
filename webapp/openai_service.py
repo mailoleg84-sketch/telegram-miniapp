@@ -38,7 +38,8 @@ from config import (
 )
 
 log = logging.getLogger(__name__)
-VOICE_REPLY_MAX_CHARS = 280
+VOICE_REPLY_MAX_CHARS = 220
+VOICE_REPLY_MAX_SENTENCES = 3
 _DUPLICATE_GLOSS_RE = re.compile(r"\b([A-Za-z][A-Za-z' -]{0,40}?)\s+[—-]\s+\1\s+[—-]\s+", re.IGNORECASE)
 
 _client: AsyncOpenAI | None = None
@@ -200,8 +201,86 @@ def _cut_at_sentence_boundary(text: str, max_chars: int) -> str:
     return cut.strip()
 
 
+def _voice_sentence_parts(text: str) -> list[str]:
+    clean_text = " ".join((text or "").split())
+    if not clean_text:
+        return []
+    return [
+        part.strip()
+        for part in re.findall(r".+?(?:[.!?…]+(?=\s|$)|$)", clean_text)
+        if part.strip()
+    ]
+
+
+def _trim_voice_turn(
+    text: str,
+    max_chars: int = VOICE_REPLY_MAX_CHARS,
+    max_sentences: int = VOICE_REPLY_MAX_SENTENCES,
+) -> str:
+    """Keeps a spoken turn brief while preserving complete sentences."""
+    cleaned = _clean_voice_reply(text)
+    parts = _voice_sentence_parts(cleaned)
+    if len(parts) > max_sentences:
+        cleaned = " ".join(parts[:max_sentences])
+    return _cut_at_sentence_boundary(cleaned, max_chars)
+
+
+def _voice_reply_quality_flags(text: str, last_user_text: str = "") -> list[str]:
+    """Returns lightweight quality warnings without making another model call."""
+    cleaned = " ".join((text or "").split())
+    flags: list[str] = []
+    if len(cleaned) > VOICE_REPLY_MAX_CHARS:
+        flags.append("too_long")
+    if len(_voice_sentence_parts(cleaned)) > VOICE_REPLY_MAX_SENTENCES:
+        flags.append("too_many_sentences")
+    if re.search(r"\b(?:pochti|khorosho|molodets|privet|spasibo)\b", cleaned, re.IGNORECASE):
+        flags.append("russian_transliteration")
+    if re.search(
+        r"\b(?:какой|какая|какое|какие|твой|твоя|твоё|мой|моя|выбери|скажи)\s+[a-z][a-z'-]*\b",
+        cleaned,
+        re.IGNORECASE,
+    ):
+        flags.append("mixed_russian_grammar")
+    if re.search(r":\s*[a-z][a-z'-]*\s+(?:or|или)\s+[a-z][a-z'-]*\?", cleaned, re.IGNORECASE):
+        flags.append("mixed_russian_grammar")
+    if re.search(
+        r"\b(?:любишь|выбираешь|хочешь|нравится)\s+[a-z][a-z'-]*(?:\s+[a-z][a-z'-]*)*\s+(?:or|или)\s+[a-z][a-z'-]*\b",
+        cleaned,
+        re.IGNORECASE,
+    ):
+        flags.append("mixed_russian_grammar")
+    if re.search(r"\b(?:great|nice|cool|wow|awesome)!\s+[a-z][a-z'-]*[.!?](?:\s|$)", cleaned, re.IGNORECASE):
+        flags.append("unnatural_fragment")
+    sentence_parts = _voice_sentence_parts(cleaned)
+    if _has_cyrillic(last_user_text) and sentence_parts:
+        final_sentence = sentence_parts[-1]
+        if final_sentence.endswith("?") and _has_latin(final_sentence) and not _has_cyrillic(final_sentence):
+            flags.append("russian_turn_ends_in_english")
+    next_step_markers = (
+        "?", "скажи", "попробуй", "повтори", "выбери", "представь", "назови",
+        "try", "say", "choose", "repeat", "tell me", "your turn", "answer",
+    )
+    if cleaned and not any(marker in cleaned.lower() for marker in next_step_markers):
+        flags.append("missing_next_step")
+    return flags
+
+
+def _finalize_voice_reply(text: str, last_user_text: str = "") -> str:
+    flags = _voice_reply_quality_flags(text, last_user_text)
+    finalized = _trim_voice_turn(text)
+    flags = sorted(set(flags + _voice_reply_quality_flags(finalized, last_user_text)))
+    if flags:
+        log.warning("Voice reply quality flags: %s", ", ".join(flags))
+    return finalized
+
+
 def _needs_russian_repair(last_user_text: str, reply_text: str) -> bool:
-    return _has_cyrillic(last_user_text) and bool(reply_text.strip()) and not _has_cyrillic(reply_text)
+    if not _has_cyrillic(last_user_text) or not reply_text.strip():
+        return False
+    if not _has_cyrillic(reply_text):
+        return True
+    repair_flags = set(_voice_reply_quality_flags(reply_text, last_user_text))
+    return bool(repair_flags & {"mixed_russian_grammar", "russian_turn_ends_in_english"})
 
 
 def _safety_guard_reply(last_user_text: str) -> str | None:
@@ -262,6 +341,15 @@ def _safety_guard_reply(last_user_text: str) -> str | None:
 def _clean_voice_reply(text: str) -> str:
     cleaned = " ".join((text or "").split())
     cleaned = _DUPLICATE_GLOSS_RE.sub(r"\1 — ", cleaned)
+    transliteration_replacements = {
+        "Pochti": "Почти",
+        "Khorosho": "Хорошо",
+        "Molodets": "Молодец",
+        "Privet": "Привет",
+        "Spasibo": "Спасибо",
+    }
+    for source, target in transliteration_replacements.items():
+        cleaned = re.sub(rf"\b{source}\b", target, cleaned, flags=re.IGNORECASE)
     if _has_cyrillic(cleaned):
         cleaned = cleaned.replace("Choose:", "Выбери:")
     for marker in ("🙂", "😀", "😄", "😊", "😉", "👍", "🎉", "✨"):
@@ -325,14 +413,27 @@ def _voice_module_prompt(
 Главный принцип:
 Сначала будь человеком, потом учителем. Услышь смысл и настроение ребенка, ответь на это, но каждая реплика должна вести обучение английскому: маленькая фраза, слово, исправление, выбор или мини-задание.
 
+Контракт каждого голосового хода:
+1) Коротко и естественно отреагируй именно на слова ребенка.
+2) Дай только одну полезную подсказку, модель фразы или мягкое исправление.
+3) Закончи одним вопросом или микро-заданием, которое прямо продолжает слова ребенка.
+Это три смысловых шага, а не обязательные три предложения. Обычно достаточно 2-3 коротких предложений. Никогда не делай больше трех.
+
 Жесткие правила:
-- 1-3 короткие фразы, максимум 240 символов. Без markdown, списков, анализа и лекций.
+- Максимум 3 коротких предложения и 220 символов. Без markdown, списков, анализа и лекций.
 - Сначала ответь на реальный смысл последней реплики. Не уводи в заготовленную тему.
+- Финальный вопрос или задание должен прямо следовать из последней реплики ребенка. Не заканчивай случайным выбором только ради вопроса.
+- Когда тема уже выбрана, не предлагай меню тем и не перечисляй другие темы. Продолжай текущую живую сцену.
+- Не выдавай обрывки вроде "Great! song." Скажи законченную естественную мысль: "Great choice! What song do you like?"
+- Никогда не пиши русские слова латиницей: не "Pochti", а "Почти". Не смешивай английское слово с русской грамматикой: не "Какой song?", а "Какая песня тебе нравится?"
 - Не просто болтай. В каждом ответе должен быть учебный шаг: model, correction, practice, choice или review. Исключение: ребенок явно просит “по-русски без английского” или говорит, что не понимает — тогда сначала объясни по-русски, но все равно мягко верни к обучению следующим ходом.
 - Не меняй тему сам по времени. Продолжай текущую линию урока и мини-сцену, пока ребенок сам не попросит другую тему, не устанет или не закончит задание.
 - Не используй markdown: никаких **звездочек**, списков, заголовков, кавычек-оформлений.
 - Не используй команды “Say:” и “Repeat:”. Если исправляешь, скажи по-человечески: “лучше так: ...”
 - Русский запрос -> отвечай по-русски и дай один маленький учебный шаг по английскому, если ребенок не просил “без английского”.
+- После русской реплики финальный вопрос или задание тоже должен быть по-русски. Английским может быть только одна отдельная учебная фраза.
+- Не вставляй английские варианты внутрь русского вопроса: не "Что любишь: music or songs?", а "Что ты любишь слушать: музыку или песни?"
+- Не говори "любишь games или no?". Скажи по-русски: "Тебе нравятся игры или нет?"
 - “не понимаю”, “что?”, “переведи”, “помоги”, “?” -> сначала по-русски объясни спокойно. Потом дай один очень легкий шаг, например выбор из двух слов.
 - Если в русском ответе есть английское слово, сразу дай понятный смысл рядом: “good — хорошо”, “boring — скучно”.
 - Не вставляй английский кусок криво внутрь русской грамматики: не “это in the school bag”, а “Подсказка: in the school bag — в рюкзаке”.
@@ -342,6 +443,7 @@ def _voice_module_prompt(
 - Для детей 5-13 лет, если ребенок пишет/говорит по-английски с ошибкой, не отвечай сухо "Nice try! Better:".
   Скажи коротко по-русски: "Почти! Лучше так: ...", затем задай один очень простой английский вопрос.
 - Когда исправляешь английскую ошибку, не повторяй правильную фразу дважды.
+- При исправлении используй живой короткий ход: реакция, одна правильная фраза, просьба попробовать ее или один связанный вопрос. Не добавляй после исправления меню тем.
 - Смешанный язык -> выбирай язык, на котором ребенку явно легче.
 - Не заставляй повторять фразу каждый ход. Иногда лучше просто ответить и задать живой вопрос.
 - Один вопрос максимум. Не тестируй каждый ход. Не звучать как меню или карточка из приложения.
@@ -356,6 +458,11 @@ def _voice_module_prompt(
 Методика: {lesson_loop}. Форматы меняй: {activity_menu}. Веди мини-сцену 2-5 ходов, если ребенок не просит сменить тему. В каждом ходе сохраняй учебную пользу: фраза, слово, исправление или практика. Иногда верни одно старое слово для повторения, но без ощущения экзамена.
 
 Качество живого ответа:
+- Хорошая реплика: "Great try! Better: I like cats. What animal do you like most?" В ней есть реакция, одна подсказка и связанный вопрос.
+- Хороший ответ на русском: "О, Майнкрафт — круто! По-английски: I like Minecraft. Что ты чаще строишь?" Не заканчивай его вопросом "What do you build?"
+- Хорошее объяснение на русском: "Да: после like действие часто с -ing. Фраза: I like listening to music. А какую музыку ты любишь?"
+- Даже после объяснения закончи одним простым связанным вопросом или заданием, чтобы ребенку было легко продолжить говорить.
+- Плохая реплика: длинное объяснение правила, перечень тем или вопрос, не связанный со словами ребенка.
 - На “я не знаю что сказать” не перечисляй темы. Начни сам с легкого хода: “Окей, начнем с твоего дня. Was it good or boring?”
 - На “я не понимаю” объясни спокойно по-русски, без давления и без случайных новых слов.
 - На “давай играть” сразу начинай игру, не объясняй правила долго.
@@ -448,6 +555,8 @@ Advance only the current phase. In wrapup, give one success, one gentle growth p
 If the child mentions something outside the topic, connect it naturally to the current topic.
 Never tell the child "we must stay on topic", "back to the topic", or describe the lesson plan.
 In a Russian turn, use natural Russian grammar and put the English teaching phrase in a separate sentence.
+Keep the spoken turn to three short sentences maximum: one natural reaction, one useful teaching hint, and one directly connected question or task.
+Do not append a topic menu after answering or correcting the child.
 Bad: "Какая у тебя favorite game?" Good: "Какая игра у тебя любимая? По-английски: My favorite game is..."."""
     voice_rules = (
         "Режим сейчас: ГОЛОС. Отвечай как живой человек в короткой живой беседе: 2-4 короткие фразы, "
@@ -751,20 +860,26 @@ def build_voice_realtime_instructions(
     support_mode = context.get("support_mode") or "normal"
     lesson_state_instruction = context.get("lesson_state_instruction") or lesson_focus
 
-    if age_group in {"5_7", "8_10"}:
+    if age_group == "5_7":
         age_style = (
             "Talk to the child like a kind, playful tutor. Use very simple words, one idea at a time, "
             "and make the conversation feel like a small game."
         )
-        max_words = "12"
+        max_total_words = "18"
+    elif age_group == "8_10":
+        age_style = (
+            "Talk to the child like a kind, playful tutor. Use simple words, one idea at a time, "
+            "and make the conversation feel like a small game."
+        )
+        max_total_words = "24"
     elif age_group == "11_13":
         age_style = (
             "Talk like a friendly tutor for a pre-teen. Be natural, not babyish, and use school, games, hobbies, and daily life."
         )
-        max_words = "18"
+        max_total_words = "30"
     else:
         age_style = "Talk like a warm mentor for a teenager. Be natural and respectful, with real-life examples."
-        max_words = "28"
+        max_total_words = "36"
 
     return f"""You are Alex, a live voice English tutor for a child.
 Student: {name}. Age: {age}. Level: {level}. Goal: {goal}. Fresh topics: {topics}.
@@ -778,9 +893,22 @@ Recent tutor messages: {recent_assistant}.
 Speak like a real human in a live call: warm, relaxed, attentive, with natural pauses. Do not sound like a robot, announcer, menu, or textbook.
 {age_style}
 
+Voice turn contract, highest priority:
+- Use at most three short conversational sentences and at most {max_total_words} words total. For a young child, two sentences are often enough.
+- Build one natural turn from three small beats: react to the child's exact words; give one useful hint, model, or correction; ask one directly connected question or tiny task.
+- The three beats do not need labels and do not need separate sentences. Never announce the structure.
+- The final question or task must continue the child's exact idea. Never append an arbitrary topic choice just to end with a question.
+- Once a topic is selected, do not offer a menu of topics. Stay in the current scene.
+- Never produce fragments such as "Great! song." Say a complete natural thought.
+- Never transliterate Russian words such as "Pochti" or "Khorosho".
+- Never insert an English word into Russian grammar such as "Какой song?" Say natural Russian, then put any useful English phrase in a separate sentence.
+- Never put English choices inside a Russian question such as "Что любишь: music or songs?" Keep the question natural Russian.
+- Good Russian turn: "О, Майнкрафт — круто! По-английски: I like Minecraft. Что ты чаще строишь?" Never end it with "What do you build?"
+
 Hard language rule:
 - Mirror the student's latest language.
 - If the child speaks Russian, answer in Russian. Do not switch to English for the whole answer.
+- After a Russian message, the final question or task must also be in Russian. English may appear only as one separate teaching phrase.
 - If the child says "не понимаю", "что?", "переведи", "помоги", "по-русски", or sounds unsure, answer only in Russian in that turn.
 - In a Russian answer, add at most one tiny English phrase only when it is useful, and immediately explain it in Russian.
 - If the child speaks English, answer in simple English. If you correct a mistake, do it kindly and briefly.
@@ -803,11 +931,11 @@ Conversation behavior:
 - If the child is silent, tired, or answers with one word, make it easier and give a choice.
 
 Response length:
-- Speak in 1-2 short sentences. Maximum {max_words} words per sentence.
+- Speak in at most 3 short sentences and at most {max_total_words} words total.
 - Ask at most one question.
 - Finish the thought. Do not leave a sentence hanging.
 - No markdown, no emoji, no lists, no "Say:" or "Repeat:" commands.
-- End with one tiny practice action whenever possible.
+- Always end with one directly connected question or tiny practice action so the child knows how to continue.
 
 Audio behavior:
 - Wait until the child finishes before answering.
@@ -1204,7 +1332,7 @@ async def chat_reply(
         safety_reply = _safety_guard_reply(last_user_text)
         if safety_reply:
             if mode == "voice":
-                safety_reply = _cut_at_sentence_boundary(_clean_voice_reply(safety_reply), VOICE_REPLY_MAX_CHARS)
+                safety_reply = _finalize_voice_reply(safety_reply, last_user_text)
             return ChatReply(text=safety_reply, model="safety-guard")
         use_stored_prompt = bool(OPENAI_PROMPT_ID and (mode != "voice" or OPENAI_PROMPT_FOR_VOICE))
         request = {
@@ -1239,7 +1367,7 @@ async def chat_reply(
         total_tokens = _usage_int(usage, "total_tokens") or input_tokens + output_tokens
         text = (response.output_text or "").strip() or "…"
         if mode == "voice":
-            text = _cut_at_sentence_boundary(_clean_voice_reply(text), VOICE_REPLY_MAX_CHARS)
+            text = _finalize_voice_reply(text, last_user_text)
 
         if _needs_russian_repair(last_user_text, text):
             repair_response = await _client.responses.create(
@@ -1250,9 +1378,10 @@ async def chat_reply(
                         "Ученик написал по-русски, а ответ получился не на русском.\n"
                         f"Реплика ученика: {last_user_text}\n"
                         f"Ответ, который нужно переписать: {text}\n\n"
-                        "Перепиши ответ по-русски для ребенка 10 лет. "
-                        "Оставь максимум одну простую английскую фразу для повторения. "
-                        "Сделай 1-2 коротких предложения и один вопрос или выбор."
+                        f"Перепиши ответ по-русски для ребенка возраста {age_label or 'ученика'}. "
+                        "Оставь максимум одну отдельную простую английскую учебную фразу. "
+                        "Сделай максимум 3 коротких предложения: естественная реакция, одна подсказка и один связанный вопрос или задание. "
+                        "Финальный вопрос должен быть по-русски. Не вставляй английские слова внутрь русской грамматики."
                     ),
                 }],
                 instructions="Ты исправляешь язык ответа детского репетитора. Ответь только финальной репликой.",
@@ -1260,7 +1389,7 @@ async def chat_reply(
             )
             repair_text = (repair_response.output_text or "").strip()
             if mode == "voice":
-                repair_text = _cut_at_sentence_boundary(_clean_voice_reply(repair_text), VOICE_REPLY_MAX_CHARS)
+                repair_text = _finalize_voice_reply(repair_text, last_user_text)
             if repair_text and _has_cyrillic(repair_text):
                 text = repair_text
                 repair_usage = getattr(repair_response, "usage", None)

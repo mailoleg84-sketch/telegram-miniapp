@@ -3,7 +3,17 @@ from pathlib import Path
 
 from config import GAME_PERFECT_BONUS_POINTS, GAME_POINTS_CORRECT
 from data.words import INITIAL_WORDS, LEARNING_WORDS
-from webapp.openai_service import _runtime_instructions, _safety_guard_reply, openai_config_status
+from webapp.openai_service import (
+    VOICE_REPLY_MAX_CHARS,
+    _needs_russian_repair,
+    _runtime_instructions,
+    _safety_guard_reply,
+    _trim_voice_turn,
+    _voice_reply_quality_flags,
+    _voice_sentence_parts,
+    build_voice_realtime_instructions,
+    openai_config_status,
+)
 from webapp.server import (
     _activity_event_dict,
     _dictionary_word_dict,
@@ -232,6 +242,75 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertIn("Не просто болтай", prompt)
         self.assertIn("учебный шаг", prompt)
         self.assertIn("Не меняй тему", prompt)
+
+    def test_voice_prompt_enforces_short_natural_turn_contract(self):
+        context = {
+            "mode": "voice",
+            "age": 10,
+            "age_group": "8_10",
+            "level": "beginner",
+            "current_topic": "Любимые игры",
+        }
+
+        prompt = _runtime_instructions("Миша", "10 лет", context, "I like Minecraft")
+        realtime = build_voice_realtime_instructions("Миша", "10 лет", context)
+
+        self.assertIn("Контракт каждого голосового хода", prompt)
+        self.assertIn("Никогда не делай больше трех", prompt)
+        self.assertIn("не предлагай меню тем", prompt)
+        self.assertIn("Voice turn contract, highest priority", realtime)
+        self.assertIn("directly connected question", realtime)
+        self.assertIn("do not offer a menu of topics", realtime)
+
+    def test_voice_turn_trimmer_keeps_complete_short_reply(self):
+        reply = (
+            "Great try! Better: I like cats. What animal do you like most? "
+            "Now let us discuss a completely different topic with a long explanation."
+        )
+
+        trimmed = _trim_voice_turn(reply)
+
+        self.assertLessEqual(len(trimmed), VOICE_REPLY_MAX_CHARS)
+        self.assertLessEqual(len(_voice_sentence_parts(trimmed)), 3)
+        self.assertTrue(trimmed.endswith("?"))
+        self.assertNotIn("different topic", trimmed)
+
+    def test_voice_quality_flags_detect_robotic_reply_patterns(self):
+        bad_reply = "Pochti! Great! song. Какой song тебе нравится? Еще один вопрос. И еще один."
+        flags = _voice_reply_quality_flags(bad_reply)
+
+        self.assertIn("russian_transliteration", flags)
+        self.assertIn("mixed_russian_grammar", flags)
+        self.assertIn("unnatural_fragment", flags)
+        self.assertIn("too_many_sentences", flags)
+
+    def test_good_voice_reply_has_no_quality_flags(self):
+        reply = "Great try! Better: I like cats. What animal do you like most?"
+
+        self.assertEqual(_voice_reply_quality_flags(reply), [])
+
+    def test_russian_voice_turn_does_not_end_with_english_question(self):
+        bad_reply = "О, Майнкрафт — круто! По-английски: I like Minecraft. What do you build?"
+        good_reply = "О, Майнкрафт — круто! По-английски: I like Minecraft. Что ты чаще строишь?"
+
+        self.assertIn(
+            "russian_turn_ends_in_english",
+            _voice_reply_quality_flags(bad_reply, "Я люблю Майнкрафт"),
+        )
+        self.assertNotIn(
+            "russian_turn_ends_in_english",
+            _voice_reply_quality_flags(good_reply, "Я люблю Майнкрафт"),
+        )
+
+    def test_voice_quality_flags_require_a_natural_next_step(self):
+        mixed_choice = "Лучше так: I like listening to music. Что ты любишь: music or songs?"
+        mixed_yes_no = "По-английски можно сказать: I like games. А ты любишь games или no?"
+        no_next_step = "Да, после like часто идет глагол с -ing. Это полезное правило."
+
+        self.assertIn("mixed_russian_grammar", _voice_reply_quality_flags(mixed_choice))
+        self.assertIn("mixed_russian_grammar", _voice_reply_quality_flags(mixed_yes_no))
+        self.assertTrue(_needs_russian_repair("Я не понимаю", mixed_yes_no))
+        self.assertIn("missing_next_step", _voice_reply_quality_flags(no_next_step))
 
     def test_level_test_score_is_age_adaptive(self):
         self.assertEqual(_level_from_score("5_7", 0, 5), "starter")
