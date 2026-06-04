@@ -1510,6 +1510,7 @@ async def api_me(request: web.Request):
 
     stats = await database.get_user_stats(user_id)
     level = _level_for_user(user)
+    age_group = _normalized_age_group_for_user(user)
     return web.json_response({
         "registered": True,
         "user": {
@@ -1517,8 +1518,8 @@ async def api_me(request: web.Request):
             "child_name": user["name"],
             "parent_name": user["parent_name"] or "",
             "child_age": user["child_age"],
-            "age_group":  user["age_group"],
-            "age_label":  _age_label(user["age_group"]),
+            "age_group":  age_group,
+            "age_label":  _age_label(age_group),
             "goal": user["goal"] or "",
             "goal_label": _goal_label(user["goal"]),
             "level": level,
@@ -1798,7 +1799,8 @@ async def api_learn_next(request: web.Request):
     user = await _current_user_or_404(request)
     body = await _safe_json(request)
     exclude_id = body.get("current_id")
-    word = await database.get_practice_word(user_id, exclude_id=exclude_id, age_group=user["age_group"])
+    age_group = _normalized_age_group_for_user(user)
+    word = await database.get_practice_word(user_id, exclude_id=exclude_id, age_group=age_group)
     return web.json_response(_word_dict(word))
 
 
@@ -1832,7 +1834,7 @@ async def api_vocab_start(request: web.Request):
     user = await _current_user_or_404(request)
     body = await _safe_json(request)
     topic = (body.get("topic") or "").strip() or None
-    age_group = user["age_group"]
+    age_group = _normalized_age_group_for_user(user)
     count = WORDS_PER_AGE_GROUP.get(age_group, 6)
     words = await database.get_words_for_age(age_group, count=count, topic=topic)
     if not words:
@@ -1940,7 +1942,7 @@ async def api_vocab_finish(request: web.Request):
 async def api_word_hunt_start(request: web.Request):
     user_id = request["tg_user"]["id"]
     user = await _current_user_or_404(request)
-    age_group = user["age_group"] if user["age_group"] in WORDS_PER_AGE_GROUP else "8_10"
+    age_group = _normalized_age_group_for_user(user)
     count = min(6, max(4, WORDS_PER_AGE_GROUP.get(age_group, 6)))
     words = await database.get_words_for_age(age_group, count=count)
     if not words:
@@ -2036,7 +2038,7 @@ async def api_choice_next(request: web.Request):
     user = await _current_user_or_404(request)
     body = await _safe_json(request)
     focus = "review" if body.get("focus") == "review" else "all"
-    age_group = user["age_group"]
+    age_group = _normalized_age_group_for_user(user)
     correct = await database.get_review_word(user_id, age_group=age_group) if focus == "review" else None
     review_empty = focus == "review" and not correct
     if not correct:
@@ -2095,7 +2097,7 @@ async def api_input_next(request: web.Request):
     user = await _current_user_or_404(request)
     body = await _safe_json(request)
     focus = "review" if body.get("focus") == "review" else "all"
-    age_group = user["age_group"]
+    age_group = _normalized_age_group_for_user(user)
     word = await database.get_review_word(user_id, age_group=age_group) if focus == "review" else None
     review_empty = focus == "review" and not word
     if not word:

@@ -11,6 +11,7 @@ from webapp.server import (
     _level_from_score,
     _level_label,
     _motivation_payload,
+    _normalized_age_group_for_user,
     _parent_recommendations,
     _word_image_url,
     _word_image_svg,
@@ -18,6 +19,16 @@ from webapp.server import (
 
 
 class OpenAISafetyTests(unittest.TestCase):
+    def test_legacy_age_groups_are_normalized_for_learning_modes(self):
+        self.assertEqual(
+            _normalized_age_group_for_user({"age_group": "under_12", "child_age": None}),
+            "8_10",
+        )
+        self.assertEqual(
+            _normalized_age_group_for_user({"age_group": "legacy", "child_age": 15}),
+            "14_18",
+        )
+
     def test_navigation_has_no_duplicate_feature_entrypoints(self):
         root = Path(__file__).resolve().parents[1]
         app_js = (root / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
@@ -148,6 +159,7 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertNotIn("overflow-wrap: anywhere", styles_css)
         self.assertIn("review_streak", database_py)
         self.assertIn("COALESCE(up.review_streak, 0) < 2", database_py)
+        self.assertGreaterEqual(server_py.count("age_group = _normalized_age_group_for_user(user)"), 7)
 
         self.assertIn(".btn-secondary", styles_css)
         self.assertIn("background: var(--button);", styles_css)
