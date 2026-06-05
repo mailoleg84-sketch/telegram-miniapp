@@ -58,6 +58,27 @@ class LessonEngineTests(unittest.TestCase):
         self.assertIn("по-русски", prompt["lesson_state_instruction"])
         self.assertIn("выбор из двух", prompt["lesson_state_instruction"])
 
+    def test_confusion_before_topic_does_not_force_topic_menu(self):
+        state = create_lesson_state("8_10", seed="kid")
+        state = advance_lesson_state(state, "user", "Я не понимаю")
+
+        prompt = lesson_prompt_context(state)
+
+        self.assertIn("Не перечисляй темы", prompt["lesson_state_instruction"])
+        self.assertIn("суперлегкий английский шаг", prompt["lesson_state_instruction"])
+        self.assertNotIn("предложи ровно три темы", prompt["lesson_state_instruction"])
+
+    def test_common_child_words_select_topic_before_menu(self):
+        state = create_lesson_state("8_10", seed="kid")
+        state = advance_lesson_state(state, "user", "Мне нравится Майнкрафт")
+
+        self.assertEqual(state["current_topic"], "games")
+
+        state = create_lesson_state("8_10", seed="kid")
+        state = advance_lesson_state(state, "user", "I like cat")
+
+        self.assertEqual(state["current_topic"], "animals")
+
     def test_tired_child_gets_easier_activity_not_a_new_topic(self):
         state = create_lesson_state("11_13", seed="kid")
         state = advance_lesson_state(state, "user", "music")

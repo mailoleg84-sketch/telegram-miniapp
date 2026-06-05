@@ -45,7 +45,7 @@ def _topic(
 
 TOPIC_PLANS = {
     "5_7": [
-        _topic("animals", "Животные", "назвать любимое животное", "I like cats.", ["cat", "dog", "rabbit"], ["animals", "animal", "животные", "животное", "животных", "кошка", "собака"]),
+        _topic("animals", "Животные", "назвать любимое животное", "I like cats.", ["cat", "dog", "rabbit"], ["animals", "animal", "cat", "dog", "rabbit", "животные", "животное", "животных", "кошка", "собака", "кот", "питомец"]),
         _topic("colors", "Цвета", "назвать цвет предмета", "It is blue.", ["red", "blue", "green"], ["colors", "colour", "цвета", "цвет"]),
         _topic("toys", "Игрушки", "рассказать о любимой игрушке", "This is my toy.", ["ball", "doll", "car"], ["toys", "toy", "игрушки", "игрушка"]),
         _topic("family", "Семья", "назвать членов семьи", "This is my family.", ["mum", "dad", "sister"], ["family", "семья", "мама", "папа"]),
@@ -59,9 +59,9 @@ TOPIC_PLANS = {
     "8_10": [
         _topic("school", "Школа", "рассказать об одном школьном предмете", "My favorite subject is English.", ["subject", "lesson", "break"], ["school", "школа", "школу", "урок"]),
         _topic("friends", "Друзья", "описать друга доброй фразой", "My friend is funny.", ["friend", "kind", "funny"], ["friends", "friend", "друзья", "друг"]),
-        _topic("games", "Игры", "рассказать о любимой игре", "I like this game because it is fun.", ["game", "level", "team"], ["games", "game", "игры", "игра"]),
+        _topic("games", "Игры", "рассказать о любимой игре", "I like this game because it is fun.", ["game", "level", "team"], ["games", "game", "minecraft", "roblox", "игры", "игра", "майнкрафт", "роблокс"]),
         _topic("sports", "Спорт", "сказать, каким спортом нравится заниматься", "I like playing football.", ["sport", "team", "score"], ["sports", "sport", "спорт", "футбол"]),
-        _topic("animals", "Животные", "описать любимое животное", "My favorite animal is a dolphin.", ["wild", "fast", "friendly"], ["animals", "animal", "животные", "животное", "животных", "кошка", "собака"]),
+        _topic("animals", "Животные", "описать любимое животное", "My favorite animal is a dolphin.", ["wild", "fast", "friendly"], ["animals", "animal", "cat", "dog", "rabbit", "животные", "животное", "животных", "кошка", "собака", "кот", "питомец"]),
         _topic("superheroes", "Супергерои", "описать способность героя", "My hero can fly.", ["hero", "power", "brave"], ["superheroes", "superhero", "супергерой", "герой"]),
         _topic("holidays", "Каникулы", "рассказать об идеальном дне каникул", "On holiday, I want to swim.", ["holiday", "trip", "beach"], ["holidays", "holiday", "каникулы", "отпуск"]),
         _topic("food", "Любимая еда", "заказать любимую еду", "Can I have a pizza, please?", ["menu", "pizza", "juice"], ["food", "еда", "еду", "пицца", "кафе"]),
@@ -70,7 +70,7 @@ TOPIC_PLANS = {
     ],
     "11_13": [
         _topic("hobbies", "Хобби", "объяснить, почему нравится хобби", "I enjoy drawing because it helps me relax.", ["hobby", "enjoy", "practice"], ["hobbies", "hobby", "хобби"]),
-        _topic("video_games", "Видеоигры", "описать игру и дать мнение", "I like this game because the story is exciting.", ["character", "level", "story"], ["video games", "gaming", "games", "видеоигры", "игры"]),
+        _topic("video_games", "Видеоигры", "описать игру и дать мнение", "I like this game because the story is exciting.", ["character", "level", "story"], ["video games", "gaming", "games", "minecraft", "roblox", "видеоигры", "игры", "майнкрафт", "роблокс"]),
         _topic("youtube", "YouTube", "описать интересный формат видео", "I usually watch videos about science.", ["channel", "video", "creator"], ["youtube", "ютуб", "видео"]),
         _topic("music", "Музыка", "рассказать о любимой музыке", "This song makes me feel happy.", ["song", "band", "playlist"], ["music", "музыка", "песня"]),
         _topic("movies", "Фильмы", "кратко порекомендовать фильм", "I recommend this film because it is funny.", ["film", "scene", "character"], ["movies", "movie", "films", "фильмы", "кино"]),
@@ -85,7 +85,7 @@ TOPIC_PLANS = {
         _topic("travel", "Путешествия", "уверенно решить ситуацию в поездке", "Could you tell me how to get to the station?", ["luggage", "booking", "directions"], ["travel", "trip", "путешествия", "поездка"]),
         _topic("music", "Музыка", "аргументировать музыкальное мнение", "What I like most about this artist is the lyrics.", ["lyrics", "artist", "concert"], ["music", "музыка"]),
         _topic("films_series", "Фильмы и сериалы", "обсудить сюжет без пересказа", "The series is worth watching because the characters feel real.", ["plot", "episode", "character"], ["films", "series", "movies", "фильмы", "сериалы"]),
-        _topic("technology", "Технологии", "обсудить пользу и риски технологии", "Technology is useful when we use it thoughtfully.", ["privacy", "device", "feature"], ["technology", "tech", "технологии"]),
+        _topic("technology", "Технологии", "обсудить пользу и риски технологии", "Technology is useful when we use it thoughtfully.", ["privacy", "device", "feature"], ["technology", "tech", "minecraft", "roblox", "технологии", "майнкрафт", "роблокс"]),
         _topic("social_media", "Социальные сети", "выразить взвешенное мнение", "Social media can be useful, but it can also be distracting.", ["content", "privacy", "audience"], ["social media", "соцсети", "социальные сети"]),
         _topic("exams", "Экзамены", "дать развернутый экзаменационный ответ", "One effective way to prepare is to practice regularly.", ["prepare", "focus", "result"], ["exams", "exam", "экзамены", "экзамен"]),
         _topic("business", "Бизнес", "предложить простую бизнес-идею", "My idea solves a simple everyday problem.", ["customer", "idea", "value"], ["business", "бизнес"]),
@@ -329,11 +329,30 @@ def lesson_prompt_context(state: dict[str, Any] | None) -> dict[str, str]:
     support_mode = str(state.get("support_mode") or "")
 
     if not topic_label:
-        instruction = (
-            "Урок еще не выбрал тему. Тепло отреагируй на ребенка и предложи ровно три темы: "
-            + ", ".join(suggestion_labels)
-            + ". Задай один короткий вопрос и дождись выбора."
-        )
+        suggested_topic = suggestion_labels[0] if suggestion_labels else "простая тема дня"
+        if support_mode == "confused":
+            instruction = (
+                "Урок еще не выбрал тему, а ребенок запутался. Не перечисляй темы. "
+                "Сначала спокойно объясни по-русски, затем сам начни один суперлегкий английский шаг "
+                f"в теме «{suggested_topic}» и дай выбор из двух простых вариантов."
+            )
+        elif support_mode == "tired":
+            instruction = (
+                "Урок еще не выбрал тему, а ребенок устал или скучает. Не перечисляй темы. "
+                f"Сам начни очень легкую игру в теме «{suggested_topic}» одним вопросом."
+            )
+        elif support_mode == "correction":
+            instruction = (
+                "Урок еще не выбрал тему, но ребенок уже пробует английскую фразу. "
+                "Не перечисляй темы. Мягко исправь одну ошибку, дай правильный вариант "
+                "и один связанный вопрос по смыслу фразы ребенка."
+            )
+        else:
+            instruction = (
+                "Урок еще не выбрал тему. Не перечисляй меню тем и не спрашивай, какую кнопку выбрать. "
+                f"Тепло отреагируй и сам начни маленький учебный шаг в теме «{suggested_topic}» "
+                "с одним коротким вопросом или выбором из двух вариантов."
+            )
     elif phase == "mini_lesson":
         instruction = (
             f"Оставайся в теме «{topic_label}». Дай только один маленький учебный шаг: "
