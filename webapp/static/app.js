@@ -2081,6 +2081,26 @@ async function renderDailyFinish(phraseWasCorrect = true, phrase = "") {
   }
 }
 
+function tutorAvatarHtml() {
+  return `
+    <div class="tutor-face idle" id="tutorFace" aria-hidden="true">
+      <img class="tutor-avatar-img" src="/static/assets/tutor-avatar-v1.jpg?v=20260606-kids-v99" alt="">
+      <span class="avatar-state-ring"></span>
+      <span class="avatar-breath"></span>
+      <span class="avatar-listen-wave"></span>
+      <span class="avatar-eyelid left"></span>
+      <span class="avatar-eyelid right"></span>
+      <span class="avatar-brow left"></span>
+      <span class="avatar-brow right"></span>
+      <span class="avatar-mouth-motion"></span>
+      <span class="avatar-emotion-mark"></span>
+      <span class="avatar-thinking-dot one"></span>
+      <span class="avatar-thinking-dot two"></span>
+      <span class="avatar-thinking-dot three"></span>
+      <span class="avatar-speech-bars"><i></i><i></i><i></i></span>
+    </div>`;
+}
+
 async function renderChat() {
   loading();
   try {
@@ -2093,31 +2113,35 @@ async function renderChat() {
         </div>
         <div class="chat-meta">Сообщений сегодня: ${data.usage?.used_today ?? 0} · без лимита</div>
         <div class="tutor-stage">
-          <div class="tutor-face idle" id="tutorFace" aria-hidden="true">
-            <img class="tutor-avatar-img" src="/static/assets/tutor-avatar-v1.jpg?v=20260606-kids-v98" alt="">
-            <span class="avatar-state-ring"></span>
-            <span class="avatar-breath"></span>
-            <span class="avatar-listen-wave"></span>
-            <span class="avatar-eyelid left"></span>
-            <span class="avatar-eyelid right"></span>
-            <span class="avatar-brow left"></span>
-            <span class="avatar-brow right"></span>
-            <span class="avatar-mouth-motion"></span>
-            <span class="avatar-emotion-mark"></span>
-            <span class="avatar-thinking-dot one"></span>
-            <span class="avatar-thinking-dot two"></span>
-            <span class="avatar-thinking-dot three"></span>
-            <span class="avatar-speech-bars"><i></i><i></i><i></i></span>
+          ${tutorAvatarHtml()}
+          <div class="voice-status-card" id="voiceStatusCard" data-state="idle">
+            <span id="voiceStatusLabel">Готова слушать</span>
+            <b id="voiceStatusTitle">Нажми «Начать», и я помогу говорить по-английски.</b>
+            <small id="voiceStatusHint">Можно начать по-русски или по-английски.</small>
           </div>
           <div class="voice-mode-panel">
             <button class="voice-mode-toggle" id="voiceMode" type="button">
               <span class="voice-mode-dot"></span>
-              <span id="voiceModeText">Говорить</span>
+              <span id="voiceModeText">Начать</span>
             </button>
-            <div class="voice-mode-status" id="voiceStatus">Обычный режим</div>
+            <div class="voice-mode-status" id="voiceStatus">Готова слушать</div>
             <div class="voice-actions">
-              <button class="voice-action" id="voiceRepeat" type="button" disabled>Повторить ответ</button>
+              <button class="voice-action" id="voiceRepeat" type="button" disabled>Повторить</button>
               <button class="voice-action" id="voiceSlower" type="button" disabled>Медленнее</button>
+              <button class="voice-action" id="voiceAgain" type="button" disabled>Ещё раз</button>
+              <button class="voice-action" id="voiceNext" type="button" disabled>Следующий вопрос</button>
+            </div>
+          </div>
+          <div class="voice-feedback-card" id="voiceFeedbackCard" hidden>
+            <div class="voice-feedback-head">
+              <span>Подсказка репетитора</span>
+              <b id="voiceFeedbackMood">Хорошая попытка</b>
+            </div>
+            <div class="voice-feedback-grid">
+              <div><span>You said</span><b id="feedbackYouSaid">—</b></div>
+              <div><span>Better</span><b id="feedbackBetter">—</b></div>
+              <div><span>Tip</span><b id="feedbackTip">Говори коротко: одно предложение за раз.</b></div>
+              <div><span>Try</span><b id="feedbackTry">Повтори за мной.</b></div>
             </div>
           </div>
           <div class="voice-lesson-strip" id="voiceLessonStrip">
@@ -2143,8 +2167,20 @@ async function renderChat() {
     const voiceModeButton = document.getElementById("voiceMode");
     const voiceModeText = document.getElementById("voiceModeText");
     const voiceStatus = document.getElementById("voiceStatus");
+    const voiceStatusCard = document.getElementById("voiceStatusCard");
+    const voiceStatusLabel = document.getElementById("voiceStatusLabel");
+    const voiceStatusTitle = document.getElementById("voiceStatusTitle");
+    const voiceStatusHint = document.getElementById("voiceStatusHint");
     const voiceRepeatButton = document.getElementById("voiceRepeat");
     const voiceSlowerButton = document.getElementById("voiceSlower");
+    const voiceAgainButton = document.getElementById("voiceAgain");
+    const voiceNextButton = document.getElementById("voiceNext");
+    const voiceFeedbackCard = document.getElementById("voiceFeedbackCard");
+    const voiceFeedbackMood = document.getElementById("voiceFeedbackMood");
+    const feedbackYouSaid = document.getElementById("feedbackYouSaid");
+    const feedbackBetter = document.getElementById("feedbackBetter");
+    const feedbackTip = document.getElementById("feedbackTip");
+    const feedbackTry = document.getElementById("feedbackTry");
     const voiceLessonPhase = document.getElementById("voiceLessonPhase");
     const voiceLessonTopic = document.getElementById("voiceLessonTopic");
     const voiceLessonProgress = document.getElementById("voiceLessonProgress");
@@ -2189,6 +2225,7 @@ async function renderChat() {
     let shortVoiceHintShown = false;
     let voiceUiState = "idle";
     let lastTutorReply = "";
+    let lastVoiceUserText = "";
     let voicePlaybackSpeed = 0.94;
     const realtimeLogged = new Set();
     const realtimeResponseText = new Map();
@@ -2204,7 +2241,7 @@ async function renderChat() {
     const REALTIME_FIRST_AUDIO_TIMEOUT_MS = 7000;
     const STABLE_VOICE_COOLDOWN_MS = 10 * 60 * 1000;
     const VOICE_STATE_LABELS = {
-      idle: "Обычный режим",
+      idle: "Готова слушать",
       requesting_microphone: "Запрашиваю микрофон...",
       microphone_denied: "Микрофон отключён",
       ready: "Твой ход",
@@ -2214,7 +2251,100 @@ async function renderChat() {
       speaking: "Отвечаю...",
       reconnecting: "Переподключаюсь...",
       error: "Не удалось подключиться",
-      ended: "Обычный режим",
+      repeat: "Повтори, пожалуйста",
+      ended: "Урок завершён",
+    };
+    const VOICE_STATUS_UI = {
+      idle: {
+        label: "Готова слушать",
+        title: "Нажми «Начать», и я помогу говорить по-английски.",
+        hint: "Можно начать по-русски или по-английски.",
+        action: "Начать",
+      },
+      ready: {
+        label: "Твой ход",
+        title: "Скажи короткую фразу.",
+        hint: "Одного предложения достаточно. Например: I like pizza.",
+        action: "Говорить",
+      },
+      waiting: {
+        label: "Твой ход",
+        title: "Я жду твой ответ.",
+        hint: "Можно сказать одно слово, а я помогу сделать фразу.",
+        action: "Говорить",
+      },
+      listening: {
+        label: "Слушаю...",
+        title: "Говори сейчас.",
+        hint: "Скажи коротко. Я сама подстроюсь под язык.",
+        action: "Слушаю",
+      },
+      processing: {
+        label: "Думаю...",
+        title: "Понимаю, что ты сказал.",
+        hint: "Сейчас отвечу коротко и по делу.",
+        action: "Думаю",
+      },
+      thinking: {
+        label: "Думаю...",
+        title: "Подбираю полезную подсказку.",
+        hint: "Будет одна короткая реакция и одно задание.",
+        action: "Думаю",
+      },
+      speaking: {
+        label: "Отвечаю...",
+        title: "Слушай и повторяй за мной.",
+        hint: "Когда я закончу, снова будет твой ход.",
+        action: "Остановить",
+      },
+      praising: {
+        label: "Отлично!",
+        title: "Хорошая попытка.",
+        hint: "Повтори лучшую фразу ещё раз.",
+        action: "Говорить",
+      },
+      correcting: {
+        label: "Мягкая подсказка",
+        title: "Почти правильно. Улучшим одну деталь.",
+        hint: "Ошибки здесь нужны, чтобы учиться.",
+        action: "Говорить",
+      },
+      repeat: {
+        label: "Повтори, пожалуйста",
+        title: "Я не очень хорошо услышала.",
+        hint: "Скажи ещё раз чуть длиннее и громче.",
+        action: "Ещё раз",
+      },
+      requesting_microphone: {
+        label: "Проверяю микрофон",
+        title: "Запрашиваю доступ к голосу.",
+        hint: "Если появится окно Telegram, разреши микрофон.",
+        action: "Ждём",
+      },
+      microphone_denied: {
+        label: "Микрофон отключён",
+        title: "Разреши доступ к микрофону, чтобы начать разговор.",
+        hint: "Открой настройки Telegram или браузера и попробуй снова.",
+        action: "Повторить",
+      },
+      reconnecting: {
+        label: "Соединение потеряно",
+        title: "Восстанавливаю голосовой режим.",
+        hint: "Если не получится, включу запасной режим.",
+        action: "Ждём",
+      },
+      error: {
+        label: "Не удалось подключиться",
+        title: "Спокойно, попробуем ещё раз.",
+        hint: "Проверь интернет или нажми «Повторить».",
+        action: "Повторить",
+      },
+      ended: {
+        label: "Урок завершён",
+        title: "Хорошая работа. Можно продолжить позже.",
+        hint: "Нажми «Начать», когда будешь готов.",
+        action: "Начать",
+      },
     };
     const VOICE_STARTERS = [
       "Привет! Расскажи одним словом, что тебе сегодня интересно, а я превращу это в английскую фразу.",
@@ -2291,11 +2421,43 @@ async function renderChat() {
       return Boolean(box.querySelector(".bubble"));
     }
 
+    function firstEnglishPhrase(text) {
+      const clean = String(text || "").replace(/[“”]/g, "\"").replace(/[‘’]/g, "'");
+      const quoted = clean.match(/"([^"]{2,80})"/);
+      if (quoted?.[1] && /[a-z]/i.test(quoted[1])) return quoted[1].trim();
+      const englishSentence = clean.match(/\b[A-Z]?[a-z][a-z' ]{1,80}[.!?]/);
+      return englishSentence ? englishSentence[0].trim() : "";
+    }
+
+    function compactFeedbackText(text, fallback) {
+      const clean = String(text || "").replace(/\s+/g, " ").trim();
+      if (!clean) return fallback;
+      return clean.length > 86 ? `${clean.slice(0, 83).trim()}...` : clean;
+    }
+
+    function showVoiceFeedback(userText, reply) {
+      const said = compactFeedbackText(userText, "Скажи короткую фразу.");
+      const better = compactFeedbackText(firstEnglishPhrase(reply), "Повтори лучшую фразу из ответа.");
+      const isPraise = /great|excellent|well done|perfect|отлично|молодец|здорово|хорош/i.test(reply);
+      const isCorrection = /say:|better|correct|исправ|лучше|правильно|ошиб/i.test(reply);
+      voiceFeedbackCard.hidden = false;
+      voiceFeedbackCard.dataset.tone = isPraise ? "praise" : isCorrection ? "correcting" : "coach";
+      voiceFeedbackMood.textContent = isPraise ? "Отличная попытка" : isCorrection ? "Мягкое исправление" : "Продолжаем урок";
+      feedbackYouSaid.textContent = said;
+      feedbackBetter.textContent = better;
+      feedbackTip.textContent = isCorrection
+        ? "Исправь только одну маленькую деталь и повтори."
+        : "Говори коротко: одно предложение за раз.";
+      feedbackTry.textContent = better.includes("Повтори") ? "Скажи ещё раз чуть увереннее." : `Repeat: ${better}`;
+      setFace(isPraise ? "praising" : isCorrection ? "correcting" : "encouraging");
+    }
+
     function faceModeForVoiceState(mode) {
-      if (["listening", "speaking", "thinking", "praising", "correcting", "encouraging", "waiting"].includes(mode)) return mode;
+      if (["listening", "speaking", "thinking", "praising", "correcting", "encouraging", "waiting", "error"].includes(mode)) return mode;
       if (["ready"].includes(mode)) return "waiting";
       if (["processing", "requesting_microphone", "reconnecting"].includes(mode)) return "thinking";
-      if (["error", "microphone_denied"].includes(mode)) return "correcting";
+      if (["microphone_denied"].includes(mode)) return "error";
+      if (["repeat"].includes(mode)) return "correcting";
       return "idle";
     }
 
@@ -2324,14 +2486,31 @@ async function renderChat() {
       if (text.includes("говор") || text.includes("отвеч") || text.includes("озвуч")) return "speaking";
       if (text.includes("ошиб") || text.includes("не удалось")) return "error";
       if (text.includes("перепод") || text.includes("запас")) return "reconnecting";
+      if (text.includes("повтори")) return "repeat";
       if (text.includes("слуш") || text.includes("твой ход")) return "listening";
       return voiceModeActive ? "ready" : "idle";
+    }
+
+    function voiceButtonLabel(nextState) {
+      const stateKey = nextState === "waiting" ? "ready" : nextState;
+      return VOICE_STATUS_UI[stateKey]?.action || (voiceModeActive ? "Остановить" : "Начать");
+    }
+
+    function updateVoiceStatusCard(nextState, status = "") {
+      const stateKey = nextState === "waiting" ? "ready" : nextState;
+      const config = VOICE_STATUS_UI[stateKey] || VOICE_STATUS_UI.idle;
+      voiceStatusCard.dataset.state = stateKey;
+      voiceStatusLabel.textContent = status || config.label;
+      voiceStatusTitle.textContent = config.title;
+      voiceStatusHint.textContent = config.hint;
     }
 
     function updateVoiceActionButtons() {
       const hasReply = Boolean(lastTutorReply && !sending && !tutorSpeechBusy);
       voiceRepeatButton.disabled = !hasReply;
       voiceSlowerButton.disabled = !hasReply;
+      voiceAgainButton.disabled = Boolean(sending || tutorSpeechBusy);
+      voiceNextButton.disabled = Boolean(sending || tutorSpeechBusy);
       voiceSlowerButton.textContent = voicePlaybackSpeed < 0.9 ? "Обычный темп" : "Медленнее";
     }
 
@@ -2348,9 +2527,11 @@ async function renderChat() {
       }
       voiceModeButton.classList.toggle("active", voiceModeActive);
       voiceModeButton.dataset.state = voiceUiState;
+      voiceModeButton.disabled = ["listening", "processing", "thinking", "requesting_microphone", "reconnecting"].includes(voiceUiState);
       voiceStatus.dataset.state = voiceUiState;
-      voiceModeText.textContent = voiceModeActive ? "Стоп" : "Говорить";
-      voiceStatus.textContent = status || VOICE_STATE_LABELS[voiceUiState] || (voiceModeActive ? "Слушаю..." : "Обычный режим");
+      voiceModeText.textContent = voiceButtonLabel(voiceUiState);
+      voiceStatus.textContent = status || VOICE_STATE_LABELS[voiceUiState] || (voiceModeActive ? "Слушаю..." : "Готова слушать");
+      updateVoiceStatusCard(voiceUiState, voiceStatus.textContent);
       if (!sending) mic.disabled = voiceModeActive;
       setFace(faceModeForVoiceState(voiceUiState));
       updateVoiceActionButtons();
@@ -2635,6 +2816,7 @@ async function renderChat() {
       if (type === "conversation.item.input_audio_transcription.completed") {
         const text = String(event.transcript || event.text || "").trim();
         realtimeLastUserText = text;
+        if (text) lastVoiceUserText = text;
         const key = `user:${event.item_id || event.event_id || text}`;
         if (text && !realtimeLogged.has(key) && !realtimeLogged.has(`user:text:${text}`)) {
           bubble("user", text);
@@ -2655,6 +2837,7 @@ async function renderChat() {
         const key = `assistant:${id}:${text}`;
         if (text && !realtimeLogged.has(key) && !realtimeLogged.has(`assistant:text:${text}`)) {
           bubble("assistant", text);
+          showVoiceFeedback(lastVoiceUserText || realtimeLastUserText, text);
           logRealtimeMessage("assistant", text, key);
         }
         scheduleRealtimeMicResume(estimateRealtimeSpeechMs(text) + 400);
@@ -2689,6 +2872,7 @@ async function renderChat() {
         const key = `assistant:${id}:${text}`;
         if (text && !realtimeLogged.has(key) && !realtimeLogged.has(`assistant:text:${text}`)) {
           bubble("assistant", text);
+          showVoiceFeedback(lastVoiceUserText || realtimeLastUserText, text);
           logRealtimeMessage("assistant", text, key);
         }
         scheduleRealtimeMicResume(estimateRealtimeSpeechMs(text) + 400);
@@ -3068,6 +3252,10 @@ async function renderChat() {
         typing.remove();
         bubble("assistant", reply.reply);
         renderLessonState(reply.lesson_state);
+        if (options.voice) {
+          lastVoiceUserText = text;
+          showVoiceFeedback(text, reply.reply);
+        }
         speakTutor(
           reply.reply,
           options.autoContinue ? () => scheduleVoiceListen(650) : null,
@@ -3102,8 +3290,16 @@ async function renderChat() {
       const text = String(result.text || "").trim();
       const reply = String(result.reply || "").trim();
       if (box.querySelector(".chat-empty")) box.innerHTML = "";
-      if (showUser && text) bubble("user", text);
-      if (reply) bubble("assistant", reply);
+      if (showUser && text) {
+        lastVoiceUserText = text;
+        bubble("user", text);
+      } else if (text) {
+        lastVoiceUserText = text;
+      }
+      if (reply) {
+        bubble("assistant", reply);
+        showVoiceFeedback(lastVoiceUserText || text, reply);
+      }
       renderLessonState(result.lesson_state);
       const onDone = wasAuto ? () => scheduleVoiceListen(VOICE_RESTART_DELAY_MS) : null;
       if (result.audio_base64) {
@@ -3140,7 +3336,7 @@ async function renderChat() {
           bubble("assistant", friendlyVoiceError(error, "Не удалось начать запись. Попробуй ещё раз."));
           voiceModeActive = false;
           updateVoiceModeUi("", isMicrophonePermissionError(error) ? "microphone_denied" : "error");
-          setFace("idle");
+          setFace("error");
         });
       }, delay);
     }
@@ -3166,12 +3362,12 @@ async function renderChat() {
         const blob = new Blob(audioChunks, { type: mimeType || "audio/webm" });
         audioChunks = [];
         if (blob.size < 300) {
-          updateVoiceModeUi("Повтори, пожалуйста", "ready");
+          updateVoiceModeUi("Повтори, пожалуйста", "repeat");
           if (!wasAuto && !shortVoiceHintShown) {
             shortVoiceHintShown = true;
             bubble("assistant", "Я не успел расслышать. Нажми микрофон и скажи фразу чуть дольше.");
           }
-          setFace("idle");
+          setFace("correcting");
           if (wasAuto) scheduleVoiceListen(700);
           return;
         }
@@ -3184,7 +3380,7 @@ async function renderChat() {
           updateVoiceModeUi("Повтори, пожалуйста", "error");
           bubble("assistant", message);
         }
-        setFace("idle");
+        setFace("error");
         if (wasAuto) scheduleVoiceListen(1500);
       } finally {
         sending = false;
@@ -3201,7 +3397,7 @@ async function renderChat() {
         else tg.showAlert(message);
         if (auto) {
           voiceModeActive = false;
-          updateVoiceModeUi();
+          updateVoiceModeUi(message, "error");
         }
         return;
       }
@@ -3264,7 +3460,7 @@ async function renderChat() {
           voiceModeActive = false;
           updateVoiceModeUi(message, isMicrophonePermissionError(e) ? "microphone_denied" : "error");
         }
-        setFace("idle");
+        setFace("error");
       }
     }
 
@@ -3486,8 +3682,81 @@ async function renderChat() {
       else startVoiceMode();
     }
 
+    async function handleVoiceModeButton() {
+      if (voiceModeButton.disabled || sending) return;
+      if (!voiceModeActive) {
+        await startVoiceMode();
+        return;
+      }
+      if (voiceUiState === "speaking") {
+        stopTutorSpeech();
+        scheduleVoiceListen(220);
+        return;
+      }
+      if (["error", "microphone_denied", "ended"].includes(voiceUiState)) {
+        voiceModeActive = false;
+        await startVoiceMode();
+        return;
+      }
+      if (["ready", "waiting", "repeat"].includes(voiceUiState)) {
+        if (realtimeActive) {
+          setRealtimeMicEnabled(true);
+          updateVoiceModeUi("Слушаю...", "listening");
+          setFace("listening");
+        } else {
+          await startRecording(true);
+        }
+        return;
+      }
+      stopVoiceMode();
+    }
+
+    async function askNextVoiceQuestion() {
+      if (sending || tutorSpeechBusy) return;
+      if (box.querySelector(".chat-empty")) box.innerHTML = "";
+      sending = true;
+      sendButton.disabled = true;
+      mic.disabled = true;
+      updateVoiceModeUi("Думаю...", "thinking");
+      setFace("thinking");
+      try {
+        const result = await voiceTextTurn("Дай следующий короткий вопрос по текущему уроку. Не меняй тему без причины.");
+        const reply = String(result.reply || "").trim();
+        if (reply) bubble("assistant", reply);
+        renderLessonState(result.lesson_state);
+        if (reply) {
+          await speakTutor(reply, voiceModeActive ? () => scheduleVoiceListen(VOICE_RESTART_DELAY_MS) : null, true, voicePlaybackSpeed);
+        }
+      } catch (e) {
+        const message = friendlyVoiceError(e, "Не удалось получить следующий вопрос. Попробуй ещё раз.");
+        bubble("assistant", message);
+        updateVoiceModeUi(message, "error");
+        setFace("error");
+      } finally {
+        sending = false;
+        sendButton.disabled = false;
+        mic.disabled = voiceModeActive;
+        updateVoiceActionButtons();
+      }
+    }
+
+    async function repeatVoiceAttempt() {
+      if (sending || tutorSpeechBusy) return;
+      if (!voiceModeActive) {
+        await startVoiceMode();
+        return;
+      }
+      if (realtimeActive) {
+        setRealtimeMicEnabled(true);
+        updateVoiceModeUi("Слушаю...", "listening");
+        setFace("listening");
+        return;
+      }
+      await startRecording(true);
+    }
+
     mic.onclick = toggleRecording;
-    voiceModeButton.onclick = toggleVoiceMode;
+    voiceModeButton.onclick = handleVoiceModeButton;
     voiceRepeatButton.onclick = () => {
       if (!lastTutorReply || sending || tutorSpeechBusy) return;
       haptic();
@@ -3499,6 +3768,19 @@ async function renderChat() {
       voicePlaybackSpeed = voicePlaybackSpeed < 0.9 ? 0.94 : 0.86;
       updateVoiceActionButtons();
       speakTutor(lastTutorReply, null, true, voicePlaybackSpeed);
+    };
+    voiceAgainButton.onclick = () => {
+      haptic();
+      repeatVoiceAttempt().catch(error => {
+        const message = friendlyVoiceError(error, "Не удалось включить голос. Попробуй ещё раз.");
+        bubble("assistant", message);
+        updateVoiceModeUi(message, "error");
+        setFace("error");
+      });
+    };
+    voiceNextButton.onclick = () => {
+      haptic();
+      askNextVoiceQuestion();
     };
     sendButton.onclick = send;
     input.addEventListener("keypress", e => { if (e.key === "Enter") send(); });
