@@ -3758,6 +3758,37 @@ function adminStatHtml(label, value, hint = "") {
     </div>`;
 }
 
+function clampAdminPercent(value) {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number)) return 0;
+  return Math.max(0, Math.min(100, Math.round(number)));
+}
+
+function adminRatioPercent(part, total) {
+  const totalNumber = Number(total || 0);
+  if (!Number.isFinite(totalNumber) || totalNumber <= 0) return 0;
+  return Number(part || 0) / totalNumber * 100;
+}
+
+function adminChartTone(tone) {
+  return ["blue", "green", "yellow", "red", "violet"].includes(tone) ? tone : "blue";
+}
+
+function adminCircleChartHtml(label, percent, value, hint = "", tone = "blue") {
+  const safePercent = clampAdminPercent(percent);
+  return `
+    <div class="admin-chart ${adminChartTone(tone)}" style="--value:${safePercent}">
+      <div class="admin-chart-ring" aria-label="${esc(label)} ${safePercent}%">
+        <span>${safePercent}%</span>
+      </div>
+      <div class="admin-chart-copy">
+        <span>${esc(label)}</span>
+        <b>${esc(value)}</b>
+        ${hint ? `<small>${esc(hint)}</small>` : ""}
+      </div>
+    </div>`;
+}
+
 function adminFailedImageHtml(word) {
   return `
     <div class="admin-word-row">
@@ -3794,6 +3825,10 @@ async function renderAdminPanel() {
     const openai = config.openai || {};
     const failedWords = data.failed_image_words || [];
     const health = data.health || [];
+    const wordsTotal = Number(words.total || 0);
+    const readyImages = Number(words.generated_images || 0) + Number(words.images_needing_review || 0);
+    const audioFiles = Number(cache.word_audio?.files || 0);
+    const usersTotal = Number(users.total || 0);
     app.innerHTML = `
       <div class="screen admin-screen">
         <h1>Админпанель</h1>
@@ -3817,6 +3852,13 @@ async function renderAdminPanel() {
           ${adminStatHtml("Ошибки картинок", formatAdminNumber(words.failed_images), `ожидают: ${formatAdminNumber(words.missing_images)}`)}
           ${adminStatHtml("AI-запросы сегодня", formatAdminNumber(ai.requests), `${formatAdminNumber(ai.total_tokens)} токенов`)}
           ${adminStatHtml("Расход сегодня", formatAdminMoney(ai.cost_usd), "оценка по сохраненным usage")}
+        </div>
+
+        <div class="admin-chart-grid">
+          ${adminCircleChartHtml("Картинки", adminRatioPercent(readyImages, wordsTotal), `${formatAdminNumber(readyImages)} / ${formatAdminNumber(wordsTotal)}`, "готовы или ждут проверки", readyImages >= wordsTotal && wordsTotal ? "green" : "blue")}
+          ${adminCircleChartHtml("Активность", adminRatioPercent(users.active_today, usersTotal), `${formatAdminNumber(users.active_today)} / ${formatAdminNumber(usersTotal)}`, "учеников сегодня", users.active_today ? "green" : "blue")}
+          ${adminCircleChartHtml("Озвучка", adminRatioPercent(audioFiles, wordsTotal), `${formatAdminNumber(audioFiles)} / ${formatAdminNumber(wordsTotal)}`, "аудио в кэше", audioFiles >= wordsTotal && wordsTotal ? "green" : "violet")}
+          ${adminCircleChartHtml("Проблемы", adminRatioPercent(words.failed_images, wordsTotal), formatAdminNumber(words.failed_images), "ошибки генерации картинок", words.failed_images ? "red" : "green")}
         </div>
 
         <div class="card">
@@ -4007,6 +4049,10 @@ async function renderAdminUserDetail(userId) {
     const ai = data.ai_today || {};
     const problemWords = data.problem_words || [];
     const history = data.history || [];
+    const totalWords = Number(dictionary.total_words || 0);
+    const wordsForReview = Number(dictionary.review_words || 0);
+    const masteredWords = Number(dictionary.mastered_words || 0);
+    const streakDays = Number(streak.current || 0);
     app.innerHTML = `
       <div class="screen admin-screen">
         <h1>Карточка ученика</h1>
@@ -4024,6 +4070,13 @@ async function renderAdminUserDetail(userId) {
           ${adminStatHtml("Точность", `${stats.accuracy || 0}%`, `${formatAdminNumber(stats.total_correct)}✓ / ${formatAdminNumber(stats.total_wrong)}×`)}
           ${adminStatHtml("Уроки", formatAdminNumber(report.completed_lessons), `серия: ${formatAdminNumber(streak.current)} дн.`)}
           ${adminStatHtml("AI сегодня", formatAdminNumber(ai.used_today), `${formatAdminMoney(ai.cost_usd_today)} · ${formatAdminNumber(ai.total_tokens_today)} токенов`)}
+        </div>
+
+        <div class="admin-chart-grid">
+          ${adminCircleChartHtml("Точность", stats.accuracy || 0, `${stats.accuracy || 0}%`, `${formatAdminNumber(stats.total_correct)}✓ / ${formatAdminNumber(stats.total_wrong)}×`, Number(stats.accuracy || 0) >= 80 ? "green" : "yellow")}
+          ${adminCircleChartHtml("Выучено", adminRatioPercent(masteredWords, totalWords), `${formatAdminNumber(masteredWords)} / ${formatAdminNumber(totalWords)}`, "словарь ученика", "blue")}
+          ${adminCircleChartHtml("Повторить", adminRatioPercent(wordsForReview, totalWords), formatAdminNumber(wordsForReview), "слов требуют внимания", wordsForReview ? "yellow" : "green")}
+          ${adminCircleChartHtml("Серия", Math.min(100, streakDays / 7 * 100), `${formatAdminNumber(streakDays)} дн.`, "цель: 7 дней подряд", streakDays >= 7 ? "green" : "violet")}
         </div>
 
         <div class="card">

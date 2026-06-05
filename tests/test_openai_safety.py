@@ -239,6 +239,8 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertIn("renderAdminUserDetail", app_js)
         self.assertIn("loadAdminUsers", app_js)
         self.assertIn("admin-health-list", app_js)
+        self.assertIn("adminCircleChartHtml", app_js)
+        self.assertIn("admin-chart-grid", app_js)
         self.assertIn("state.me.is_admin", app_js)
         self.assertNotIn("OPENAI_API_KEY", app_js)
 
