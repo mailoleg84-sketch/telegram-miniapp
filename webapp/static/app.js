@@ -2094,12 +2094,20 @@ async function renderChat() {
         <div class="chat-meta">Сообщений сегодня: ${data.usage?.used_today ?? 0} · без лимита</div>
         <div class="tutor-stage">
           <div class="tutor-face idle" id="tutorFace" aria-hidden="true">
-            <div class="face-hair"></div>
-            <div class="face-eye left"></div>
-            <div class="face-eye right"></div>
-            <div class="face-cheek left"></div>
-            <div class="face-cheek right"></div>
-            <div class="face-mouth"></div>
+            <img class="tutor-avatar-img" src="/static/assets/tutor-avatar-v1.jpg?v=20260606-kids-v98" alt="">
+            <span class="avatar-state-ring"></span>
+            <span class="avatar-breath"></span>
+            <span class="avatar-listen-wave"></span>
+            <span class="avatar-eyelid left"></span>
+            <span class="avatar-eyelid right"></span>
+            <span class="avatar-brow left"></span>
+            <span class="avatar-brow right"></span>
+            <span class="avatar-mouth-motion"></span>
+            <span class="avatar-emotion-mark"></span>
+            <span class="avatar-thinking-dot one"></span>
+            <span class="avatar-thinking-dot two"></span>
+            <span class="avatar-thinking-dot three"></span>
+            <span class="avatar-speech-bars"><i></i><i></i><i></i></span>
           </div>
           <div class="voice-mode-panel">
             <button class="voice-mode-toggle" id="voiceMode" type="button">
@@ -2283,8 +2291,18 @@ async function renderChat() {
       return Boolean(box.querySelector(".bubble"));
     }
 
+    function faceModeForVoiceState(mode) {
+      if (["listening", "speaking", "thinking", "praising", "correcting", "encouraging", "waiting"].includes(mode)) return mode;
+      if (["ready"].includes(mode)) return "waiting";
+      if (["processing", "requesting_microphone", "reconnecting"].includes(mode)) return "thinking";
+      if (["error", "microphone_denied"].includes(mode)) return "correcting";
+      return "idle";
+    }
+
     function setFace(mode) {
-      face.className = `tutor-face ${mode}`;
+      const faceMode = faceModeForVoiceState(mode);
+      face.className = `tutor-face ${faceMode}`;
+      face.dataset.state = faceMode;
     }
 
     function typingBubble() {
@@ -2334,6 +2352,7 @@ async function renderChat() {
       voiceModeText.textContent = voiceModeActive ? "Стоп" : "Говорить";
       voiceStatus.textContent = status || VOICE_STATE_LABELS[voiceUiState] || (voiceModeActive ? "Слушаю..." : "Обычный режим");
       if (!sending) mic.disabled = voiceModeActive;
+      setFace(faceModeForVoiceState(voiceUiState));
       updateVoiceActionButtons();
     }
 

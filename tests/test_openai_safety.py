@@ -251,6 +251,10 @@ class OpenAISafetyTests(unittest.TestCase):
         required_markers = (
             "let tutorSpeechBusy = false;",
             "let tutorSpeechId = 0;",
+            "tutor-avatar-v1.jpg",
+            "avatar-eyelid",
+            "avatar-speech-bars",
+            "faceModeForVoiceState",
             "function releaseTutorAudio()",
             "if (speechId !== tutorSpeechId) return;",
             "if (tutorSpeechBusy || realtimeAssistantSpeaking)",
