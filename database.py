@@ -396,6 +396,13 @@ async def update_points(user_id: int, delta: int) -> None:
     )
 
 
+def _affected_count(command_status: str) -> int:
+    try:
+        return int(str(command_status).rsplit(" ", 1)[-1])
+    except (TypeError, ValueError):
+        return 0
+
+
 async def reset_learning_results(user_id: int) -> None:
     pool = await _get_pool()
     async with pool.acquire() as conn:
@@ -415,6 +422,167 @@ async def reset_learning_results(user_id: int) -> None:
             await conn.execute("DELETE FROM training_attempts WHERE user_id = $1", user_id)
             await conn.execute("DELETE FROM voice_lesson_state WHERE user_id = $1", user_id)
             await conn.execute("DELETE FROM voice_lesson_sessions WHERE user_id = $1", user_id)
+
+
+# ---------- Админка ----------
+
+async def get_admin_overview() -> dict:
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        users = await conn.fetchrow("""
+            SELECT
+                COUNT(*)::INT AS total_users,
+                COUNT(*) FILTER (WHERE registered_at >= DATE_TRUNC('day', NOW()))::INT AS new_users_today,
+                COALESCE(SUM(points), 0)::INT AS total_points
+            FROM users
+        """)
+        active_today = await conn.fetchval("""
+            SELECT COUNT(DISTINCT user_id)::INT
+            FROM (
+                SELECT user_id FROM conversations WHERE created_at >= DATE_TRUNC('day', NOW())
+                UNION
+                SELECT user_id FROM ai_usage WHERE created_at >= DATE_TRUNC('day', NOW())
+                UNION
+                SELECT user_id FROM daily_lessons
+                WHERE COALESCE(updated_at, created_at) >= DATE_TRUNC('day', NOW())
+                UNION
+                SELECT user_id FROM vocabulary_sessions WHERE created_at >= DATE_TRUNC('day', NOW())
+                UNION
+                SELECT user_id FROM game_sessions WHERE created_at >= DATE_TRUNC('day', NOW())
+                UNION
+                SELECT user_id FROM training_attempts WHERE created_at >= DATE_TRUNC('day', NOW())
+            ) activity
+        """)
+        words = await conn.fetchrow("""
+            SELECT
+                COUNT(*)::INT AS total_words,
+                COUNT(*) FILTER (WHERE generated_image_status = 'generated')::INT AS generated_images,
+                COUNT(*) FILTER (WHERE generated_image_status = 'needs_review')::INT AS images_needing_review,
+                COUNT(*) FILTER (WHERE generated_image_status = 'failed')::INT AS failed_images,
+                COUNT(*) FILTER (
+                    WHERE COALESCE(generated_image_status, 'missing') NOT IN ('generated', 'needs_review', 'failed')
+                )::INT AS missing_images,
+                COUNT(*) FILTER (WHERE needs_review = TRUE)::INT AS semantic_review_words
+            FROM words
+        """)
+        learning = await conn.fetchrow("""
+            SELECT
+                (SELECT COUNT(*)::INT FROM daily_lessons WHERE completed = TRUE) AS completed_daily_lessons,
+                (SELECT COUNT(*)::INT FROM vocabulary_sessions WHERE completed = TRUE) AS completed_word_tests,
+                (SELECT COUNT(*)::INT FROM game_sessions WHERE completed = TRUE) AS completed_games,
+                (SELECT COUNT(*)::INT FROM training_attempts) AS training_attempts,
+                (SELECT COUNT(*)::INT FROM user_progress) AS learned_word_links
+        """)
+        ai_today = await conn.fetchrow("""
+            SELECT
+                COUNT(*)::INT AS requests,
+                COALESCE(SUM(input_tokens), 0)::INT AS input_tokens,
+                COALESCE(SUM(output_tokens), 0)::INT AS output_tokens,
+                COALESCE(SUM(total_tokens), 0)::INT AS total_tokens,
+                COALESCE(SUM(cost_usd), 0)::FLOAT AS cost_usd
+            FROM ai_usage
+            WHERE created_at >= DATE_TRUNC('day', NOW())
+        """)
+    return {
+        "users": users,
+        "active_today": int(active_today or 0),
+        "words": words,
+        "learning": learning,
+        "ai_today": ai_today,
+    }
+
+
+async def get_admin_users(search: str = "", limit: int = 40):
+    pool = await _get_pool()
+    query = " ".join(str(search or "").lower().split())[:80]
+    return await pool.fetch("""
+        SELECT
+            u.user_id,
+            u.name,
+            u.parent_name,
+            u.child_age,
+            u.age_group,
+            u.goal,
+            u.english_level,
+            u.level_test_score,
+            u.level_test_completed_at,
+            u.points,
+            u.registered_at,
+            COALESCE(p.words_learned, 0)::INT AS words_learned,
+            COALESCE(p.total_correct, 0)::INT AS total_correct,
+            COALESCE(p.total_wrong, 0)::INT AS total_wrong,
+            COALESCE(l.completed_lessons, 0)::INT AS completed_lessons,
+            COALESCE(v.completed_word_tests, 0)::INT AS completed_word_tests,
+            COALESCE(g.completed_games, 0)::INT AS completed_games
+        FROM users u
+        LEFT JOIN (
+            SELECT
+                user_id,
+                COUNT(DISTINCT word_id) AS words_learned,
+                SUM(correct_count) AS total_correct,
+                SUM(wrong_count) AS total_wrong
+            FROM user_progress
+            GROUP BY user_id
+        ) p ON p.user_id = u.user_id
+        LEFT JOIN (
+            SELECT user_id, COUNT(*) AS completed_lessons
+            FROM daily_lessons
+            WHERE completed = TRUE
+            GROUP BY user_id
+        ) l ON l.user_id = u.user_id
+        LEFT JOIN (
+            SELECT user_id, COUNT(*) AS completed_word_tests
+            FROM vocabulary_sessions
+            WHERE completed = TRUE
+            GROUP BY user_id
+        ) v ON v.user_id = u.user_id
+        LEFT JOIN (
+            SELECT user_id, COUNT(*) AS completed_games
+            FROM game_sessions
+            WHERE completed = TRUE
+            GROUP BY user_id
+        ) g ON g.user_id = u.user_id
+        WHERE
+            $1 = ''
+            OR LOWER(u.name) LIKE '%' || $1 || '%'
+            OR LOWER(COALESCE(u.parent_name, '')) LIKE '%' || $1 || '%'
+            OR u.user_id::TEXT LIKE '%' || $1 || '%'
+        ORDER BY u.registered_at DESC
+        LIMIT $2
+    """, query, max(5, min(int(limit or 40), 100)))
+
+
+async def get_admin_failed_image_words(limit: int = 20):
+    pool = await _get_pool()
+    return await pool.fetch("""
+        SELECT
+            id,
+            word,
+            translation,
+            topic,
+            age_group,
+            generated_image_status,
+            generated_image_review,
+            generated_image_checked_at
+        FROM words
+        WHERE generated_image_status = 'failed'
+        ORDER BY generated_image_checked_at DESC NULLS LAST, word ASC
+        LIMIT $1
+    """, max(1, min(int(limit or 20), 100)))
+
+
+async def reset_failed_generated_images() -> int:
+    pool = await _get_pool()
+    status = await pool.execute("""
+        UPDATE words
+        SET generated_image_url = '',
+            generated_image_review = NULL,
+            generated_image_status = 'missing',
+            generated_image_model = NULL,
+            generated_image_checked_at = NULL
+        WHERE generated_image_status = 'failed'
+    """)
+    return _affected_count(status)
 
 
 # ---------- Слова ----------

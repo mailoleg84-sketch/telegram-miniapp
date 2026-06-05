@@ -216,6 +216,27 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertNotIn("length", status)
         self.assertNotIn("prefix", status)
 
+    def test_admin_panel_is_guarded_and_available_to_admins(self):
+        root = Path(__file__).resolve().parents[1]
+        config_py = (root / "config.py").read_text(encoding="utf-8")
+        database_py = (root / "database.py").read_text(encoding="utf-8")
+        server_py = (root / "webapp" / "server.py").read_text(encoding="utf-8")
+        app_js = (root / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("ADMIN_USER_IDS", config_py)
+        self.assertIn("get_admin_overview", database_py)
+        self.assertIn("reset_failed_generated_images", database_py)
+        self.assertIn("def _is_admin_request", server_py)
+        self.assertIn("\"is_admin\": is_admin", server_py)
+        self.assertIn("/api/admin/overview", server_py)
+        self.assertIn("/api/admin/users", server_py)
+        self.assertIn("/api/admin/images/reset-failed", server_py)
+        self.assertIn("Доступ только для администратора", server_py)
+        self.assertIn("renderAdminPanel", app_js)
+        self.assertIn("renderAdminUsers", app_js)
+        self.assertIn("state.me.is_admin", app_js)
+        self.assertNotIn("OPENAI_API_KEY", app_js)
+
     def test_voice_state_machine_guards_audio_and_microphone_conflicts(self):
         root = Path(__file__).resolve().parents[1]
         app_js = (root / "webapp" / "static" / "app.js").read_text(encoding="utf-8")

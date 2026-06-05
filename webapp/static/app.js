@@ -26,6 +26,7 @@ const state = {
   motivation: null,
   levelTest: null,
   training: null,
+  admin: null,
   dictionaryFilter: "all",
 };
 let fallbackAuth = window.location.search || "";
@@ -987,6 +988,13 @@ function renderMenu() {
           <small>уровень, данные, выход</small>
         </button>
       </div>
+      ${state.me.is_admin ? `
+        <button class="action-row admin-entry" id="adminPanel">
+          <span>Админ</span>
+          <b>Управление приложением</b>
+          <small>пользователи, словарь, картинки, диагностика</small>
+        </button>
+      ` : ""}
 
     </div>`;
 
@@ -994,6 +1002,8 @@ function renderMenu() {
   document.getElementById("learnHub").onclick = () => { haptic(); renderLearningHub(); };
   document.getElementById("progressHub").onclick = () => { haptic(); renderProgressHub(); };
   document.getElementById("profile").onclick = () => { haptic(); renderProfile(); };
+  const adminPanel = document.getElementById("adminPanel");
+  if (adminPanel) adminPanel.onclick = () => { haptic(); renderAdminPanel(); };
   loadLearningPath();
 }
 
@@ -3708,6 +3718,211 @@ async function renderLeaderboard() {
         <button class="btn btn-secondary" id="leaderboardHome">К прогрессу</button>
       </div>`;
     document.getElementById("leaderboardHome").onclick = () => { haptic(); renderProgressHub(); };
+  } catch (e) {
+    renderError(e.message);
+  }
+}
+
+function formatAdminNumber(value) {
+  return Number(value || 0).toLocaleString("ru-RU");
+}
+
+function formatAdminMoney(value) {
+  return `$${Number(value || 0).toFixed(4)}`;
+}
+
+function formatAdminDateTime(value) {
+  if (!value) return "";
+  try {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleString("ru-RU", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch (_) {
+    return "";
+  }
+}
+
+function adminStatHtml(label, value, hint = "") {
+  return `
+    <div class="admin-stat">
+      <span>${esc(label)}</span>
+      <b>${esc(value)}</b>
+      ${hint ? `<small>${esc(hint)}</small>` : ""}
+    </div>`;
+}
+
+function adminFailedImageHtml(word) {
+  return `
+    <div class="admin-word-row">
+      <div>
+        <b>${esc(word.word)}</b>
+        <span>${esc(word.translation)} · ${esc(word.topic || "basic")}</span>
+        ${word.reason ? `<small>${esc(word.reason)}</small>` : ""}
+      </div>
+      <em>${esc(formatAdminDateTime(word.checked_at) || "нет даты")}</em>
+    </div>`;
+}
+
+async function renderAdminPanel() {
+  setBack(renderMenu);
+  loading();
+  try {
+    const data = await api("/api/admin/overview", "GET");
+    state.admin = data;
+    const users = data.users || {};
+    const learning = data.learning || {};
+    const words = data.words || {};
+    const ai = data.ai_today || {};
+    const cache = data.cache || {};
+    const config = data.config || {};
+    const openai = config.openai || {};
+    const failedWords = data.failed_image_words || [];
+    app.innerHTML = `
+      <div class="screen admin-screen">
+        <h1>Админпанель</h1>
+        <div class="card admin-hero">
+          <div>
+            <div class="daily-badge">Управление</div>
+            <h2>Состояние приложения</h2>
+            <p class="hint">Безопасная панель: секреты и ключи здесь не показываются.</p>
+          </div>
+          <strong>${esc(config.app_version || "")}</strong>
+        </div>
+
+        <div class="admin-grid">
+          ${adminStatHtml("Пользователи", formatAdminNumber(users.total), `сегодня активны: ${formatAdminNumber(users.active_today)}`)}
+          ${adminStatHtml("Новые сегодня", formatAdminNumber(users.new_today), `баллов всего: ${formatAdminNumber(users.total_points)}`)}
+          ${adminStatHtml("Словарь", formatAdminNumber(words.total), `AI-картинок: ${formatAdminNumber(words.generated_images)}`)}
+          ${adminStatHtml("Ошибки картинок", formatAdminNumber(words.failed_images), `ожидают: ${formatAdminNumber(words.missing_images)}`)}
+          ${adminStatHtml("AI-запросы сегодня", formatAdminNumber(ai.requests), `${formatAdminNumber(ai.total_tokens)} токенов`)}
+          ${adminStatHtml("Расход сегодня", formatAdminMoney(ai.cost_usd), "оценка по сохраненным usage")}
+        </div>
+
+        <div class="card">
+          <h2>Учебная активность</h2>
+          <div class="stat-row"><span>Уроков дня завершено</span><b>${formatAdminNumber(learning.completed_daily_lessons)}</b></div>
+          <div class="stat-row"><span>Тестов по словам</span><b>${formatAdminNumber(learning.completed_word_tests)}</b></div>
+          <div class="stat-row"><span>Игр завершено</span><b>${formatAdminNumber(learning.completed_games)}</b></div>
+          <div class="stat-row"><span>Попыток тренировок</span><b>${formatAdminNumber(learning.training_attempts)}</b></div>
+        </div>
+
+        <div class="card">
+          <h2>OpenAI и медиа</h2>
+          <div class="stat-row"><span>Модель чата</span><b>${esc(openai.model || "-")}</b></div>
+          <div class="stat-row"><span>Realtime</span><b>${esc(openai.realtime_model || "-")}</b></div>
+          <div class="stat-row"><span>Голос</span><b>${esc(openai.realtime_voice || openai.voice_tts_voice || "-")}</b></div>
+          <div class="stat-row"><span>Картинки</span><b>${esc(openai.image_model || "-")}</b></div>
+          <div class="stat-row"><span>Кэш картинок</span><b>${formatAdminNumber(cache.generated_images?.files)} · ${cache.generated_images?.size_mb || 0} MB</b></div>
+          <div class="stat-row"><span>Кэш озвучки</span><b>${formatAdminNumber(cache.word_audio?.files)} · ${cache.word_audio?.size_mb || 0} MB</b></div>
+        </div>
+
+        <div class="card">
+          <h2>Картинки слов</h2>
+          <p class="hint">Если в OpenAI был лимит billing, сбрось ошибки после увеличения лимита. Тогда карточки смогут снова запросить AI-картинки.</p>
+          ${failedWords.length ? `
+            <div class="admin-list">
+              ${failedWords.map(adminFailedImageHtml).join("")}
+            </div>
+          ` : `<p class="hint">Ошибок генерации картинок сейчас нет.</p>`}
+          <button class="btn mt-12" id="adminResetImages">Сбросить ошибки картинок</button>
+        </div>
+
+        <button class="btn" id="adminUsers">Пользователи</button>
+        <button class="btn btn-secondary" id="adminRefresh">Обновить</button>
+        <button class="btn btn-secondary" id="adminHome">В меню</button>
+      </div>`;
+    document.getElementById("adminUsers").onclick = () => { haptic(); renderAdminUsers(); };
+    document.getElementById("adminRefresh").onclick = () => { haptic(); renderAdminPanel(); };
+    document.getElementById("adminHome").onclick = () => { haptic(); renderMenu(); };
+    document.getElementById("adminResetImages").onclick = async () => {
+      haptic("warning");
+      const ok = await confirmAction("Сбросить статусы неудачной генерации картинок? После этого карточки смогут запросить картинки снова.");
+      if (!ok) return;
+      try {
+        const result = await api("/api/admin/images/reset-failed", "POST", { confirm: "reset_image_failures" });
+        tg.showAlert(`Сброшено статусов: ${result.updated || 0}`);
+        renderAdminPanel();
+      } catch (e) {
+        tg.showAlert(e.message);
+      }
+    };
+  } catch (e) {
+    renderError(e.message);
+  }
+}
+
+function adminUserRowHtml(user) {
+  return `
+    <div class="admin-user-row">
+      <div class="admin-user-main">
+        <b>${esc(user.child_name)}</b>
+        <span>ID ${esc(user.id)} · ${esc(user.age_label || "возраст не указан")} · ${esc(user.level_label || "")}</span>
+        <small>${esc(user.parent_name || "родитель не указан")} · ${formatAdminNumber(user.points)} баллов · ${formatAdminNumber(user.words_learned)} слов · точность ${user.accuracy || 0}%</small>
+      </div>
+      <button type="button" class="admin-mini-btn" data-reset-user="${esc(user.id)}">Сброс</button>
+    </div>`;
+}
+
+function bindAdminUserActions(query = "") {
+  document.querySelectorAll("[data-reset-user]").forEach(button => {
+    button.onclick = async () => {
+      haptic("warning");
+      const userId = Number(button.dataset.resetUser);
+      const ok = await confirmAction(`Обнулить учебные результаты пользователя ${userId}? Профиль останется.`);
+      if (!ok) return;
+      button.disabled = true;
+      try {
+        await api("/api/admin/users/reset-results", "POST", {
+          user_id: userId,
+          confirm: "reset_user_results",
+        });
+        tg.showAlert("Результаты пользователя обнулены.");
+        renderAdminUsers(query);
+      } catch (e) {
+        button.disabled = false;
+        tg.showAlert(e.message);
+      }
+    };
+  });
+}
+
+async function renderAdminUsers(query = "") {
+  setBack(renderAdminPanel);
+  loading();
+  try {
+    const data = await api(`/api/admin/users?q=${encodeURIComponent(query)}&limit=60`, "GET");
+    const users = data.users || [];
+    app.innerHTML = `
+      <div class="screen admin-screen">
+        <h1>Пользователи</h1>
+        <div class="card dictionary-search-card">
+          <input id="adminUserSearch" type="text" placeholder="Найти ученика, родителя или ID..." value="${esc(query)}" autocomplete="off">
+        </div>
+        ${users.length ? `
+          <div class="admin-list">
+            ${users.map(adminUserRowHtml).join("")}
+          </div>
+        ` : `
+          <div class="card center">
+            <b>Ничего не найдено</b>
+            <p class="hint">Попробуй другой запрос.</p>
+          </div>
+        `}
+        <button class="btn btn-secondary" id="adminUsersBack">К админке</button>
+      </div>`;
+    const search = document.getElementById("adminUserSearch");
+    let searchTimer = null;
+    search.addEventListener("input", () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => renderAdminUsers(search.value.trim()), 350);
+    });
+    document.getElementById("adminUsersBack").onclick = () => { haptic(); renderAdminPanel(); };
+    bindAdminUserActions(query);
   } catch (e) {
     renderError(e.message);
   }

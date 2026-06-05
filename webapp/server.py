@@ -15,10 +15,12 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 
 import database
 from config import (
+    ADMIN_USER_IDS,
     AGE_GROUPS,
     AI_RATE_LIMIT_PER_MINUTE,
     API_RATE_LIMIT_PER_MINUTE,
     APP_VERSION,
+    BOT_RUN_MODE,
     CHAT_HISTORY_LIMIT,
     DAILY_LESSON_REWARD_POINTS,
     DAILY_LESSON_STEPS,
@@ -32,6 +34,7 @@ from config import (
     WORDS_PER_AGE_GROUP,
     WEBAPP_HOST,
     WEBAPP_PORT,
+    WEBAPP_URL,
     OPENAI_IMAGE_MODEL,
 )
 from webapp.auth import verify_fallback_auth, verify_init_data
@@ -46,6 +49,7 @@ from webapp.openai_service import (
     create_realtime_call,
     create_realtime_client_secret,
     generate_vocabulary_image,
+    openai_config_status,
     public_openai_error,
     synthesize_speech,
     transcribe_audio,
@@ -987,6 +991,140 @@ def _date_text(value) -> str:
     return str(value)
 
 
+def _is_admin_user_id(user_id) -> bool:
+    try:
+        return int(user_id) in ADMIN_USER_IDS
+    except (TypeError, ValueError):
+        return False
+
+
+def _is_admin_request(request: web.Request) -> bool:
+    return _is_admin_user_id(request["tg_user"]["id"])
+
+
+def _admin_forbidden_response() -> web.Response:
+    return web.json_response({"error": "Доступ только для администратора"}, status=403)
+
+
+def _file_cache_summary(path: Path) -> dict:
+    files = [item for item in path.glob("*") if item.is_file()] if path.exists() else []
+    return {
+        "files": len(files),
+        "size_mb": round(sum(item.stat().st_size for item in files) / 1024 / 1024, 2),
+    }
+
+
+def _safe_int(row, key: str, default: int = 0) -> int:
+    try:
+        return int(_record_value(row, key, default) or 0)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_float(row, key: str, default: float = 0.0) -> float:
+    try:
+        return float(_record_value(row, key, default) or 0)
+    except (TypeError, ValueError):
+        return default
+
+
+def _admin_overview_payload(overview: dict) -> dict:
+    users = overview.get("users")
+    words = overview.get("words")
+    learning = overview.get("learning")
+    ai_today = overview.get("ai_today")
+    return {
+        "users": {
+            "total": _safe_int(users, "total_users"),
+            "new_today": _safe_int(users, "new_users_today"),
+            "active_today": int(overview.get("active_today") or 0),
+            "total_points": _safe_int(users, "total_points"),
+        },
+        "learning": {
+            "completed_daily_lessons": _safe_int(learning, "completed_daily_lessons"),
+            "completed_word_tests": _safe_int(learning, "completed_word_tests"),
+            "completed_games": _safe_int(learning, "completed_games"),
+            "training_attempts": _safe_int(learning, "training_attempts"),
+            "learned_word_links": _safe_int(learning, "learned_word_links"),
+        },
+        "words": {
+            "total": _safe_int(words, "total_words"),
+            "generated_images": _safe_int(words, "generated_images"),
+            "images_needing_review": _safe_int(words, "images_needing_review"),
+            "failed_images": _safe_int(words, "failed_images"),
+            "missing_images": _safe_int(words, "missing_images"),
+            "semantic_review_words": _safe_int(words, "semantic_review_words"),
+        },
+        "ai_today": {
+            "requests": _safe_int(ai_today, "requests"),
+            "input_tokens": _safe_int(ai_today, "input_tokens"),
+            "output_tokens": _safe_int(ai_today, "output_tokens"),
+            "total_tokens": _safe_int(ai_today, "total_tokens"),
+            "cost_usd": round(_safe_float(ai_today, "cost_usd"), 6),
+        },
+        "cache": {
+            "generated_images": _file_cache_summary(GENERATED_VOCAB_DIR),
+            "word_audio": _file_cache_summary(AUDIO_CACHE_DIR),
+        },
+        "config": {
+            "app_version": APP_VERSION,
+            "webapp_url": WEBAPP_URL,
+            "bot_run_mode": BOT_RUN_MODE,
+            "api_rate_limit_per_minute": API_RATE_LIMIT_PER_MINUTE,
+            "ai_rate_limit_per_minute": AI_RATE_LIMIT_PER_MINUTE,
+            "admin_ids_configured": len(ADMIN_USER_IDS),
+            "openai": openai_config_status(),
+        },
+    }
+
+
+def _admin_user_dict(row) -> dict:
+    total_answers = _safe_int(row, "total_correct") + _safe_int(row, "total_wrong")
+    accuracy = round(_safe_int(row, "total_correct") / total_answers * 100) if total_answers else 0
+    age_group = _record_value(row, "age_group", "")
+    return {
+        "id": _safe_int(row, "user_id"),
+        "child_name": _record_value(row, "name", ""),
+        "parent_name": _record_value(row, "parent_name", "") or "",
+        "child_age": _record_value(row, "child_age", None),
+        "age_group": age_group,
+        "age_label": _age_label(age_group),
+        "goal_label": _goal_label(_record_value(row, "goal", "")),
+        "level_label": _level_label(_record_value(row, "english_level", "")),
+        "level_test_score": _record_value(row, "level_test_score", None),
+        "level_test_completed": bool(_record_value(row, "level_test_completed_at")),
+        "points": _safe_int(row, "points"),
+        "registered_at": _date_text(_record_value(row, "registered_at")),
+        "words_learned": _safe_int(row, "words_learned"),
+        "total_correct": _safe_int(row, "total_correct"),
+        "total_wrong": _safe_int(row, "total_wrong"),
+        "accuracy": accuracy,
+        "completed_lessons": _safe_int(row, "completed_lessons"),
+        "completed_word_tests": _safe_int(row, "completed_word_tests"),
+        "completed_games": _safe_int(row, "completed_games"),
+    }
+
+
+def _admin_failed_image_dict(row) -> dict:
+    raw_review = _record_value(row, "generated_image_review", "") or ""
+    reason = ""
+    try:
+        parsed = json.loads(raw_review)
+        reason = str(parsed.get("reason") or "")
+    except Exception:
+        reason = raw_review[:180]
+    return {
+        "id": _safe_int(row, "id"),
+        "word": _record_value(row, "word", ""),
+        "translation": _record_value(row, "translation", ""),
+        "topic": _record_value(row, "topic", ""),
+        "age_group": _record_value(row, "age_group", ""),
+        "status": _record_value(row, "generated_image_status", "failed"),
+        "reason": reason,
+        "checked_at": _date_text(_record_value(row, "generated_image_checked_at")),
+    }
+
+
 def _activity_event_dict(row) -> dict:
     event_type = row["event_type"]
     if event_type == "daily_lesson":
@@ -1755,11 +1893,13 @@ def _motivation_payload(user, stats, dictionary_summary, report, streak) -> dict
 async def api_me(request: web.Request):
     tg_user = request["tg_user"]
     user_id = tg_user["id"]
+    is_admin = _is_admin_user_id(user_id)
 
     user = await database.get_user(user_id)
     if not user:
         return web.json_response({
             "registered": False,
+            "is_admin": is_admin,
             "tg_user": {
                 "id": tg_user["id"],
                 "first_name": tg_user.get("first_name", ""),
@@ -1774,6 +1914,7 @@ async def api_me(request: web.Request):
     age_group = _normalized_age_group_for_user(user)
     return web.json_response({
         "registered": True,
+        "is_admin": is_admin,
         "user": {
             "id":         user["user_id"],
             "child_name": user["name"],
@@ -1795,6 +1936,57 @@ async def api_me(request: web.Request):
             "total_wrong":   stats["total_wrong"],
         },
     })
+
+
+async def api_admin_overview(request: web.Request):
+    if not _is_admin_request(request):
+        return _admin_forbidden_response()
+    overview = await database.get_admin_overview()
+    failed_images = await database.get_admin_failed_image_words(limit=8)
+    payload = _admin_overview_payload(overview)
+    payload["failed_image_words"] = [_admin_failed_image_dict(row) for row in failed_images]
+    return web.json_response(payload)
+
+
+async def api_admin_users(request: web.Request):
+    if not _is_admin_request(request):
+        return _admin_forbidden_response()
+    search = (request.query.get("q") or "").strip()[:80]
+    try:
+        limit = int(request.query.get("limit") or 40)
+    except (TypeError, ValueError):
+        limit = 40
+    rows = await database.get_admin_users(search=search, limit=limit)
+    return web.json_response({
+        "query": search,
+        "users": [_admin_user_dict(row) for row in rows],
+    })
+
+
+async def api_admin_reset_user_results(request: web.Request):
+    if not _is_admin_request(request):
+        return _admin_forbidden_response()
+    body = await _safe_json(request)
+    if body.get("confirm") != "reset_user_results":
+        return web.json_response({"error": "Нужно подтвердить сброс результатов пользователя"}, status=400)
+    try:
+        target_user_id = int(body.get("user_id"))
+    except (TypeError, ValueError):
+        return web.json_response({"error": "Некорректный user_id"}, status=400)
+    if not await database.user_exists(target_user_id):
+        return web.json_response({"error": "Пользователь не найден"}, status=404)
+    await database.reset_learning_results(target_user_id)
+    return web.json_response({"ok": True, "user_id": target_user_id})
+
+
+async def api_admin_reset_image_failures(request: web.Request):
+    if not _is_admin_request(request):
+        return _admin_forbidden_response()
+    body = await _safe_json(request)
+    if body.get("confirm") != "reset_image_failures":
+        return web.json_response({"error": "Нужно подтвердить сброс статусов картинок"}, status=400)
+    updated = await database.reset_failed_generated_images()
+    return web.json_response({"ok": True, "updated": updated})
 
 
 async def api_leaderboard(request: web.Request):
@@ -2997,6 +3189,10 @@ def create_app(
     app.router.add_get("/word-image.svg", word_image_handler)
     app.router.add_get("/vocabulary-visual.svg", vocabulary_visual_handler)
     app.router.add_get("/api/me",  api_me)
+    app.router.add_get("/api/admin/overview",           api_admin_overview)
+    app.router.add_get("/api/admin/users",              api_admin_users)
+    app.router.add_post("/api/admin/users/reset-results", api_admin_reset_user_results)
+    app.router.add_post("/api/admin/images/reset-failed", api_admin_reset_image_failures)
     app.router.add_get("/api/leaderboard",              api_leaderboard)
     app.router.add_get("/api/learning/path",            api_learning_path)
     app.router.add_get("/api/motivation/status",        api_motivation_status)
