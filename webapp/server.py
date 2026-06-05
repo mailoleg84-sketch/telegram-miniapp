@@ -1,4 +1,5 @@
 """aiohttp-сервер: статика Mini App + JSON API."""
+import asyncio
 import base64
 from collections import defaultdict, deque
 import hashlib
@@ -53,6 +54,7 @@ from webapp.vocabulary_visualizer import build_vocabulary_visual, vocabulary_ima
 log = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
 GENERATED_VOCAB_DIR = STATIC_DIR / "generated" / "vocabulary"
+AUDIO_CACHE_DIR = STATIC_DIR / "generated" / "audio"
 MAX_AUDIO_BYTES = 8 * 1024 * 1024
 MAX_SDP_BYTES = 512 * 1024
 PUBLIC_API_PATHS = {"/api/me", "/api/register"}
@@ -251,13 +253,20 @@ def _word_image_icon(word: str) -> str:
 
 def _word_image_url(word: str, topic: str = "") -> str:
     clean_word = " ".join(str(word or "").split())[:48]
-    if not _word_image_icon(clean_word):
-        return ""
-    query = urlencode({
-        "w": clean_word,
-        "t": " ".join(str(topic or "basic").split())[:32],
-    })
-    return f"/word-image.svg?{query}"
+    clean_topic = " ".join(str(topic or "basic").split())[:32]
+    if _word_image_icon(clean_word):
+        query = urlencode({
+            "w": clean_word,
+            "t": clean_topic,
+        })
+        return f"/word-image.svg?{query}"
+    visual = build_vocabulary_visual(
+        word=clean_word,
+        translation="",
+        example_sentence="",
+        topic=clean_topic,
+    )
+    return visual.get("image_url") or vocabulary_image_url(clean_word, visual.get("visual_type", "no_good_visual"), clean_topic)
 
 
 def _word_image_style(word: str, topic: str, seed: str):
@@ -766,6 +775,26 @@ def _generated_vocab_extension(content_type: str) -> str:
 
 def _generated_vocab_static_url(filename: str) -> str:
     return f"/static/generated/vocabulary/{filename}"
+
+
+def _cacheable_word_audio(text: str, mode: str) -> bool:
+    clean_text = " ".join(str(text or "").split())
+    return mode == "word" and 0 < len(clean_text) <= 120
+
+
+def _word_audio_cache_path(text: str, mode: str, speed) -> Path | None:
+    if not _cacheable_word_audio(text, mode):
+        return None
+    clean_text = " ".join(str(text or "").split()).lower()
+    speed_key = "" if speed in (None, "") else str(speed)
+    raw = json.dumps({
+        "mode": mode,
+        "text": clean_text,
+        "speed": speed_key,
+        "format": "mp3",
+        "v": 1,
+    }, ensure_ascii=False, sort_keys=True)
+    return AUDIO_CACHE_DIR / f"{hashlib.sha1(raw.encode('utf-8')).hexdigest()}.mp3"
 
 
 def _word_dict(word, learner_level: str = "beginner") -> dict:
@@ -1671,9 +1700,9 @@ def _motivation_payload(user, stats, dictionary_summary, report, streak) -> dict
         next_title = "Собрать первые 10 слов"
         next_text = "Небольшой словарь даст материал для игр и устной практики."
     elif current_streak < 3:
-        next_action = "daily"
-        next_title = "Дойти до серии 3 дня"
-        next_text = "Завтра приложение продолжит цепочку с короткого задания."
+        next_action = "learn"
+        next_title = "Дополнительная тренировка"
+        next_text = "Сегодняшний урок уже зачтен. Можно потренироваться еще, а серия продолжится завтра."
     elif completed_games < 3:
         next_action = "learn"
         next_title = "Закрепить слова"
@@ -2085,7 +2114,7 @@ async def api_vocab_image_generate(request: web.Request):
             })
 
     try:
-        result = await generate_vocabulary_image(word_payload, user_id)
+        result = await asyncio.wait_for(generate_vocabulary_image(word_payload, user_id), timeout=75)
     except Exception as exc:
         log.exception("Vocabulary image generation failed for word_id=%s", word_id)
         return web.json_response({
@@ -2228,6 +2257,7 @@ async def api_vocab_finish(request: web.Request):
     words = await database.get_words_by_ids(list(session["word_ids"]))
     words_by_id = {w["id"]: w for w in words}
     results = []
+    latest_result_by_word_id: dict[int, dict] = {}
     correct_count = 0
     wrong_count = 0
     total_delta = 0
@@ -2249,14 +2279,16 @@ async def api_vocab_finish(request: web.Request):
             wrong_count += 1
             total_delta += POINTS_WRONG
         await database.update_progress(user_id, word_id, correct=correct)
-        results.append({
+        result_item = {
             "word_id": word_id,
             "word": word["word"],
             "translation": word["translation"],
             "transcription": word["transcription"] or "",
             "image_url": _word_image_url(word["word"], word["topic"] or "basic"),
             "correct": correct,
-        })
+        }
+        results.append(result_item)
+        latest_result_by_word_id[word_id] = result_item
 
     await database.finish_vocabulary_session(session_id, user_id, correct_count, wrong_count)
     await database.update_points(user_id, total_delta)
@@ -2269,7 +2301,12 @@ async def api_vocab_finish(request: web.Request):
         "score": round(correct_count / total * 100) if total else 0,
         "delta": total_delta,
         "points": user["points"] if user else 0,
-        "results": results,
+        "results": [
+            latest_result_by_word_id[word["id"]]
+            for word in words
+            if word["id"] in latest_result_by_word_id
+        ],
+        "attempts": results,
     })
 
 
@@ -2373,10 +2410,32 @@ async def api_choice_next(request: web.Request):
     body = await _safe_json(request)
     focus = "review" if body.get("focus") == "review" else "all"
     age_group = _normalized_age_group_for_user(user)
-    correct = await database.get_review_word(user_id, age_group=age_group) if focus == "review" else None
+    exclude_ids = []
+    for item in body.get("exclude_ids") or []:
+        try:
+            exclude_ids.append(int(item))
+        except (TypeError, ValueError):
+            continue
+
+    correct = None
+    requested_word_id = body.get("word_id")
+    if requested_word_id is not None:
+        try:
+            correct = await database.get_word_by_id(int(requested_word_id))
+        except (TypeError, ValueError):
+            return web.json_response({"error": "bad payload"}, status=400)
+        if not correct:
+            return web.json_response({"error": "word not found"}, status=404)
+
+    if not correct:
+        correct = await database.get_review_word(user_id, age_group=age_group, exclude_ids=exclude_ids) if focus == "review" else None
     review_empty = focus == "review" and not correct
     if not correct:
-        correct = await database.get_practice_word(user_id, age_group=age_group)
+        correct = await database.get_practice_word(user_id, age_group=age_group, exclude_ids=exclude_ids)
+    if not correct and exclude_ids:
+        correct = await database.get_review_word(user_id, age_group=age_group) if focus == "review" else None
+        if not correct:
+            correct = await database.get_practice_word(user_id, age_group=age_group)
     if not correct:
         return web.json_response({"error": "Нет слов"}, status=500)
 
@@ -2418,6 +2477,7 @@ async def api_choice_answer(request: web.Request):
 
     user = await database.get_user(user_id)
     return web.json_response({
+        "word_id":     word_id,
         "correct":     correct,
         "word":        word["word"],
         "translation": word["translation"],
@@ -2434,10 +2494,32 @@ async def api_input_next(request: web.Request):
     body = await _safe_json(request)
     focus = "review" if body.get("focus") == "review" else "all"
     age_group = _normalized_age_group_for_user(user)
-    word = await database.get_review_word(user_id, age_group=age_group) if focus == "review" else None
+    exclude_ids = []
+    for item in body.get("exclude_ids") or []:
+        try:
+            exclude_ids.append(int(item))
+        except (TypeError, ValueError):
+            continue
+
+    word = None
+    requested_word_id = body.get("word_id")
+    if requested_word_id is not None:
+        try:
+            word = await database.get_word_by_id(int(requested_word_id))
+        except (TypeError, ValueError):
+            return web.json_response({"error": "bad payload"}, status=400)
+        if not word:
+            return web.json_response({"error": "word not found"}, status=404)
+
+    if not word:
+        word = await database.get_review_word(user_id, age_group=age_group, exclude_ids=exclude_ids) if focus == "review" else None
     review_empty = focus == "review" and not word
     if not word:
-        word = await database.get_practice_word(user_id, age_group=age_group)
+        word = await database.get_practice_word(user_id, age_group=age_group, exclude_ids=exclude_ids)
+    if not word and exclude_ids:
+        word = await database.get_review_word(user_id, age_group=age_group) if focus == "review" else None
+        if not word:
+            word = await database.get_practice_word(user_id, age_group=age_group)
     if not word:
         return web.json_response({"error": "Нет слов"}, status=500)
     return web.json_response({
@@ -2473,6 +2555,7 @@ async def api_input_answer(request: web.Request):
 
     user = await database.get_user(user_id)
     return web.json_response({
+        "word_id":     word_id,
         "correct":     correct,
         "word":        word["word"],
         "translation": word["translation"],
@@ -2583,18 +2666,41 @@ async def api_audio_speech(request: web.Request):
     if len(text) > 1200:
         text = text[:1200]
 
+    cache_path = _word_audio_cache_path(text, mode, speed)
+    if cache_path and cache_path.is_file():
+        return web.Response(
+            body=cache_path.read_bytes(),
+            content_type="audio/mpeg",
+            headers={
+                "Cache-Control": "public, max-age=31536000, immutable",
+                "X-Audio-Cache": "hit",
+            },
+        )
+
     try:
         audio = await synthesize_speech(text, mode=mode, speed=speed)
     except Exception as e:
         log.exception("Speech synthesis failed")
         return web.json_response({"error": f"Не удалось озвучить ответ. {public_openai_error(e)}"}, status=502)
 
+    cache_headers = {
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    }
+    if cache_path:
+        try:
+            AUDIO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            cache_path.write_bytes(audio)
+            cache_headers = {
+                "Cache-Control": "public, max-age=31536000, immutable",
+                "X-Audio-Cache": "miss",
+            }
+        except OSError:
+            log.exception("Failed to store word audio cache")
+
     return web.Response(
         body=audio,
         content_type="audio/mpeg",
-        headers={
-            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-        },
+        headers=cache_headers,
     )
 
 

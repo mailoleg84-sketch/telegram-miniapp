@@ -111,7 +111,11 @@ class OpenAISafetyTests(unittest.TestCase):
             "<b>Учим слова</b>",
             "<b>Работа над ошибками</b>",
             "<b>Словарь</b>",
-            "learningPathLevelTest",
+            "learningPathAction",
+            "motivationAction",
+            "runSuggestedAction",
+            "startTrainingSession(\"choice\", \"review\")",
+            "startTrainingSession(\"choice\", \"all\")",
             "wordImageHtml",
         )
         for marker in expected_single_labels:
@@ -494,6 +498,19 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertIn("word_collector", unlocked)
         self.assertIn("careful_answer", unlocked)
 
+    def test_motivation_after_completed_daily_lesson_still_offers_action(self):
+        payload = _motivation_payload(
+            user={"age_group": "8_10", "goal": "speaking"},
+            stats={"words_learned": 12, "total_correct": 10, "total_wrong": 1},
+            dictionary_summary={"review_words": 0},
+            report={"completed_lessons": 1, "completed_word_tests": 1, "completed_games": 3},
+            streak={"current_streak": 1, "longest_streak": 1, "completed_days": 1, "today_completed": True},
+        )
+
+        self.assertEqual(payload["next_action"], "learn")
+        self.assertIn("тренировка", payload["next_title"].lower())
+        self.assertIn("зачтен", payload["next_text"].lower())
+
     def test_initial_word_bank_has_5000_unique_age_balanced_items(self):
         by_age = {}
         for word, translation, _example, _topic, age_group, transcription in INITIAL_WORDS:
@@ -548,17 +565,21 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertNotIn("check the word amazing", words)
         self.assertNotIn("read the word suitable", words)
 
-    def test_word_images_are_only_used_for_confident_matches(self):
+    def test_word_images_have_visual_fallbacks_for_all_words(self):
         self.assertTrue(_word_image_url("apple", "food").startswith("/word-image.svg?"))
         self.assertTrue(_word_image_url("banana", "food").startswith("/word-image.svg?"))
         self.assertTrue(_word_image_url("moon", "nature").startswith("/word-image.svg?"))
         self.assertTrue(_word_image_url("guitar", "music").startswith("/word-image.svg?"))
         self.assertTrue(_word_image_url("bus", "transport").startswith("/word-image.svg?"))
         self.assertTrue(_word_image_url("train", "transport").startswith("/word-image.svg?"))
-        self.assertEqual(_word_image_url("breakfast", "food"), "")
-        self.assertEqual(_word_image_url("restaurant", "food"), "")
-        self.assertEqual(_word_image_url("amazing", "everyday"), "")
-        self.assertEqual(_word_image_url("suitable", "everyday"), "")
+        for word, topic in (
+            ("breakfast", "food"),
+            ("restaurant", "food"),
+            ("amazing", "everyday"),
+            ("suitable", "everyday"),
+        ):
+            with self.subTest(word=word):
+                self.assertTrue(_word_image_url(word, topic).startswith("/vocabulary-visual.svg?"))
 
     def test_word_image_svg_contains_only_picture(self):
         svg = _word_image_svg("apple", "food")

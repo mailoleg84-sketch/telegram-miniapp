@@ -547,6 +547,98 @@ input[type="text"]:focus { border-color: var(--button); }
 .game-score b {
   color: var(--text);
 }
+.training-target {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.training-target span {
+  color: var(--hint);
+  font-size: 13px;
+  font-weight: 700;
+}
+.training-target div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.target-btn {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--secondary-bg);
+  color: var(--text);
+  font: inherit;
+  font-weight: 800;
+}
+.target-btn.active {
+  border-color: var(--button);
+  background: rgba(47, 157, 244, 0.13);
+  color: var(--button);
+}
+.training-progress {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--secondary-bg);
+}
+.training-progress > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+.training-progress b {
+  color: var(--text);
+}
+.training-progress span {
+  color: var(--hint);
+  font-size: 13px;
+}
+.training-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.training-stats span {
+  display: grid;
+  gap: 2px;
+  padding: 8px 6px;
+  border-radius: 10px;
+  background: var(--bg);
+  text-align: center;
+}
+.training-stats b {
+  color: var(--button);
+}
+.training-options {
+  display: grid;
+  gap: 8px;
+}
+.training-feedback {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  color: #fff;
+}
+.training-feedback.correct {
+  background: var(--green);
+}
+.training-feedback.wrong {
+  background: var(--red);
+}
+.training-feedback span,
+.training-feedback small {
+  color: inherit;
+}
+.training-feedback small {
+  opacity: 0.86;
+}
 .word-hunt-card {
   min-height: 160px;
   display: grid;

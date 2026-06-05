@@ -566,8 +566,10 @@ async def get_practice_word(
     user_id: int,
     exclude_id: int | None = None,
     age_group: str | None = None,
+    exclude_ids: list[int] | None = None,
 ):
     pool = await _get_pool()
+    excluded = exclude_ids or []
     return await pool.fetchrow("""
         SELECT w.*
         FROM words w
@@ -576,6 +578,7 @@ async def get_practice_word(
               AND up.user_id = $1
         WHERE ($2::INTEGER IS NULL OR w.id != $2)
           AND ($3::TEXT IS NULL OR w.age_group = $3)
+          AND (CARDINALITY($4::INTEGER[]) = 0 OR NOT (w.id = ANY($4::INTEGER[])))
         ORDER BY
             CASE
                 WHEN up.word_id IS NULL THEN 5
@@ -590,15 +593,17 @@ async def get_practice_word(
             up.last_seen ASC NULLS FIRST,
             RANDOM()
         LIMIT 1
-    """, user_id, exclude_id, age_group)
+    """, user_id, exclude_id, age_group, excluded)
 
 
 async def get_review_word(
     user_id: int,
     exclude_id: int | None = None,
     age_group: str | None = None,
+    exclude_ids: list[int] | None = None,
 ):
     pool = await _get_pool()
+    excluded = exclude_ids or []
     return await pool.fetchrow("""
         SELECT w.*
         FROM user_progress up
@@ -606,6 +611,7 @@ async def get_review_word(
         WHERE up.user_id = $1
           AND ($2::INTEGER IS NULL OR w.id != $2)
           AND ($3::TEXT IS NULL OR w.age_group = $3)
+          AND (CARDINALITY($4::INTEGER[]) = 0 OR NOT (w.id = ANY($4::INTEGER[])))
           AND COALESCE(up.wrong_count, 0) > 0
           AND COALESCE(up.review_streak, 0) < 2
         ORDER BY
@@ -614,7 +620,7 @@ async def get_review_word(
             up.last_seen ASC,
             RANDOM()
         LIMIT 1
-    """, user_id, exclude_id, age_group)
+    """, user_id, exclude_id, age_group, excluded)
 
 
 async def get_user_dictionary(user_id: int, filter_mode: str = "all", limit: int = 80):

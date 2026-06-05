@@ -25,6 +25,7 @@ const state = {
   learningPath: null,
   motivation: null,
   levelTest: null,
+  training: null,
   dictionaryFilter: "all",
 };
 let fallbackAuth = window.location.search || "";
@@ -93,7 +94,69 @@ let wordUtterance = null;
 let englishSpeechVoice = null;
 const wordAudioCache = new Map();
 const WORD_AUDIO_CACHE_LIMIT = 80;
+const WORD_AUDIO_DB_NAME = "englishTutorKidsWordAudio";
+const WORD_AUDIO_DB_STORE = "audio";
+const WORD_AUDIO_DB_VERSION = 1;
+const WORD_AUDIO_CACHE_VERSION = "word-tts-v1";
+const WORD_AUDIO_PRELOAD_LIMIT = 2;
+const wordAudioPreloadQueue = [];
+const wordAudioPreloadKeys = new Set();
+const wordAudioPreloading = new Set();
+let wordAudioDbPromise = null;
+let wordAudioPreloadTimer = null;
 const generatingWordImages = new Set();
+
+function wordAudioKey(text) {
+  return `${WORD_AUDIO_CACHE_VERSION}:${String(text || "").trim().toLowerCase()}`;
+}
+
+function openWordAudioDb() {
+  if (!window.indexedDB) return Promise.resolve(null);
+  if (wordAudioDbPromise) return wordAudioDbPromise;
+  wordAudioDbPromise = new Promise(resolve => {
+    const request = indexedDB.open(WORD_AUDIO_DB_NAME, WORD_AUDIO_DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(WORD_AUDIO_DB_STORE)) {
+        db.createObjectStore(WORD_AUDIO_DB_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => resolve(null);
+    request.onblocked = () => resolve(null);
+  });
+  return wordAudioDbPromise;
+}
+
+async function getStoredWordAudio(key) {
+  const db = await openWordAudioDb();
+  if (!db) return null;
+  return new Promise(resolve => {
+    try {
+      const tx = db.transaction(WORD_AUDIO_DB_STORE, "readonly");
+      const request = tx.objectStore(WORD_AUDIO_DB_STORE).get(key);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => resolve(null);
+    } catch (_) {
+      resolve(null);
+    }
+  });
+}
+
+async function storeWordAudio(key, blob) {
+  const db = await openWordAudioDb();
+  if (!db || !blob) return;
+  await new Promise(resolve => {
+    try {
+      const tx = db.transaction(WORD_AUDIO_DB_STORE, "readwrite");
+      tx.objectStore(WORD_AUDIO_DB_STORE).put(blob, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    } catch (_) {
+      resolve();
+    }
+  });
+}
 
 function speechSynthesisApi() {
   return window.speechSynthesis || null;
@@ -133,6 +196,71 @@ function rememberWordAudio(key, blob) {
   while (wordAudioCache.size > WORD_AUDIO_CACHE_LIMIT) {
     const oldestKey = wordAudioCache.keys().next().value;
     wordAudioCache.delete(oldestKey);
+  }
+}
+
+async function getCachedWordAudio(key) {
+  let audioBlob = wordAudioCache.get(key);
+  if (audioBlob) return audioBlob;
+  audioBlob = await getStoredWordAudio(key);
+  if (audioBlob) rememberWordAudio(key, audioBlob);
+  return audioBlob || null;
+}
+
+async function fetchAndCacheWordAudio(text, key) {
+  const audioBlob = await apiBlob("/api/audio/speech", { text, mode: "word" }, 60000);
+  rememberWordAudio(key, audioBlob);
+  storeWordAudio(key, audioBlob).catch(() => {});
+  return audioBlob;
+}
+
+function scheduleWordAudioPreload() {
+  if (wordAudioPreloadTimer !== null) return;
+  const run = () => {
+    wordAudioPreloadTimer = null;
+    processWordAudioPreload();
+  };
+  if (window.requestIdleCallback) {
+    wordAudioPreloadTimer = requestIdleCallback(run, { timeout: 900 });
+  } else {
+    wordAudioPreloadTimer = setTimeout(run, 160);
+  }
+}
+
+function queueWordAudioPreload(words, limit = 12) {
+  const list = Array.isArray(words) ? words : [words];
+  list.slice(0, limit).forEach(item => {
+    const word = String(item?.word || item || "").trim();
+    if (!word || word.length > 90) return;
+    const key = wordAudioKey(word);
+    if (wordAudioCache.has(key) || wordAudioPreloadKeys.has(key) || wordAudioPreloading.has(key)) return;
+    wordAudioPreloadKeys.add(key);
+    wordAudioPreloadQueue.push({ word, key });
+  });
+  scheduleWordAudioPreload();
+}
+
+async function processWordAudioPreload() {
+  while (wordAudioPreloading.size < WORD_AUDIO_PRELOAD_LIMIT && wordAudioPreloadQueue.length) {
+    const item = wordAudioPreloadQueue.shift();
+    wordAudioPreloadKeys.delete(item.key);
+    if (wordAudioCache.has(item.key) || wordAudioPreloading.has(item.key)) continue;
+    wordAudioPreloading.add(item.key);
+    (async () => {
+      try {
+        const stored = await getStoredWordAudio(item.key);
+        if (stored) {
+          rememberWordAudio(item.key, stored);
+          return;
+        }
+        await fetchAndCacheWordAudio(item.word, item.key);
+      } catch (_) {
+        // Background preloading must never block the learning flow.
+      } finally {
+        wordAudioPreloading.delete(item.key);
+        if (wordAudioPreloadQueue.length) scheduleWordAudioPreload();
+      }
+    })();
   }
 }
 
@@ -213,6 +341,23 @@ async function playWordAudio(text, button = null) {
   const word = String(text || "").trim();
   if (!word) return;
   stopWordAudio();
+  const cacheKey = wordAudioKey(word);
+  const cachedBlob = await getCachedWordAudio(cacheKey);
+  if (cachedBlob) {
+    try {
+      wordAudioUrl = URL.createObjectURL(cachedBlob);
+      wordAudio = new Audio(wordAudioUrl);
+      wordAudio.onended = stopWordAudio;
+      wordAudio.onerror = stopWordAudio;
+      button?.classList.add("speaking");
+      await wordAudio.play();
+      return;
+    } catch (_) {
+      stopWordAudio();
+    }
+  }
+
+  queueWordAudioPreload([word], 1);
   if (await speakWordLocally(word, button)) return;
 
   const oldText = button?.textContent;
@@ -221,16 +366,12 @@ async function playWordAudio(text, button = null) {
     button.textContent = "…";
   }
   try {
-    const cacheKey = word.toLowerCase();
-    let audioBlob = wordAudioCache.get(cacheKey);
-    if (!audioBlob) {
-      audioBlob = await apiBlob("/api/audio/speech", { text: word, mode: "word" }, 60000);
-      rememberWordAudio(cacheKey, audioBlob);
-    }
+    const audioBlob = await fetchAndCacheWordAudio(word, cacheKey);
     wordAudioUrl = URL.createObjectURL(audioBlob);
     wordAudio = new Audio(wordAudioUrl);
     wordAudio.onended = stopWordAudio;
     wordAudio.onerror = stopWordAudio;
+    button?.classList.add("speaking");
     await wordAudio.play();
   } catch (e) {
     tg.showAlert(e.message || "Не удалось озвучить слово");
@@ -589,10 +730,36 @@ function ageToGroup(age) {
   return "";
 }
 
+function suggestedActionLabel(action) {
+  const labels = {
+    level: "Пройти тест уровня",
+    daily: "Продолжить урок",
+    vocab: "Учить слова",
+    review: "Начать повторение",
+    learn: "Начать тренировку",
+    training: "Начать тренировку",
+  };
+  return labels[action] || "Продолжить";
+}
+
+function runSuggestedAction(action) {
+  haptic();
+  if (action === "level") return renderLevelTestIntro();
+  if (action === "daily") return renderDailyLesson();
+  if (action === "vocab") return renderVocabStart();
+  if (action === "review") return startTrainingSession("choice", "review");
+  if (action === "learn" || action === "training") return startTrainingSession("choice", "all");
+  return renderLearningHub();
+}
+
+function bindSuggestedActionButton(id, action) {
+  const button = document.getElementById(id);
+  if (button) button.onclick = () => runSuggestedAction(action);
+}
+
 function learningPathHtml(data) {
-  const levelTestButton = data.next_action === "level"
-    ? `<button class="btn btn-secondary mt-12" id="learningPathLevelTest">Пройти тест уровня</button>`
-    : "";
+  const action = data.next_action || "learn";
+  const actionButton = `<button class="btn mt-12" id="learningPathAction">${esc(suggestedActionLabel(action))}</button>`;
   return `
     <div class="learning-path-head">
       <div>
@@ -603,7 +770,7 @@ function learningPathHtml(data) {
     </div>
     <p class="hint">${esc(data.next_text || "Выбери следующий шаг.")}</p>
     <div class="path-progress"><span style="width:${Math.max(0, Math.min(100, Number(data.progress_percent) || 0))}%"></span></div>
-    ${levelTestButton}`;
+    ${actionButton}`;
 }
 
 async function loadLearningPath() {
@@ -614,10 +781,7 @@ async function loadLearningPath() {
     const data = await api("/api/learning/path", "GET");
     state.learningPath = data;
     box.innerHTML = learningPathHtml(data);
-    const levelTestButton = document.getElementById("learningPathLevelTest");
-    if (levelTestButton) {
-      levelTestButton.onclick = () => { haptic(); renderLevelTestIntro(); };
-    }
+    bindSuggestedActionButton("learningPathAction", data.next_action);
   } catch (_) {
     box.innerHTML = `
       <div class="learning-path-head">
@@ -626,7 +790,9 @@ async function loadLearningPath() {
           <h2>Начать короткий урок</h2>
         </div>
       </div>
-      <p class="hint">Не удалось обновить маршрут. Открой раздел учебы ниже.</p>`;
+      <p class="hint">Не удалось обновить маршрут. Можно сразу открыть практические занятия.</p>
+      <button class="btn mt-12" id="learningPathRetry">Открыть практику</button>`;
+    bindSuggestedActionButton("learningPathRetry", "learn");
   }
 }
 
@@ -1003,6 +1169,7 @@ async function renderVocabStart() {
       </div>`;
     document.getElementById("startQuiz").onclick = () => { haptic(); renderVocabQuiz(); };
     bindPronunciationButtons();
+    queueWordAudioPreload(data.words.map(w => w.word));
   } catch (e) {
     renderError(e.message);
   }
@@ -1014,19 +1181,46 @@ async function renderVocabQuiz() {
   try {
     state.quiz = await api("/api/vocab/quiz", "POST", { session_id: state.vocab.session_id });
     state.answers = [];
+    state.quizSession = {
+      round: 1,
+      target: trainingTarget(),
+      totalCorrect: 0,
+      totalWrong: 0,
+      roundCorrect: 0,
+      roundWrong: 0,
+      mistakes: [],
+      reviewStarted: false,
+    };
     renderQuizQuestion(0);
   } catch (e) {
     renderError(e.message);
   }
 }
 
+function quizProgressHtml(index) {
+  const session = state.quizSession || {};
+  const total = state.quiz?.questions?.length || 0;
+  const remaining = Math.max(total - index - 1, 0);
+  const label = session.reviewStarted ? `Повтор ошибок · раунд ${session.round}` : "Основной набор";
+  return `
+    <div class="training-progress">
+      <div><b>Слово ${Math.min(index + 1, total)} из ${total}</b><span>${esc(label)}</span></div>
+      <div class="training-stats">
+        <span>Правильно: <b>${session.totalCorrect || 0}</b></span>
+        <span>Ошибок: <b>${session.totalWrong || 0}</b></span>
+        <span>Осталось: <b>${remaining}</b></span>
+      </div>
+    </div>`;
+}
+
 function renderQuizQuestion(index) {
   const q = state.quiz.questions[index];
-  if (!q) return finishVocabQuiz();
+  if (!q) return finishVocabRound();
   const progress = `${index + 1}/${state.quiz.questions.length}`;
   app.innerHTML = `
     <div class="screen">
       <h1>Тест по словам</h1>
+      ${quizProgressHtml(index)}
       ${wordStudyCard(q, { badge: progress, prompt: q.prompt, compact: true, showTranslation: false, showLearningDetails: false })}
       ${q.options.map(o => `
         <button class="btn btn-secondary answer" data-id="${o.id}">${esc(o.translation)}</button>
@@ -1036,15 +1230,66 @@ function renderQuizQuestion(index) {
   document.querySelectorAll(".answer").forEach(btn => {
     btn.onclick = () => {
       const selectedId = Number(btn.dataset.id);
+      const correct = selectedId === q.word_id;
       state.answers.push({ word_id: q.word_id, selected_id: selectedId });
+      if (state.quizSession) {
+        if (correct) {
+          state.quizSession.totalCorrect += 1;
+          state.quizSession.roundCorrect += 1;
+        } else {
+          state.quizSession.totalWrong += 1;
+          state.quizSession.roundWrong += 1;
+          state.quizSession.mistakes.push(q);
+        }
+      }
       document.querySelectorAll(".answer").forEach(item => item.disabled = true);
       btn.classList.remove("btn-secondary");
-      btn.classList.add(selectedId === q.word_id ? "btn-correct" : "btn-wrong");
-      haptic(selectedId === q.word_id ? "success" : "error");
+      btn.classList.add(correct ? "btn-correct" : "btn-wrong");
+      if (!correct) {
+        const correctButton = document.querySelector(`.answer[data-id="${q.word_id}"]`);
+        correctButton?.classList.remove("btn-secondary");
+        correctButton?.classList.add("btn-correct");
+      }
+      haptic(correct ? "success" : "error");
       setTimeout(() => renderQuizQuestion(index + 1), 650);
     };
   });
   bindPronunciationButtons();
+  queueWordAudioPreload([q.word]);
+}
+
+function finishVocabRound() {
+  const session = state.quizSession;
+  if (!session) return finishVocabQuiz();
+  const roundTotal = session.roundCorrect + session.roundWrong;
+  const roundScore = roundTotal ? Math.round(session.roundCorrect / roundTotal * 100) : 0;
+  const uniqueMistakes = [];
+  const seen = new Set();
+  session.mistakes.forEach(question => {
+    if (!question.word_id || seen.has(question.word_id)) return;
+    seen.add(question.word_id);
+    uniqueMistakes.push(question);
+  });
+  if (uniqueMistakes.length && (!session.reviewStarted || roundScore < session.target) && session.round < 6) {
+    session.reviewStarted = true;
+    session.round += 1;
+    session.roundCorrect = 0;
+    session.roundWrong = 0;
+    session.mistakes = [];
+    state.quiz.questions = uniqueMistakes;
+    app.innerHTML = `
+      <div class="screen">
+        <h1>Повторим ошибки</h1>
+        <div class="card center">
+          <div class="big" style="color: var(--button)">${uniqueMistakes.length}</div>
+          <p class="hint">Сейчас закрепим только слова, где была ошибка. Цель: ${session.target}% правильных ответов.</p>
+        </div>
+      </div>`;
+    queueWordAudioPreload(uniqueMistakes.map(item => item.word));
+    setTimeout(() => renderQuizQuestion(0), 850);
+    return;
+  }
+  finishVocabQuiz();
 }
 
 async function finishVocabQuiz() {
@@ -1209,7 +1454,7 @@ async function renderDictionary() {
         ${words.length ? `
           <div class="card dictionary-list">
             ${words.map(word => `
-              <div class="dictionary-row" data-search="${esc(normalizeDictionarySearch(`${word.word} ${word.translation} ${word.transcription || ""}`))}">
+              <div class="dictionary-row" data-word="${esc(word.word)}" data-search="${esc(normalizeDictionarySearch(`${word.word} ${word.translation} ${word.transcription || ""}`))}">
                 <div class="dictionary-main">
                   <b>${esc(word.word)}</b>
                   ${word.transcription ? `<small class="transcription">${esc(word.transcription)}</small>` : ""}
@@ -1238,12 +1483,15 @@ async function renderDictionary() {
     const applySearch = () => {
       const query = normalizeDictionarySearch(search.value);
       let visible = 0;
+      const preloadWords = [];
       rows.forEach(row => {
         const matches = !query || row.dataset.search.includes(query);
         row.hidden = !matches;
         if (matches) visible += 1;
+        if (matches && preloadWords.length < 12) preloadWords.push(row.dataset.word);
       });
       if (empty) empty.style.display = visible ? "none" : "block";
+      queueWordAudioPreload(preloadWords);
     };
     let searchFrame = null;
     search.addEventListener("input", () => {
@@ -1254,6 +1502,7 @@ async function renderDictionary() {
       });
     });
     bindPronunciationButtons();
+    queueWordAudioPreload(words.slice(0, 16).map(word => word.word));
   } catch (e) {
     renderError(e.message);
   }
@@ -1269,6 +1518,7 @@ async function renderTrainingMenu(focus = "all") {
         <p class="hint">${reviewMode
           ? "Сейчас будут слова, в которых были ошибки или которые пора освежить."
           : "Короткая практика без длинного теста: выбери перевод или напиши слово по-английски."}</p>
+        ${trainingTargetControlHtml()}
       </div>
       <button class="btn" id="choiceTraining">Выбрать перевод</button>
       <button class="btn" id="inputTraining">Написать слово</button>
@@ -1277,107 +1527,305 @@ async function renderTrainingMenu(focus = "all") {
   document.getElementById("choiceTraining").onclick = () => { haptic(); renderChoiceTraining(focus); };
   document.getElementById("inputTraining").onclick = () => { haptic(); renderInputTraining(focus); };
   document.getElementById("trainingHome").onclick = () => { haptic(); renderLearningHub(); };
+  bindTrainingTargetButtons();
 }
 
 async function renderChoiceTraining(focus = "all") {
-  setBack(() => renderTrainingMenu(focus));
+  return startTrainingSession("choice", focus);
+}
+
+async function renderInputTraining(focus = "all") {
+  return startTrainingSession("input", focus);
+}
+
+const TRAINING_SESSION_SIZE = 10;
+const TRAINING_REVIEW_SESSION_SIZE = 8;
+const TRAINING_TARGET_KEY = "englishTutorKidsTrainingTarget";
+
+function trainingTarget() {
+  const value = Number(localStorage.getItem(TRAINING_TARGET_KEY) || 90);
+  return [80, 90, 100].includes(value) ? value : 90;
+}
+
+function setTrainingTarget(value) {
+  const target = [80, 90, 100].includes(Number(value)) ? Number(value) : 90;
+  localStorage.setItem(TRAINING_TARGET_KEY, String(target));
+  return target;
+}
+
+function trainingTargetControlHtml() {
+  const target = trainingTarget();
+  return `
+    <div class="training-target">
+      <span>Повторять ошибки до</span>
+      <div>
+        ${[80, 90, 100].map(value => `
+          <button type="button" class="target-btn ${target === value ? "active" : ""}" data-target="${value}">${value}%</button>
+        `).join("")}
+      </div>
+    </div>`;
+}
+
+function bindTrainingTargetButtons(root = document) {
+  root.querySelectorAll(".target-btn").forEach(button => {
+    button.onclick = () => {
+      haptic();
+      const target = setTrainingTarget(button.dataset.target);
+      root.querySelectorAll(".target-btn").forEach(item => {
+        item.classList.toggle("active", Number(item.dataset.target) === target);
+      });
+      if (state.training) state.training.target = target;
+    };
+  });
+}
+
+function startTrainingSession(mode, focus = "all") {
+  const reviewMode = focus === "review";
+  state.training = {
+    mode,
+    focus,
+    target: trainingTarget(),
+    total: reviewMode ? TRAINING_REVIEW_SESSION_SIZE : TRAINING_SESSION_SIZE,
+    round: 1,
+    currentIndex: 0,
+    roundCorrect: 0,
+    roundWrong: 0,
+    totalCorrect: 0,
+    totalWrong: 0,
+    mistakes: [],
+    reviewQueue: [],
+    reviewStarted: false,
+    excludeIds: [],
+  };
+  return renderTrainingSessionNext();
+}
+
+function trainingRoundTotal(session) {
+  return session.reviewQueue.length || session.total;
+}
+
+function trainingRoundLabel(session) {
+  if (session.reviewQueue.length) return `Повтор ошибок · раунд ${session.round}`;
+  return session.focus === "review" ? "Работа над ошибками" : "Тренировка";
+}
+
+function trainingProgressHtml(session) {
+  const total = trainingRoundTotal(session);
+  const current = Math.min(session.currentIndex + 1, total);
+  const remaining = Math.max(total - session.currentIndex - 1, 0);
+  return `
+    <div class="training-progress">
+      <div><b>Слово ${current} из ${total}</b><span>${esc(trainingRoundLabel(session))}</span></div>
+      <div class="training-stats">
+        <span>Правильно: <b>${session.totalCorrect}</b></span>
+        <span>Ошибок: <b>${session.totalWrong}</b></span>
+        <span>Осталось: <b>${remaining}</b></span>
+      </div>
+    </div>`;
+}
+
+async function loadTrainingTask(session) {
+  const endpoint = session.mode === "choice"
+    ? "/api/training/choice/next"
+    : "/api/training/input/next";
+  const body = { focus: session.focus };
+  if (session.reviewQueue.length) {
+    body.word_id = session.reviewQueue[session.currentIndex];
+  } else {
+    body.exclude_ids = session.excludeIds.slice(-60);
+  }
+  const task = await api(endpoint, "POST", body);
+  if (!session.reviewQueue.length && task.word_id) {
+    session.excludeIds.push(task.word_id);
+  }
+  return task;
+}
+
+async function renderTrainingSessionNext() {
+  const session = state.training;
+  if (!session) return renderTrainingMenu("all");
+  setBack(() => renderTrainingMenu(session.focus));
+  if (session.currentIndex >= trainingRoundTotal(session)) {
+    return finishTrainingRound();
+  }
   loading();
   try {
-    const task = await api("/api/training/choice/next", "POST", { focus });
-    app.innerHTML = `
-      <div class="screen">
-        <h1>Выбери перевод</h1>
-        ${task.review_empty ? `<div class="card"><p class="hint">Ошибок для повторения пока нет, поэтому даю обычное слово.</p></div>` : ""}
-        ${wordStudyCard(task, { compact: true, showTranslation: false, showLearningDetails: false })}
-        ${task.options.map(option => `
-          <button class="btn btn-secondary choice-answer" data-id="${option.id}">${esc(option.translation)}</button>
-        `).join("")}
-      </div>`;
-
-    document.querySelectorAll(".choice-answer").forEach(button => {
-      button.onclick = async () => {
-        const selectedId = Number(button.dataset.id);
-        document.querySelectorAll(".choice-answer").forEach(item => item.disabled = true);
-        loading();
-        try {
-          const result = await api("/api/training/choice/answer", "POST", {
-            word_id: task.word_id,
-            selected_id: selectedId,
-            focus,
-          });
-          if (state.me?.user) state.me.user.points = result.points;
-          renderTrainingResult({
-            correct: result.correct,
-            title: result.correct ? "Верно!" : "Почти",
-            text: `${result.word} — ${result.translation}`,
-            pronounceWord: result.word,
-            transcription: result.transcription,
-            delta: result.delta,
-            points: result.points,
-            next: () => renderChoiceTraining(focus),
-            focus,
-          });
-        } catch (e) {
-          renderError(e.message);
-        }
-      };
-    });
-    bindPronunciationButtons();
+    const task = await loadTrainingTask(session);
+    session.currentTask = task;
+    if (session.mode === "choice") renderChoiceTrainingTask(task, session);
+    else renderInputTrainingTask(task, session);
   } catch (e) {
     renderError(e.message);
   }
 }
 
-async function renderInputTraining(focus = "all") {
-  setBack(() => renderTrainingMenu(focus));
-  loading();
-  try {
-    const task = await api("/api/training/input/next", "POST", { focus });
-    app.innerHTML = `
-      <div class="screen">
-        <h1>Напиши слово</h1>
-        ${task.review_empty ? `<div class="card"><p class="hint">Ошибок для повторения пока нет, поэтому даю обычное слово.</p></div>` : ""}
-        <div class="card center">
-          <p class="hint">Напиши по-английски:</p>
-          <div class="big-sub">${esc(task.translation)}</div>
-        </div>
-        <input id="inputAnswer" type="text" placeholder="English word" autocomplete="off">
-        <button class="btn" id="checkInputAnswer">Проверить</button>
-      </div>`;
+function renderChoiceTrainingTask(task, session) {
+  app.innerHTML = `
+    <div class="screen">
+      <h1>Выбери перевод</h1>
+      ${trainingProgressHtml(session)}
+      ${task.review_empty ? `<div class="card"><p class="hint">Ошибок для повторения пока нет, поэтому даю обычное слово.</p></div>` : ""}
+      ${wordStudyCard(task, { compact: true, showTranslation: false, showLearningDetails: false })}
+      <div class="training-options">
+        ${task.options.map(option => `
+          <button class="btn btn-secondary choice-answer" data-id="${option.id}">${esc(option.translation)}</button>
+        `).join("")}
+      </div>
+      <div id="trainingFeedback"></div>
+    </div>`;
 
-    const input = document.getElementById("inputAnswer");
-    const submit = async () => {
-      const answer = input.value.trim();
-      if (!answer) return tg.showAlert("Напиши слово");
-      loading();
+  document.querySelectorAll(".choice-answer").forEach(button => {
+    button.onclick = async () => {
+      const selectedId = Number(button.dataset.id);
+      document.querySelectorAll(".choice-answer").forEach(item => item.disabled = true);
       try {
-        const result = await api("/api/training/input/answer", "POST", {
+        const result = await api("/api/training/choice/answer", "POST", {
           word_id: task.word_id,
-          answer,
-          focus,
+          selected_id: selectedId,
+          focus: session.focus,
         });
         if (state.me?.user) state.me.user.points = result.points;
-        renderTrainingResult({
-          correct: result.correct,
-          title: result.correct ? "Верно!" : "Запомни правильный вариант",
-          text: `${result.translation} — ${result.word}`,
-          pronounceWord: result.word,
-          transcription: result.transcription,
-          delta: result.delta,
-          points: result.points,
-          next: () => renderInputTraining(focus),
-          focus,
-        });
+        button.classList.remove("btn-secondary");
+        button.classList.add(result.correct ? "btn-correct" : "btn-wrong");
+        if (!result.correct) {
+          const correctButton = document.querySelector(`.choice-answer[data-id="${result.word_id}"]`);
+          correctButton?.classList.remove("btn-secondary");
+          correctButton?.classList.add("btn-correct");
+        }
+        showTrainingAnswerFeedback(result, session);
       } catch (e) {
         renderError(e.message);
       }
     };
-    document.getElementById("checkInputAnswer").onclick = submit;
-    input.addEventListener("keypress", e => { if (e.key === "Enter") submit(); });
-    input.focus();
-  } catch (e) {
-    renderError(e.message);
+  });
+  bindPronunciationButtons();
+  queueWordAudioPreload([task.word]);
+}
+
+function renderInputTrainingTask(task, session) {
+  app.innerHTML = `
+    <div class="screen">
+      <h1>Напиши слово</h1>
+      ${trainingProgressHtml(session)}
+      ${task.review_empty ? `<div class="card"><p class="hint">Ошибок для повторения пока нет, поэтому даю обычное слово.</p></div>` : ""}
+      <div class="card center">
+        <p class="hint">Напиши по-английски:</p>
+        <div class="big-sub">${esc(task.translation)}</div>
+      </div>
+      <input id="inputAnswer" type="text" placeholder="English word" autocomplete="off">
+      <button class="btn" id="checkInputAnswer">Проверить</button>
+      <div id="trainingFeedback"></div>
+    </div>`;
+
+  const input = document.getElementById("inputAnswer");
+  const button = document.getElementById("checkInputAnswer");
+  const submit = async () => {
+    const answer = input.value.trim();
+    if (!answer) return tg.showAlert("Напиши слово");
+    input.disabled = true;
+    button.disabled = true;
+    try {
+      const result = await api("/api/training/input/answer", "POST", {
+        word_id: task.word_id,
+        answer,
+        focus: session.focus,
+      });
+      if (state.me?.user) state.me.user.points = result.points;
+      showTrainingAnswerFeedback(result, session);
+    } catch (e) {
+      renderError(e.message);
+    }
+  };
+  button.onclick = submit;
+  input.addEventListener("keypress", e => { if (e.key === "Enter") submit(); });
+  input.focus();
+}
+
+function showTrainingAnswerFeedback(result, session) {
+  const correct = Boolean(result.correct);
+  haptic(correct ? "success" : "error");
+  if (correct) {
+    session.totalCorrect += 1;
+    session.roundCorrect += 1;
+  } else {
+    session.totalWrong += 1;
+    session.roundWrong += 1;
+    session.mistakes.push({
+      word_id: result.word_id,
+      word: result.word,
+      translation: result.translation,
+      transcription: result.transcription || "",
+    });
   }
+  const feedback = document.getElementById("trainingFeedback");
+  if (feedback) {
+    feedback.innerHTML = `
+      <div class="training-feedback ${correct ? "correct" : "wrong"}">
+        <b>${correct ? "Верно!" : "Запомни правильный вариант"}</b>
+        <span>${esc(result.word)} — ${esc(result.translation)}</span>
+        ${result.transcription ? `<small>${esc(result.transcription)}</small>` : ""}
+      </div>`;
+  }
+  queueWordAudioPreload([result.word], 1);
+  session.currentIndex += 1;
+  setTimeout(() => renderTrainingSessionNext(), correct ? 620 : 1050);
+}
+
+function finishTrainingRound() {
+  const session = state.training;
+  if (!session) return renderTrainingMenu("all");
+  const roundTotal = session.roundCorrect + session.roundWrong;
+  const roundScore = roundTotal ? Math.round(session.roundCorrect / roundTotal * 100) : 0;
+  const uniqueMistakes = [];
+  const seen = new Set();
+  session.mistakes.forEach(item => {
+    if (!item.word_id || seen.has(item.word_id)) return;
+    seen.add(item.word_id);
+    uniqueMistakes.push(item);
+  });
+
+  if (uniqueMistakes.length && (!session.reviewStarted || roundScore < session.target) && session.round < 6) {
+    session.reviewStarted = true;
+    session.reviewQueue = uniqueMistakes.map(item => item.word_id);
+    session.mistakes = [];
+    session.currentIndex = 0;
+    session.roundCorrect = 0;
+    session.roundWrong = 0;
+    session.round += 1;
+    app.innerHTML = `
+      <div class="screen">
+        <h1>Повторим ошибки</h1>
+        <div class="card center">
+          <div class="big" style="color: var(--button)">${uniqueMistakes.length}</div>
+          <p class="hint">Сейчас быстро закрепим только слова, где была ошибка. Цель: ${session.target}% правильных ответов.</p>
+        </div>
+      </div>`;
+    queueWordAudioPreload(uniqueMistakes.map(item => item.word));
+    setTimeout(() => renderTrainingSessionNext(), 850);
+    return;
+  }
+
+  renderTrainingSessionComplete(session);
+}
+
+function renderTrainingSessionComplete(session) {
+  const total = session.totalCorrect + session.totalWrong;
+  const score = total ? Math.round(session.totalCorrect / total * 100) : 0;
+  app.innerHTML = `
+    <div class="screen">
+      <h1>Тренировка завершена</h1>
+      <div class="card center">
+        <div class="big" style="color: var(--button)">${score}%</div>
+        <p>${session.totalCorrect} правильно из ${total}</p>
+        <p class="hint">Ошибок: ${session.totalWrong} · цель повторения: ${session.target}%</p>
+      </div>
+      <button class="btn" id="trainingAgain">Еще тренировка</button>
+      <button class="btn btn-secondary" id="trainingModes">Другой режим</button>
+      <button class="btn btn-secondary" id="trainingMenu">К учебе</button>
+    </div>`;
+  document.getElementById("trainingAgain").onclick = () => { haptic(); startTrainingSession(session.mode, session.focus); };
+  document.getElementById("trainingModes").onclick = () => { haptic(); renderTrainingMenu(session.focus); };
+  document.getElementById("trainingMenu").onclick = () => { haptic(); renderLearningHub(); };
 }
 
 function renderTrainingResult({ correct, title, text, pronounceWord = "", transcription = "", delta, points, next, focus = "all" }) {
@@ -3052,12 +3500,14 @@ async function renderMotivation() {
         <div class="card">
           <h2>${esc(data.next_title || "Следующий шаг")}</h2>
           <p class="hint">${esc(data.next_text || "Сделай короткое задание.")}</p>
+          <button class="btn mt-12" id="motivationAction">${esc(suggestedActionLabel(data.next_action))}</button>
         </div>
         <div class="badge-grid">
           ${badges.map(motivationBadgeHtml).join("")}
         </div>
         <button class="btn btn-secondary mt-12" id="motivationHome">К прогрессу</button>
       </div>`;
+    bindSuggestedActionButton("motivationAction", data.next_action);
     document.getElementById("motivationHome").onclick = () => { haptic(); renderProgressHub(); };
   } catch (e) {
     renderError(e.message);
