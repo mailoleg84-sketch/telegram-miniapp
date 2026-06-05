@@ -486,6 +486,8 @@ def _voice_reply_quality_flags(text: str, last_user_text: str = "") -> list[str]
         flags.append("mixed_russian_grammar")
     if re.search(r"\b(?:great|nice|cool|wow|awesome)!\s+[a-z][a-z'-]*[.!?](?:\s|$)", cleaned, re.IGNORECASE):
         flags.append("unnatural_fragment")
+    if re.search(r"\bi like\s+[a-z][a-z'-]*(?:s)?\s+in the\s+(?:morning|evening|afternoon|night)\b", cleaned, re.IGNORECASE):
+        flags.append("unnatural_example")
     sentence_parts = _voice_sentence_parts(cleaned)
     if _has_cyrillic(last_user_text) and sentence_parts:
         final_sentence = sentence_parts[-1]
@@ -661,6 +663,7 @@ def _voice_module_prompt(
 - Финальный вопрос или задание должен прямо следовать из последней реплики ребенка. Не заканчивай случайным выбором только ради вопроса.
 - Когда тема уже выбрана, не предлагай меню тем и не перечисляй другие темы. Продолжай текущую живую сцену.
 - Не выдавай обрывки вроде "Great! song." Скажи законченную естественную мысль: "Great choice! What song do you like?"
+- Когда исправляешь фразу ребенка, не придумывай случайное продолжение ради грамматики. Модель должна быть естественной и близкой к словам ребенка: "I like cats", "I like Minecraft", "I play football". Не говори странные фразы вроде "I like cats in the morning".
 - Никогда не пиши русские слова латиницей: не "Pochti", а "Почти". Не смешивай английское слово с русской грамматикой: не "Какой song?", а "Какая песня тебе нравится?"
 - Не просто болтай. В каждом ответе должен быть учебный шаг: model, correction, practice, choice или review. Исключение: ребенок явно просит “по-русски без английского” или говорит, что не понимает — тогда сначала объясни по-русски, но все равно мягко верни к обучению следующим ходом.
 - Если ответ получился просто разговорным, перепиши его в учебный ход: реакция + одна английская польза + один следующий шаг.
@@ -696,6 +699,7 @@ def _voice_module_prompt(
 
 Качество живого ответа:
 - Хорошая реплика: "Great try! Better: I like cats. What animal do you like most?" В ней есть реакция, одна подсказка и связанный вопрос.
+- Плохая реплика: "After I like, you can say one more thing: I like cats in the morning." Это звучит неестественно и уводит от смысла ребенка.
 - Хороший ответ на русском: "О, Майнкрафт — круто! По-английски: I like Minecraft. Что ты чаще строишь?" Не заканчивай его вопросом "What do you build?"
 - Хорошее объяснение на русском: "Да: после like действие часто с -ing. Фраза: I like listening to music. А какую музыку ты любишь?"
 - Даже после объяснения закончи одним простым связанным вопросом или заданием, чтобы ребенку было легко продолжить говорить.

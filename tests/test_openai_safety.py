@@ -264,6 +264,7 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertIn("Do not merely chat", realtime)
         self.assertIn("directly connected question", realtime)
         self.assertIn("do not offer a menu of topics", realtime)
+        self.assertIn("I like cats in the morning", prompt)
 
     def test_voice_tts_speed_is_clamped_for_child_safe_controls(self):
         self.assertEqual(_clamp_speech_speed("0.86", 0.94), 0.86)
@@ -292,6 +293,11 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertIn("mixed_russian_grammar", flags)
         self.assertIn("unnatural_fragment", flags)
         self.assertIn("too_many_sentences", flags)
+
+    def test_voice_quality_flags_detect_unnatural_learning_examples(self):
+        bad_reply = "Nice! After I like, you can say one more thing: I like cats in the morning. What do you do?"
+
+        self.assertIn("unnatural_example", _voice_reply_quality_flags(bad_reply, "I like cats."))
 
     def test_good_voice_reply_has_no_quality_flags(self):
         reply = "Great try! Better: I like cats. What animal do you like most?"
