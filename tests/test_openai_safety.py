@@ -212,6 +212,31 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertNotIn("length", status)
         self.assertNotIn("prefix", status)
 
+    def test_voice_state_machine_guards_audio_and_microphone_conflicts(self):
+        root = Path(__file__).resolve().parents[1]
+        app_js = (root / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
+
+        required_markers = (
+            "let tutorSpeechBusy = false;",
+            "let tutorSpeechId = 0;",
+            "function releaseTutorAudio()",
+            "if (speechId !== tutorSpeechId) return;",
+            "if (tutorSpeechBusy || realtimeAssistantSpeaking)",
+            "if (sending || tutorSpeechBusy || realtimeAssistantSpeaking) return;",
+            "if (sending || voiceModeActive || tutorSpeechBusy) return;",
+            "const shouldEnable = Boolean(enabled && voiceModeActive && realtimeActive && !realtimeAssistantSpeaking && !realtimeAwaitingResponse);",
+            "function realtimeMicIsLive()",
+            "function setRealtimeAssistantSpeakingSafe(active)",
+            "setRealtimeMicEnabled(false);",
+            "stopTutorSpeech();",
+            "if (!lastTutorReply || sending || tutorSpeechBusy) return;",
+        )
+        for marker in required_markers:
+            self.assertIn(marker, app_js, marker)
+
+        self.assertIn("voiceUiState === \"listening\" || voiceUiState === \"ready\"", app_js)
+        self.assertIn("!realtimeMicIsLive()", app_js)
+
     def test_personal_data_is_blocked_before_model_call(self):
         reply = _safety_guard_reply("Мой адрес: улица Ленина 5, телефон +79991234567")
 

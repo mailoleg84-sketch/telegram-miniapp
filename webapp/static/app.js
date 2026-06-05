@@ -1660,6 +1660,9 @@ async function renderChat() {
     let discardRecording = false;
     let tutorAudio = null;
     let tutorAudioUrl = "";
+    let tutorSpeechBusy = false;
+    let tutorSpeechPlaying = false;
+    let tutorSpeechId = 0;
     let voiceModeActive = false;
     let autoRecording = false;
     let skipUploadOnStop = false;
@@ -1820,7 +1823,7 @@ async function renderChat() {
     }
 
     function updateVoiceActionButtons() {
-      const hasReply = Boolean(lastTutorReply && !sending);
+      const hasReply = Boolean(lastTutorReply && !sending && !tutorSpeechBusy);
       voiceRepeatButton.disabled = !hasReply;
       voiceSlowerButton.disabled = !hasReply;
       voiceSlowerButton.textContent = voicePlaybackSpeed < 0.9 ? "Обычный темп" : "Медленнее";
@@ -1828,6 +1831,15 @@ async function renderChat() {
 
     function updateVoiceModeUi(status = "", nextState = "") {
       voiceUiState = nextState || inferVoiceState(status);
+      if (
+        realtimeActive &&
+        (voiceUiState === "listening" || voiceUiState === "ready") &&
+        typeof realtimeMicIsLive === "function" &&
+        !realtimeMicIsLive()
+      ) {
+        voiceUiState = "thinking";
+        status = VOICE_STATE_LABELS.thinking;
+      }
       voiceModeButton.classList.toggle("active", voiceModeActive);
       voiceModeButton.dataset.state = voiceUiState;
       voiceStatus.dataset.state = voiceUiState;
@@ -1948,6 +1960,9 @@ async function renderChat() {
       realtimeResponseNudgeTimer = setTimeout(() => {
         realtimeResponseNudgeTimer = null;
         if (!voiceModeActive || !realtimeActive || !realtimeAwaitingResponse || realtimeAssistantSpeaking) return;
+        setRealtimeMicEnabled(false);
+        updateVoiceModeUi(VOICE_STATE_LABELS.thinking, "thinking");
+        setFace("thinking");
         sendRealtimeEvent({
           type: "response.create",
           response: {
@@ -1980,9 +1995,21 @@ async function renderChat() {
     }
 
     function setRealtimeMicEnabled(enabled) {
+      const shouldEnable = Boolean(enabled && voiceModeActive && realtimeActive && !realtimeAssistantSpeaking && !realtimeAwaitingResponse);
+      let micLive = false;
       realtimeStream?.getAudioTracks().forEach(track => {
-        if (track.readyState === "live") track.enabled = enabled;
+        if (track.readyState === "live") {
+          track.enabled = shouldEnable;
+          if (track.enabled) micLive = true;
+        }
       });
+      return micLive;
+    }
+
+    function realtimeMicIsLive() {
+      return Boolean(
+        realtimeStream?.getAudioTracks().some(track => track.readyState === "live" && track.enabled)
+      );
     }
 
     function setRealtimeAssistantSpeaking(active) {
@@ -1997,9 +2024,21 @@ async function renderChat() {
         clearRealtimeResponseTimer();
       }
       realtimeAssistantSpeaking = active;
-      setRealtimeMicEnabled(!active);
-      updateVoiceModeUi(active ? "Отвечаю..." : "Твой ход", active ? "speaking" : "ready");
-      setFace(active ? "speaking" : "listening");
+      const micLive = setRealtimeMicEnabled(!active);
+      if (active) {
+        updateVoiceModeUi(VOICE_STATE_LABELS.speaking, "speaking");
+        setFace("speaking");
+      } else if (micLive) {
+        updateVoiceModeUi(VOICE_STATE_LABELS.ready, "ready");
+        setFace("listening");
+      } else {
+        updateVoiceModeUi(VOICE_STATE_LABELS.thinking, "thinking");
+        setFace("thinking");
+      }
+    }
+
+    function setRealtimeAssistantSpeakingSafe(active) {
+      setRealtimeAssistantSpeaking(active);
     }
 
     function estimateRealtimeSpeechMs(text) {
@@ -2019,7 +2058,7 @@ async function renderChat() {
       realtimeMicResumeTimer = setTimeout(() => {
         realtimeMicResumeTimer = null;
         realtimeMicResumeAt = 0;
-        setRealtimeAssistantSpeaking(false);
+        setRealtimeAssistantSpeakingSafe(false);
       }, delayMs);
     }
 
@@ -2062,18 +2101,24 @@ async function renderChat() {
       }
       const type = event.type || "";
       if (type === "session.created") {
+        setRealtimeMicEnabled(false);
+        updateVoiceModeUi(VOICE_STATE_LABELS.thinking, "thinking");
+        setFace("thinking");
+        return;
         updateVoiceModeUi("Слушаю...", "listening");
         setFace("listening");
         return;
       }
       if (type === "input_audio_buffer.speech_started") {
         if (realtimeAssistantSpeaking) return;
+        if (!realtimeMicIsLive()) return;
         updateVoiceModeUi("Слушаю...", "listening");
         setFace("listening");
         return;
       }
       if (type === "input_audio_buffer.speech_stopped") {
         realtimeAwaitingResponse = true;
+        setRealtimeMicEnabled(false);
         updateVoiceModeUi("Думаю...", "thinking");
         setFace("thinking");
         armRealtimeResponseTimer();
@@ -2110,6 +2155,7 @@ async function renderChat() {
       }
       if (type === "response.created") {
         realtimeAwaitingResponse = false;
+        setRealtimeMicEnabled(false);
         clearRealtimeResponseNudgeTimer();
         updateVoiceModeUi("Думаю...", "thinking");
         setFace("thinking");
@@ -2120,7 +2166,7 @@ async function renderChat() {
         type === "response.audio.delta" ||
         type === "response.content_part.added"
       ) {
-        setRealtimeAssistantSpeaking(true);
+        setRealtimeAssistantSpeakingSafe(true);
         return;
       }
       if (type === "response.output_audio.done" || type === "response.audio.done") {
@@ -2183,9 +2229,11 @@ async function renderChat() {
       realtimeResponseText.clear();
     }
 
-    function stopTutorSpeech() {
-      window.speechSynthesis?.cancel?.();
+    function releaseTutorAudio() {
       if (tutorAudio) {
+        tutorAudio.onplaying = null;
+        tutorAudio.onended = null;
+        tutorAudio.onerror = null;
         tutorAudio.pause();
         tutorAudio.removeAttribute("src");
         tutorAudio.load();
@@ -2197,8 +2245,22 @@ async function renderChat() {
       }
     }
 
-    function finishTutorSpeech(onDone) {
+    function stopTutorSpeech() {
+      tutorSpeechId += 1;
+      tutorSpeechBusy = false;
+      tutorSpeechPlaying = false;
+      window.speechSynthesis?.cancel?.();
+      releaseTutorAudio();
+      updateVoiceActionButtons();
+    }
+
+    function finishTutorSpeech(onDone, speechId = tutorSpeechId) {
+      if (speechId !== tutorSpeechId) return;
+      tutorSpeechBusy = false;
+      tutorSpeechPlaying = false;
+      releaseTutorAudio();
       setFace("idle");
+      updateVoiceActionButtons();
       if (typeof onDone === "function") onDone();
     }
 
@@ -2236,36 +2298,49 @@ async function renderChat() {
         finishTutorSpeech(onDone);
         return;
       }
+      stopTutorSpeech();
+      const speechId = tutorSpeechId;
+      tutorSpeechBusy = true;
+      tutorSpeechPlaying = false;
+      updateVoiceActionButtons();
       if (!("speechSynthesis" in window)) {
+        tutorSpeechPlaying = true;
         setFace("speaking");
-        setTimeout(() => finishTutorSpeech(onDone), 1400);
+        if (voiceModeActive) updateVoiceModeUi(VOICE_STATE_LABELS.speaking, "speaking");
+        setTimeout(() => finishTutorSpeech(onDone, speechId), 1400);
         return;
       }
       try {
-        window.speechSynthesis.cancel();
         const segments = speechSegments(text);
         let index = 0;
         const speakNext = () => {
+          if (speechId !== tutorSpeechId) return;
           const segment = segments[index];
           if (!segment) {
-            finishTutorSpeech(onDone);
+            finishTutorSpeech(onDone, speechId);
             return;
           }
           const utterance = new SpeechSynthesisUtterance(segment.text);
           utterance.lang = segment.lang;
           utterance.rate = segment.lang === "en-US" ? 0.88 : 0.95;
           utterance.pitch = 1.05;
-          utterance.onstart = () => setFace("speaking");
+          utterance.onstart = () => {
+            if (speechId !== tutorSpeechId) return;
+            tutorSpeechPlaying = true;
+            setFace("speaking");
+            if (voiceModeActive) updateVoiceModeUi(VOICE_STATE_LABELS.speaking, "speaking");
+          };
           utterance.onend = () => {
+            if (speechId !== tutorSpeechId) return;
             index += 1;
             speakNext();
           };
-          utterance.onerror = () => finishTutorSpeech(onDone);
+          utterance.onerror = () => finishTutorSpeech(onDone, speechId);
           window.speechSynthesis.speak(utterance);
         };
         speakNext();
       } catch (_) {
-        finishTutorSpeech(onDone);
+        finishTutorSpeech(onDone, speechId);
       }
     }
 
@@ -2275,6 +2350,10 @@ async function renderChat() {
         return;
       }
       stopTutorSpeech();
+      const speechId = tutorSpeechId;
+      tutorSpeechBusy = true;
+      tutorSpeechPlaying = false;
+      updateVoiceActionButtons();
       setFace("thinking");
       if (voice) updateVoiceModeUi("Готовлю голос...", "thinking");
       try {
@@ -2285,34 +2364,48 @@ async function renderChat() {
           payload,
           voice ? VOICE_TTS_TIMEOUT_MS : CHAT_TTS_TIMEOUT_MS,
         );
-        await playTutorAudioBlob(audioBlob, text, onDone);
+        if (speechId !== tutorSpeechId) return;
+        await playTutorAudioBlob(audioBlob, text, onDone, speechId);
       } catch (_) {
-        stopTutorSpeech();
+        if (speechId !== tutorSpeechId) return;
         speakTutorFallback(text, onDone);
       }
     }
 
-    async function playTutorAudioBlob(audioBlob, text, onDone = null) {
-      stopTutorSpeech();
+    async function playTutorAudioBlob(audioBlob, text, onDone = null, speechId = null) {
+      if (speechId === null) {
+        stopTutorSpeech();
+        speechId = tutorSpeechId;
+      } else if (speechId !== tutorSpeechId) {
+        return;
+      } else {
+        releaseTutorAudio();
+        window.speechSynthesis?.cancel?.();
+      }
+      tutorSpeechBusy = true;
+      tutorSpeechPlaying = false;
+      updateVoiceActionButtons();
       tutorAudioUrl = URL.createObjectURL(audioBlob);
       tutorAudio = new Audio(tutorAudioUrl);
       tutorAudio.preload = "auto";
       tutorAudio.onplaying = () => {
+        if (speechId !== tutorSpeechId) return;
+        tutorSpeechBusy = true;
+        tutorSpeechPlaying = true;
         setFace("speaking");
         if (voiceModeActive) updateVoiceModeUi("Отвечаю...", "speaking");
       };
       tutorAudio.onended = () => {
-        stopTutorSpeech();
-        finishTutorSpeech(onDone);
+        finishTutorSpeech(onDone, speechId);
       };
       tutorAudio.onerror = () => {
-        stopTutorSpeech();
+        if (speechId !== tutorSpeechId) return;
         speakTutorFallback(text, onDone);
       };
       try {
         await tutorAudio.play();
       } catch (_) {
-        stopTutorSpeech();
+        if (speechId !== tutorSpeechId) return;
         speakTutorFallback(text, onDone);
       }
     }
@@ -2524,9 +2617,17 @@ async function renderChat() {
     function scheduleVoiceListen(delay = 500) {
       clearVoiceModeTimer();
       if (!voiceModeActive) return;
+      if (tutorSpeechBusy || realtimeAssistantSpeaking) {
+        voiceModeTimer = setTimeout(() => scheduleVoiceListen(VOICE_RESTART_DELAY_MS), 250);
+        return;
+      }
       updateVoiceModeUi("Твой ход", "ready");
       voiceModeTimer = setTimeout(() => {
         if (!voiceModeActive || sending) return;
+        if (tutorSpeechBusy || realtimeAssistantSpeaking) {
+          scheduleVoiceListen(VOICE_RESTART_DELAY_MS);
+          return;
+        }
         if (recorder && recorder.state === "recording") return;
         startRecording(true).catch(error => {
           bubble("assistant", friendlyVoiceError(error, "Не удалось начать запись. Попробуй ещё раз."));
@@ -2586,6 +2687,7 @@ async function renderChat() {
     }
 
     async function startRecording(auto = false) {
+      if (sending || tutorSpeechBusy || realtimeAssistantSpeaking) return;
       if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
         const message = "Голосовой ввод не поддерживается на этом устройстве";
         if (auto) bubble("assistant", message);
@@ -2668,7 +2770,7 @@ async function renderChat() {
     }
 
     function toggleRecording() {
-      if (sending || voiceModeActive) return;
+      if (sending || voiceModeActive || tutorSpeechBusy) return;
       if (recorder && recorder.state === "recording") stopRecording();
       else startRecording();
     }
@@ -2741,7 +2843,7 @@ async function renderChat() {
       realtimeAudio.autoplay = true;
       realtimeAudio.playsInline = true;
       realtimeAudio.onplaying = () => {
-        setRealtimeAssistantSpeaking(true);
+        setRealtimeAssistantSpeakingSafe(true);
       };
       realtimeAudio.onpause = () => {
         if (voiceModeActive && realtimeActive && !realtimeAssistantSpeaking) {
@@ -2771,10 +2873,14 @@ async function renderChat() {
         },
       });
       realtimeStream.getAudioTracks().forEach(track => realtimePc.addTrack(track, realtimeStream));
+      setRealtimeMicEnabled(false);
 
       realtimeDataChannel = realtimePc.createDataChannel("oai-events");
       realtimeDataChannel.onmessage = handleRealtimeEvent;
       realtimeDataChannel.onopen = () => {
+        setRealtimeMicEnabled(false);
+        updateVoiceModeUi(VOICE_STATE_LABELS.thinking, "thinking");
+        setFace("thinking");
         updateVoiceModeUi("Твой ход", "ready");
         setFace("listening");
         const ageGroup = state.me?.user?.age_group || "default";
@@ -2855,6 +2961,7 @@ async function renderChat() {
       voiceModeActive = false;
       autoRecording = false;
       skipUploadOnStop = true;
+      stopTutorSpeech();
       updateVoiceModeUi("Обычный режим", "ended");
       stopRealtimeSession();
       if (recorder && recorder.state === "recording") {
@@ -2875,12 +2982,12 @@ async function renderChat() {
     mic.onclick = toggleRecording;
     voiceModeButton.onclick = toggleVoiceMode;
     voiceRepeatButton.onclick = () => {
-      if (!lastTutorReply || sending) return;
+      if (!lastTutorReply || sending || tutorSpeechBusy) return;
       haptic();
       speakTutor(lastTutorReply, null, true, voicePlaybackSpeed);
     };
     voiceSlowerButton.onclick = () => {
-      if (!lastTutorReply || sending) return;
+      if (!lastTutorReply || sending || tutorSpeechBusy) return;
       haptic();
       voicePlaybackSpeed = voicePlaybackSpeed < 0.9 ? 0.94 : 0.86;
       updateVoiceActionButtons();
