@@ -402,6 +402,11 @@ function bindWordImageStates(root = document) {
     const image = box.querySelector("img");
     const retry = box.querySelector(".word-image-retry");
     if (!image) return;
+    const generationStatus = box.dataset.generationStatus || "";
+    if (generationStatus === "failed") {
+      box.classList.add("generation-fallback");
+      setWordImageStatus(box, "AI-картинка не создалась. Проверьте лимит OpenAI и нажмите повторить.", "warning");
+    }
     const markLoaded = () => {
       box.classList.remove("loading", "failed");
       box.classList.add("loaded");
@@ -431,11 +436,23 @@ function bindWordImageStates(root = document) {
       box.dataset.generate === "1" &&
       box.dataset.wordId &&
       !box.dataset.generationRequested &&
-      !["generated", "needs_review"].includes(box.dataset.generationStatus || "")
+      !["generated", "needs_review", "failed"].includes(box.dataset.generationStatus || "")
     ) {
       requestGeneratedWordImage(box, image, false);
     }
   });
+}
+
+function setWordImageStatus(box, message = "", tone = "") {
+  const status = box.querySelector(".word-image-status");
+  const placeholder = box.querySelector(".word-image-placeholder");
+  if (placeholder && message && box.classList.contains("generating")) {
+    placeholder.textContent = message;
+  }
+  if (!status) return;
+  status.textContent = message;
+  status.hidden = !message;
+  status.dataset.tone = tone || "";
 }
 
 async function requestGeneratedWordImage(box, image, force = false) {
@@ -447,7 +464,9 @@ async function requestGeneratedWordImage(box, image, force = false) {
   const previousStatus = box.dataset.generationStatus || "";
   const previousSrc = image.dataset.src || image.src;
   box.classList.remove("failed");
+  box.classList.remove("generation-fallback");
   box.classList.add("generating");
+  setWordImageStatus(box, "Генерирую AI-картинку…", "progress");
   try {
     const data = await api("/api/vocab/image/generate", "POST", {
       word_id: Number(wordId),
@@ -464,16 +483,23 @@ async function requestGeneratedWordImage(box, image, force = false) {
       image.dataset.src = nextUrl;
       image.src = imageUrl;
       box.classList.remove("failed");
+      box.classList.remove("generation-fallback");
       box.classList.add("generated-ai");
+      setWordImageStatus(box, "AI-картинка готова.", "success");
+      setTimeout(() => {
+        if (box.dataset.generationStatus === status) setWordImageStatus(box);
+      }, 1600);
     } else if (fallbackUrl) {
       image.dataset.src = fallbackUrl;
       image.src = fallbackUrl;
       box.classList.add("generation-fallback");
+      setWordImageStatus(box, "AI-картинка не создалась. Нажмите повторить позже.", "warning");
     }
   } catch (e) {
     box.dataset.generationStatus = previousStatus || "failed";
     if (previousSrc) image.src = previousSrc;
     box.classList.add("generation-fallback");
+    setWordImageStatus(box, e.message || "AI-картинка не создалась. Нажмите повторить позже.", "warning");
     console.warn("Vocabulary image generation failed", e);
   } finally {
     box.classList.remove("generating");
@@ -561,12 +587,14 @@ function wordImageHtml(wordData, small = false) {
     return `
       <div class="word-visual failed ${small ? "small" : ""}" data-word-id="${esc(wordId)}" data-generate="${canGenerate}" data-generation-status="${esc(generationStatus)}" data-prompt-hash="${esc(promptHash)}" data-fallback-src="${esc(fallbackSrc)}">
         <div class="word-image-placeholder">Сцена появится позже</div>
+        <div class="word-image-status" hidden></div>
       </div>`;
   }
   return `
     <div class="word-visual loading ${small ? "small" : ""}" data-word-id="${esc(wordId)}" data-generate="${canGenerate}" data-generation-status="${esc(generationStatus)}" data-prompt-hash="${esc(promptHash)}" data-fallback-src="${esc(fallbackSrc)}">
       <img class="word-image ${small ? "small" : ""}" src="${esc(src)}" data-src="${esc(src)}" alt="${esc(label)}" loading="lazy">
       <div class="word-image-placeholder">Готовим сцену…</div>
+      <div class="word-image-status" hidden></div>
       <button type="button" class="word-image-retry">Загрузить картинку ещё раз</button>
     </div>`;
 }

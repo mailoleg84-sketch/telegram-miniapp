@@ -32,6 +32,7 @@ from config import (
     WORDS_PER_AGE_GROUP,
     WEBAPP_HOST,
     WEBAPP_PORT,
+    OPENAI_IMAGE_MODEL,
 )
 from webapp.auth import verify_fallback_auth, verify_init_data
 from webapp.lesson_engine import (
@@ -2117,12 +2118,25 @@ async def api_vocab_image_generate(request: web.Request):
         result = await asyncio.wait_for(generate_vocabulary_image(word_payload, user_id), timeout=75)
     except Exception as exc:
         log.exception("Vocabulary image generation failed for word_id=%s", word_id)
+        public_error = public_openai_error(exc)
+        review_json = json.dumps({"reason": public_error}, ensure_ascii=False)
+        try:
+            await database.update_word_generated_image(
+                word_id,
+                image_url="",
+                prompt_hash=prompt_hash,
+                review_json=review_json,
+                status="failed",
+                model=OPENAI_IMAGE_MODEL,
+            )
+        except Exception:
+            log.exception("Failed to persist vocabulary image failure for word_id=%s", word_id)
         return web.json_response({
-            "error": public_openai_error(exc),
+            "error": public_error,
             "image_url": fallback_image_url,
             "fallback_image_url": fallback_image_url,
             "generation_status": "failed",
-            "image_review": {"reason": str(exc)[:220]},
+            "image_review": {"reason": public_error},
         }, status=502)
 
     review_json = json.dumps(result.review, ensure_ascii=False)

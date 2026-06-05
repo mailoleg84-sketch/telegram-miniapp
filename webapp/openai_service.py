@@ -84,12 +84,14 @@ def openai_config_status() -> dict:
 
 def public_openai_error(error: Exception) -> str:
     """Returns a child-safe error message without leaking secrets or raw provider payloads."""
+    message = str(error)
+    if "billing_hard_limit_reached" in message or "Billing hard limit has been reached" in message:
+        return "В OpenAI достигнут лимит расходов. Увеличьте hard limit в Billing, затем нажмите «Загрузить картинку ещё раз»."
+    if "insufficient_quota" in message:
+        return "У OpenAI закончилась квота или не включена оплата. Проверьте Billing и Limits."
     if isinstance(error, AuthenticationError):
         return "Репетитор пока не настроен. Родителю нужно обновить ключ OpenAI."
     if isinstance(error, RateLimitError):
-        message = str(error)
-        if "insufficient_quota" in message:
-            return "У OpenAI закончилась квота или не включена оплата. Проверь billing и limits."
         return "OpenAI временно ограничил запросы. Попробуй чуть позже."
     if isinstance(error, APIConnectionError):
         return "Не удалось подключиться к OpenAI. Попробуй еще раз через минуту."
