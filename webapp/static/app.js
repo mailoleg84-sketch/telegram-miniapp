@@ -27,6 +27,7 @@ const state = {
   levelTest: null,
   training: null,
   admin: null,
+  adminUsersQuery: "",
   dictionaryFilter: "all",
 };
 let fallbackAuth = window.location.search || "";
@@ -106,6 +107,7 @@ const wordAudioPreloading = new Set();
 let wordAudioDbPromise = null;
 let wordAudioPreloadTimer = null;
 const generatingWordImages = new Set();
+let adminUsersRequestId = 0;
 
 function wordAudioKey(text) {
   return `${WORD_AUDIO_CACHE_VERSION}:${String(text || "").trim().toLowerCase()}`;
@@ -3768,6 +3770,15 @@ function adminFailedImageHtml(word) {
     </div>`;
 }
 
+function adminHealthHtml(item) {
+  const level = item.level || "info";
+  return `
+    <div class="admin-health ${esc(level)}">
+      <b>${esc(item.title || "Состояние")}</b>
+      <span>${esc(item.text || "")}</span>
+    </div>`;
+}
+
 async function renderAdminPanel() {
   setBack(renderMenu);
   loading();
@@ -3782,6 +3793,7 @@ async function renderAdminPanel() {
     const config = data.config || {};
     const openai = config.openai || {};
     const failedWords = data.failed_image_words || [];
+    const health = data.health || [];
     app.innerHTML = `
       <div class="screen admin-screen">
         <h1>Админпанель</h1>
@@ -3792,6 +3804,10 @@ async function renderAdminPanel() {
             <p class="hint">Безопасная панель: секреты и ключи здесь не показываются.</p>
           </div>
           <strong>${esc(config.app_version || "")}</strong>
+        </div>
+
+        <div class="admin-health-list">
+          ${health.map(adminHealthHtml).join("")}
         </div>
 
         <div class="admin-grid">
@@ -3864,11 +3880,20 @@ function adminUserRowHtml(user) {
         <span>ID ${esc(user.id)} · ${esc(user.age_label || "возраст не указан")} · ${esc(user.level_label || "")}</span>
         <small>${esc(user.parent_name || "родитель не указан")} · ${formatAdminNumber(user.points)} баллов · ${formatAdminNumber(user.words_learned)} слов · точность ${user.accuracy || 0}%</small>
       </div>
-      <button type="button" class="admin-mini-btn" data-reset-user="${esc(user.id)}">Сброс</button>
+      <div class="admin-user-actions">
+        <button type="button" class="admin-mini-btn" data-open-user="${esc(user.id)}">Открыть</button>
+        <button type="button" class="admin-mini-btn danger" data-reset-user="${esc(user.id)}">Сброс</button>
+      </div>
     </div>`;
 }
 
 function bindAdminUserActions(query = "") {
+  document.querySelectorAll("[data-open-user]").forEach(button => {
+    button.onclick = () => {
+      haptic();
+      renderAdminUserDetail(Number(button.dataset.openUser));
+    };
+  });
   document.querySelectorAll("[data-reset-user]").forEach(button => {
     button.onclick = async () => {
       haptic("warning");
@@ -3891,38 +3916,161 @@ function bindAdminUserActions(query = "") {
   });
 }
 
-async function renderAdminUsers(query = "") {
-  setBack(renderAdminPanel);
-  loading();
+function adminUsersListHtml(users, query = "") {
+  if (users.length) {
+    return users.map(adminUserRowHtml).join("");
+  }
+  return `
+    <div class="card center">
+      <b>Ничего не найдено</b>
+      <p class="hint">${query ? "Попробуй другой запрос." : "Пользователи появятся после регистраций."}</p>
+    </div>`;
+}
+
+async function loadAdminUsers(query = "") {
+  const list = document.getElementById("adminUsersList");
+  if (!list) return;
+  const requestId = ++adminUsersRequestId;
+  state.adminUsersQuery = query;
+  list.innerHTML = `<div class="card center"><p class="hint">Загружаю пользователей...</p></div>`;
   try {
     const data = await api(`/api/admin/users?q=${encodeURIComponent(query)}&limit=60`, "GET");
+    if (requestId !== adminUsersRequestId) return;
     const users = data.users || [];
+    list.innerHTML = adminUsersListHtml(users, query);
+    bindAdminUserActions(query);
+  } catch (e) {
+    if (requestId !== adminUsersRequestId) return;
+    list.innerHTML = `
+      <div class="error-box">
+        ${esc(e.message)}
+      </div>`;
+  }
+}
+
+async function renderAdminUsers(query = "") {
+  setBack(renderAdminPanel);
+  state.adminUsersQuery = query;
+  app.innerHTML = `
+    <div class="screen admin-screen">
+      <h1>Пользователи</h1>
+      <div class="card dictionary-search-card">
+        <input id="adminUserSearch" type="text" placeholder="Найти ученика, родителя или ID..." value="${esc(query)}" autocomplete="off">
+      </div>
+      <div class="admin-list" id="adminUsersList">
+        <div class="card center"><p class="hint">Загружаю пользователей...</p></div>
+      </div>
+      <button class="btn btn-secondary" id="adminUsersBack">К админке</button>
+    </div>`;
+  const search = document.getElementById("adminUserSearch");
+  let searchTimer = null;
+  search.addEventListener("input", () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => loadAdminUsers(search.value.trim()), 350);
+  });
+  document.getElementById("adminUsersBack").onclick = () => { haptic(); renderAdminPanel(); };
+  loadAdminUsers(query);
+}
+
+function adminProblemWordHtml(word) {
+  return `
+    <div class="admin-word-row">
+      <div>
+        <b>${esc(word.word)} · ${esc(word.translation)}</b>
+        <span>${esc(word.transcription || "")}</span>
+      </div>
+      <em>${formatAdminNumber(word.correct_count)}✓ / ${formatAdminNumber(word.wrong_count)}×</em>
+    </div>`;
+}
+
+function adminHistoryHtml(event) {
+  return `
+    <div class="activity-card card">
+      <div class="activity-head">
+        <b>${esc(event.title)}</b>
+        <span>${esc(formatEventTime(event.event_at))}</span>
+      </div>
+      <p>${esc(event.description)}</p>
+    </div>`;
+}
+
+async function renderAdminUserDetail(userId) {
+  setBack(() => renderAdminUsers(state.adminUsersQuery || ""));
+  loading();
+  try {
+    const data = await api(`/api/admin/users/detail?user_id=${encodeURIComponent(userId)}`, "GET");
+    const u = data.user || {};
+    const stats = data.stats || {};
+    const report = data.report || {};
+    const dictionary = data.dictionary || {};
+    const streak = data.streak || {};
+    const ai = data.ai_today || {};
+    const problemWords = data.problem_words || [];
+    const history = data.history || [];
     app.innerHTML = `
       <div class="screen admin-screen">
-        <h1>Пользователи</h1>
-        <div class="card dictionary-search-card">
-          <input id="adminUserSearch" type="text" placeholder="Найти ученика, родителя или ID..." value="${esc(query)}" autocomplete="off">
+        <h1>Карточка ученика</h1>
+        <div class="card admin-hero">
+          <div>
+            <div class="daily-badge">ID ${esc(u.id || userId)}</div>
+            <h2>${esc(u.child_name || "Ученик")}</h2>
+            <p class="hint">${esc(u.age_label || "возраст не указан")} · ${esc(u.goal_label || "")} · ${esc(u.level_label || "")}</p>
+          </div>
+          <strong>${formatAdminNumber(u.points)} 💎</strong>
         </div>
-        ${users.length ? `
-          <div class="admin-list">
-            ${users.map(adminUserRowHtml).join("")}
-          </div>
-        ` : `
-          <div class="card center">
-            <b>Ничего не найдено</b>
-            <p class="hint">Попробуй другой запрос.</p>
-          </div>
-        `}
-        <button class="btn btn-secondary" id="adminUsersBack">К админке</button>
+
+        <div class="admin-grid">
+          ${adminStatHtml("Слов в обучении", formatAdminNumber(stats.words_learned), `повторить: ${formatAdminNumber(dictionary.review_words)}`)}
+          ${adminStatHtml("Точность", `${stats.accuracy || 0}%`, `${formatAdminNumber(stats.total_correct)}✓ / ${formatAdminNumber(stats.total_wrong)}×`)}
+          ${adminStatHtml("Уроки", formatAdminNumber(report.completed_lessons), `серия: ${formatAdminNumber(streak.current)} дн.`)}
+          ${adminStatHtml("AI сегодня", formatAdminNumber(ai.used_today), `${formatAdminMoney(ai.cost_usd_today)} · ${formatAdminNumber(ai.total_tokens_today)} токенов`)}
+        </div>
+
+        <div class="card">
+          <h2>Профиль</h2>
+          <div class="stat-row"><span>Родитель</span><b>${esc(u.parent_name || "-")}</b></div>
+          <div class="stat-row"><span>Возраст</span><b>${esc(u.child_age || "-")}</b></div>
+          <div class="stat-row"><span>Тест уровня</span><b>${u.level_test_completed ? `${u.level_test_score}%` : "не пройден"}</b></div>
+          <div class="stat-row"><span>Регистрация</span><b>${esc(formatAdminDateTime(u.registered_at) || "-")}</b></div>
+        </div>
+
+        <div class="card">
+          <h2>Учебные результаты</h2>
+          <div class="stat-row"><span>Тестов по словам</span><b>${formatAdminNumber(report.completed_word_tests)}</b></div>
+          <div class="stat-row"><span>Средний тест</span><b>${formatAdminNumber(report.avg_word_test_score)}%</b></div>
+          <div class="stat-row"><span>Игр завершено</span><b>${formatAdminNumber(report.completed_games)}</b></div>
+          <div class="stat-row"><span>Выучено слов</span><b>${formatAdminNumber(dictionary.mastered_words)}</b></div>
+        </div>
+
+        <div class="card">
+          <h2>Слова для внимания</h2>
+          ${problemWords.length ? `<div class="admin-list">${problemWords.map(adminProblemWordHtml).join("")}</div>` : `<p class="hint">Пока нет слов с ошибками.</p>`}
+        </div>
+
+        <div class="card">
+          <h2>Последняя активность</h2>
+          ${history.length ? `<div class="activity-list">${history.map(adminHistoryHtml).join("")}</div>` : `<p class="hint">Активности пока нет.</p>`}
+        </div>
+
+        <button class="btn btn-danger" id="adminDetailReset">Обнулить результаты ученика</button>
+        <button class="btn btn-secondary" id="adminDetailBack">К пользователям</button>
       </div>`;
-    const search = document.getElementById("adminUserSearch");
-    let searchTimer = null;
-    search.addEventListener("input", () => {
-      clearTimeout(searchTimer);
-      searchTimer = setTimeout(() => renderAdminUsers(search.value.trim()), 350);
-    });
-    document.getElementById("adminUsersBack").onclick = () => { haptic(); renderAdminPanel(); };
-    bindAdminUserActions(query);
+    document.getElementById("adminDetailBack").onclick = () => { haptic(); renderAdminUsers(state.adminUsersQuery || ""); };
+    document.getElementById("adminDetailReset").onclick = async () => {
+      haptic("warning");
+      const ok = await confirmAction(`Обнулить учебные результаты ученика ${u.child_name || userId}?`);
+      if (!ok) return;
+      try {
+        await api("/api/admin/users/reset-results", "POST", {
+          user_id: Number(u.id || userId),
+          confirm: "reset_user_results",
+        });
+        tg.showAlert("Результаты ученика обнулены.");
+        renderAdminUserDetail(userId);
+      } catch (e) {
+        tg.showAlert(e.message);
+      }
+    };
   } catch (e) {
     renderError(e.message);
   }

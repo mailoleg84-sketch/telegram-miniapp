@@ -523,6 +523,54 @@ input[type="text"]:focus { border-color: var(--button); }
   line-height: 1;
 }
 
+.admin-health-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.admin-health {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--button);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: 0 4px 14px rgba(24, 39, 75, 0.05);
+}
+
+.admin-health.ok {
+  border-left-color: var(--green);
+}
+
+.admin-health.warning {
+  border-left-color: var(--yellow);
+}
+
+.admin-health.critical {
+  border-left-color: var(--red);
+}
+
+.admin-health.info {
+  border-left-color: var(--button);
+}
+
+.admin-health b,
+.admin-health span {
+  display: block;
+}
+
+.admin-health b {
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.admin-health span {
+  margin-top: 4px;
+  color: var(--hint);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
 .admin-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -584,6 +632,11 @@ input[type="text"]:focus { border-color: var(--button); }
   align-items: center;
 }
 
+.admin-user-actions {
+  display: grid;
+  gap: 7px;
+}
+
 .admin-word-row b,
 .admin-user-main b {
   display: block;
@@ -617,6 +670,11 @@ input[type="text"]:focus { border-color: var(--button); }
   font-size: 13px;
   font-weight: 800;
   box-shadow: var(--shadow-control);
+}
+
+.admin-mini-btn.danger {
+  background: var(--red);
+  color: #fff;
 }
 
 @media (max-width: 380px) {

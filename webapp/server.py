@@ -1033,7 +1033,43 @@ def _admin_overview_payload(overview: dict) -> dict:
     words = overview.get("words")
     learning = overview.get("learning")
     ai_today = overview.get("ai_today")
+    openai_status = openai_config_status()
+    admin_ids_count = len(ADMIN_USER_IDS)
+    failed_images = _safe_int(words, "failed_images")
+    missing_images = _safe_int(words, "missing_images")
+    health = []
+    if admin_ids_count <= 0:
+        health.append({
+            "level": "critical",
+            "title": "Администратор не настроен",
+            "text": "Добавьте ADMIN_USER_IDS в Render, иначе панель не будет доступна владельцу.",
+        })
+    if not openai_status.get("configured"):
+        health.append({
+            "level": "critical",
+            "title": "OpenAI не настроен",
+            "text": "OPENAI_API_KEY отсутствует. Репетитор, озвучка и AI-картинки работать не будут.",
+        })
+    if failed_images > 0:
+        health.append({
+            "level": "warning",
+            "title": "Есть ошибки генерации картинок",
+            "text": f"{failed_images} слов имеют статус failed. После исправления billing/API сбросьте ошибки картинок.",
+        })
+    if missing_images > 0:
+        health.append({
+            "level": "info",
+            "title": "Картинки ещё не сгенерированы",
+            "text": f"{missing_images} слов ждут AI-картинки. Это нормально, если генерация идёт постепенно.",
+        })
+    if not health:
+        health.append({
+            "level": "ok",
+            "title": "Система выглядит нормально",
+            "text": "Критичных проблем в админской диагностике сейчас не видно.",
+        })
     return {
+        "health": health,
         "users": {
             "total": _safe_int(users, "total_users"),
             "new_today": _safe_int(users, "new_users_today"),
@@ -1072,8 +1108,8 @@ def _admin_overview_payload(overview: dict) -> dict:
             "bot_run_mode": BOT_RUN_MODE,
             "api_rate_limit_per_minute": API_RATE_LIMIT_PER_MINUTE,
             "ai_rate_limit_per_minute": AI_RATE_LIMIT_PER_MINUTE,
-            "admin_ids_configured": len(ADMIN_USER_IDS),
-            "openai": openai_config_status(),
+            "admin_ids_configured": admin_ids_count,
+            "openai": openai_status,
         },
     }
 
@@ -1122,6 +1158,55 @@ def _admin_failed_image_dict(row) -> dict:
         "status": _record_value(row, "generated_image_status", "failed"),
         "reason": reason,
         "checked_at": _date_text(_record_value(row, "generated_image_checked_at")),
+    }
+
+
+def _admin_user_detail_payload(user, stats, report, dictionary_summary, problem_words, history, ai_today, streak) -> dict:
+    level = _level_for_user(user)
+    age_group = _normalized_age_group_for_user(user)
+    stats_payload = {
+        "words_learned": _safe_int(stats, "words_learned"),
+        "total_correct": _safe_int(stats, "total_correct"),
+        "total_wrong": _safe_int(stats, "total_wrong"),
+    }
+    total_answers = stats_payload["total_correct"] + stats_payload["total_wrong"]
+    report_payload = {
+        "completed_lessons": _safe_int(report, "completed_lessons"),
+        "completed_word_tests": _safe_int(report, "completed_word_tests"),
+        "avg_word_test_score": _safe_int(report, "avg_word_test_score"),
+        "completed_games": _safe_int(report, "completed_games"),
+        "avg_game_score": _safe_int(report, "avg_game_score"),
+    }
+    return {
+        "user": {
+            "id": _safe_int(user, "user_id"),
+            "child_name": _record_value(user, "name", ""),
+            "parent_name": _record_value(user, "parent_name", "") or "",
+            "child_age": _record_value(user, "child_age", None),
+            "age_group": age_group,
+            "age_label": _age_label(age_group),
+            "goal_label": _goal_label(_record_value(user, "goal", "")),
+            "level": level,
+            "level_label": _level_label(level),
+            "level_test_score": _record_value(user, "level_test_score", None),
+            "level_test_completed": bool(_record_value(user, "level_test_completed_at")),
+            "points": _safe_int(user, "points"),
+            "registered_at": _date_text(_record_value(user, "registered_at")),
+        },
+        "stats": {
+            **stats_payload,
+            "accuracy": round(stats_payload["total_correct"] / total_answers * 100) if total_answers else 0,
+        },
+        "report": report_payload,
+        "dictionary": {
+            "total_words": _safe_int(dictionary_summary, "total_words"),
+            "mastered_words": _safe_int(dictionary_summary, "mastered_words"),
+            "review_words": _safe_int(dictionary_summary, "review_words"),
+        },
+        "streak": streak or {},
+        "problem_words": [_problem_word_dict(row) for row in problem_words],
+        "history": [_activity_event_dict(row) for row in history],
+        "ai_today": _chat_usage_payload(ai_today),
     }
 
 
@@ -1961,6 +2046,35 @@ async def api_admin_users(request: web.Request):
         "query": search,
         "users": [_admin_user_dict(row) for row in rows],
     })
+
+
+async def api_admin_user_detail(request: web.Request):
+    if not _is_admin_request(request):
+        return _admin_forbidden_response()
+    try:
+        target_user_id = int(request.query.get("user_id") or 0)
+    except (TypeError, ValueError):
+        return web.json_response({"error": "Некорректный user_id"}, status=400)
+    user = await database.get_user(target_user_id)
+    if not user:
+        return web.json_response({"error": "Пользователь не найден"}, status=404)
+    stats = await database.get_user_stats(target_user_id)
+    report = await database.get_parent_report(target_user_id)
+    dictionary_summary = await database.get_dictionary_summary(target_user_id)
+    problem_words = await database.get_problem_words(target_user_id, limit=8)
+    history = await database.get_activity_history(target_user_id, limit=12)
+    ai_today = await database.get_ai_usage_today(target_user_id)
+    streak = await database.get_learning_streak(target_user_id)
+    return web.json_response(_admin_user_detail_payload(
+        user,
+        stats,
+        report,
+        dictionary_summary,
+        problem_words,
+        history,
+        ai_today,
+        streak,
+    ))
 
 
 async def api_admin_reset_user_results(request: web.Request):
@@ -3191,6 +3305,7 @@ def create_app(
     app.router.add_get("/api/me",  api_me)
     app.router.add_get("/api/admin/overview",           api_admin_overview)
     app.router.add_get("/api/admin/users",              api_admin_users)
+    app.router.add_get("/api/admin/users/detail",       api_admin_user_detail)
     app.router.add_post("/api/admin/users/reset-results", api_admin_reset_user_results)
     app.router.add_post("/api/admin/images/reset-failed", api_admin_reset_image_failures)
     app.router.add_get("/api/leaderboard",              api_leaderboard)
