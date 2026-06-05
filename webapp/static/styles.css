@@ -1011,6 +1011,55 @@ code {
   font-size: 12px;
 }
 
+.voice-mode-status[data-state="listening"],
+.voice-mode-status[data-state="ready"] {
+  color: var(--button);
+  font-weight: 800;
+}
+
+.voice-mode-status[data-state="thinking"],
+.voice-mode-status[data-state="processing"],
+.voice-mode-status[data-state="requesting_microphone"],
+.voice-mode-status[data-state="reconnecting"] {
+  color: #9a5a00;
+  font-weight: 800;
+}
+
+.voice-mode-status[data-state="speaking"] {
+  color: #0b8f6a;
+  font-weight: 800;
+}
+
+.voice-mode-status[data-state="error"],
+.voice-mode-status[data-state="microphone_denied"] {
+  color: var(--red);
+  font-weight: 800;
+}
+
+.voice-actions {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.voice-action {
+  min-height: 30px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--button);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.voice-action:disabled {
+  opacity: 0.45;
+}
+
 .voice-lesson-strip {
   width: min(100%, 360px);
   display: grid;
@@ -1773,6 +1822,31 @@ input[type="text"]:focus {
   border-color: var(--line-strong);
   background: var(--surface);
   box-shadow: 0 2px 8px rgba(24, 39, 75, 0.06);
+}
+
+.voice-mode-toggle[data-state="listening"] .voice-mode-dot,
+.voice-mode-toggle[data-state="ready"] .voice-mode-dot {
+  background: var(--button);
+}
+
+.voice-mode-toggle[data-state="thinking"] .voice-mode-dot,
+.voice-mode-toggle[data-state="processing"] .voice-mode-dot,
+.voice-mode-toggle[data-state="requesting_microphone"] .voice-mode-dot,
+.voice-mode-toggle[data-state="reconnecting"] .voice-mode-dot {
+  background: #d68a00;
+}
+
+.voice-mode-toggle[data-state="speaking"] .voice-mode-dot {
+  background: #16a77f;
+}
+
+.voice-mode-toggle[data-state="error"] .voice-mode-dot,
+.voice-mode-toggle[data-state="microphone_denied"] .voice-mode-dot {
+  background: var(--red);
+}
+
+.voice-action:not(:disabled):active {
+  transform: translateY(1px) scale(0.98);
 }
 
 .tutor-stage {

@@ -2577,13 +2577,14 @@ async def api_audio_speech(request: web.Request):
     body = await _safe_json(request)
     text = (body.get("text") or "").strip()
     mode = body.get("mode") if body.get("mode") in {"voice", "word"} else "chat"
+    speed = body.get("speed")
     if not text:
         return web.json_response({"error": "Нет текста для озвучки"}, status=400)
     if len(text) > 1200:
         text = text[:1200]
 
     try:
-        audio = await synthesize_speech(text, mode=mode)
+        audio = await synthesize_speech(text, mode=mode, speed=speed)
     except Exception as e:
         log.exception("Speech synthesis failed")
         return web.json_response({"error": f"Не удалось озвучить ответ. {public_openai_error(e)}"}, status=502)
@@ -2647,13 +2648,46 @@ async def _voice_text_turn_payload(user_id: int, text: str) -> dict:
     }
 
 
+async def _voice_unclear_payload(user_id: int, reply_text: str | None = None) -> dict:
+    user = await database.get_user(user_id)
+    lesson_state = await _ensure_voice_lesson_state(user_id, user)
+    age_group = _normalized_age_group_for_user(user)
+    if reply_text:
+        reply = reply_text
+    elif age_group == "5_7":
+        reply = "Я не очень хорошо услышал. Повтори одно слово, пожалуйста."
+    else:
+        reply = "Я не очень хорошо услышал. Повтори, пожалуйста, короткой фразой."
+
+    audio_b64 = ""
+    audio_error = ""
+    try:
+        speech = await synthesize_speech(reply, mode="voice")
+        audio_b64 = base64.b64encode(speech).decode("ascii")
+    except Exception as e:
+        log.exception("Unclear voice fallback speech synthesis failed")
+        audio_error = public_openai_error(e)
+
+    return {
+        "text": "",
+        "reply": reply,
+        "audio_base64": audio_b64,
+        "audio_content_type": "audio/mpeg" if audio_b64 else "",
+        "audio_error": audio_error,
+        "usage": _chat_usage_payload(await database.get_ai_usage_today(user_id)),
+        "lesson_state": public_lesson_state(lesson_state),
+        "voice_fallback": "unclear",
+    }
+
+
 async def api_voice_text_turn(request: web.Request):
     """Stable hybrid turn when speech was already transcribed by Realtime."""
     user_id = request["tg_user"]["id"]
     body = await _safe_json(request)
     text = " ".join((body.get("message") or body.get("text") or "").split())
     if not text:
-        return web.json_response({"error": "empty message"}, status=400)
+        payload = await _voice_unclear_payload(user_id)
+        return web.json_response(payload, headers={"Cache-Control": "no-store"})
     if len(text) > 1000:
         text = text[:1000]
 
@@ -2683,7 +2717,8 @@ async def api_voice_turn(request: web.Request):
 
     text = " ".join(text.split())
     if not text:
-        return web.json_response({"error": "Не расслышал голос"}, status=400)
+        payload = await _voice_unclear_payload(user_id)
+        return web.json_response(payload, headers={"Cache-Control": "no-store"})
     if len(text) > 1000:
         text = text[:1000]
 

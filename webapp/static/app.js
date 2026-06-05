@@ -1619,6 +1619,10 @@ async function renderChat() {
               <span id="voiceModeText">Говорить</span>
             </button>
             <div class="voice-mode-status" id="voiceStatus">Обычный режим</div>
+            <div class="voice-actions">
+              <button class="voice-action" id="voiceRepeat" type="button" disabled>Повторить ответ</button>
+              <button class="voice-action" id="voiceSlower" type="button" disabled>Медленнее</button>
+            </div>
           </div>
           <div class="voice-lesson-strip" id="voiceLessonStrip">
             <div class="voice-lesson-copy">
@@ -1643,6 +1647,8 @@ async function renderChat() {
     const voiceModeButton = document.getElementById("voiceMode");
     const voiceModeText = document.getElementById("voiceModeText");
     const voiceStatus = document.getElementById("voiceStatus");
+    const voiceRepeatButton = document.getElementById("voiceRepeat");
+    const voiceSlowerButton = document.getElementById("voiceSlower");
     const voiceLessonPhase = document.getElementById("voiceLessonPhase");
     const voiceLessonTopic = document.getElementById("voiceLessonTopic");
     const voiceLessonProgress = document.getElementById("voiceLessonProgress");
@@ -1682,6 +1688,9 @@ async function renderChat() {
     let realtimeAudioStarted = false;
     let realtimeFallbackShown = false;
     let shortVoiceHintShown = false;
+    let voiceUiState = "idle";
+    let lastTutorReply = "";
+    let voicePlaybackSpeed = 0.94;
     const realtimeLogged = new Set();
     const realtimeResponseText = new Map();
 
@@ -1695,6 +1704,19 @@ async function renderChat() {
     const CHAT_TTS_TIMEOUT_MS = 7000;
     const REALTIME_FIRST_AUDIO_TIMEOUT_MS = 7000;
     const STABLE_VOICE_COOLDOWN_MS = 10 * 60 * 1000;
+    const VOICE_STATE_LABELS = {
+      idle: "Обычный режим",
+      requesting_microphone: "Запрашиваю микрофон...",
+      microphone_denied: "Микрофон отключён",
+      ready: "Твой ход",
+      listening: "Слушаю...",
+      processing: "Распознаю...",
+      thinking: "Думаю...",
+      speaking: "Отвечаю...",
+      reconnecting: "Переподключаюсь...",
+      error: "Не удалось подключиться",
+      ended: "Обычный режим",
+    };
     const VOICE_STARTERS = [
       "Привет! Расскажи одним словом, что тебе сегодня интересно, а я превращу это в английскую фразу.",
       "Я слушаю. Можно говорить по-русски или по-английски. Начнем с маленькой сценки?",
@@ -1760,6 +1782,10 @@ async function renderChat() {
       div.textContent = text;
       box.appendChild(div);
       box.scrollTop = box.scrollHeight;
+      if (role !== "user" && !isAssistantError(text)) {
+        lastTutorReply = String(text || "").trim();
+        updateVoiceActionButtons();
+      }
     }
 
     function hasLessonHistory() {
@@ -1779,11 +1805,57 @@ async function renderChat() {
       return div;
     }
 
-    function updateVoiceModeUi(status = "") {
+    function inferVoiceState(status = "") {
+      const text = String(status || "").toLowerCase();
+      if (!voiceModeActive) return "idle";
+      if (text.includes("микрофон") && (text.includes("отключ") || text.includes("запрещ"))) return "microphone_denied";
+      if (text.includes("микрофон")) return "requesting_microphone";
+      if (text.includes("распозна")) return "processing";
+      if (text.includes("дума") || text.includes("готовлю")) return "thinking";
+      if (text.includes("говор") || text.includes("отвеч") || text.includes("озвуч")) return "speaking";
+      if (text.includes("ошиб") || text.includes("не удалось")) return "error";
+      if (text.includes("перепод") || text.includes("запас")) return "reconnecting";
+      if (text.includes("слуш") || text.includes("твой ход")) return "listening";
+      return voiceModeActive ? "ready" : "idle";
+    }
+
+    function updateVoiceActionButtons() {
+      const hasReply = Boolean(lastTutorReply && !sending);
+      voiceRepeatButton.disabled = !hasReply;
+      voiceSlowerButton.disabled = !hasReply;
+      voiceSlowerButton.textContent = voicePlaybackSpeed < 0.9 ? "Обычный темп" : "Медленнее";
+    }
+
+    function updateVoiceModeUi(status = "", nextState = "") {
+      voiceUiState = nextState || inferVoiceState(status);
       voiceModeButton.classList.toggle("active", voiceModeActive);
+      voiceModeButton.dataset.state = voiceUiState;
+      voiceStatus.dataset.state = voiceUiState;
       voiceModeText.textContent = voiceModeActive ? "Стоп" : "Говорить";
-      voiceStatus.textContent = status || (voiceModeActive ? "Слушаю..." : "Обычный режим");
+      voiceStatus.textContent = status || VOICE_STATE_LABELS[voiceUiState] || (voiceModeActive ? "Слушаю..." : "Обычный режим");
       if (!sending) mic.disabled = voiceModeActive;
+      updateVoiceActionButtons();
+    }
+
+    function isMicrophonePermissionError(error) {
+      return ["NotAllowedError", "PermissionDeniedError", "SecurityError"].includes(error?.name);
+    }
+
+    function friendlyVoiceError(error, fallback = "Голос сейчас не сработал. Попробуй ещё раз.") {
+      const message = String(error?.message || error || "");
+      if (isMicrophonePermissionError(error)) {
+        return "Микрофон отключён. Разреши доступ к микрофону в Telegram или браузере и попробуй снова.";
+      }
+      if (/network|fetch|connect|timeout|timed out|failed/i.test(message)) {
+        return "Связь с голосом прервалась. Проверь интернет и попробуй снова.";
+      }
+      if (/empty|пуст|не расслыш|short|корот/i.test(message)) {
+        return "Я не очень хорошо услышал. Повтори, пожалуйста.";
+      }
+      if (/quota|limit|429/i.test(message)) {
+        return "Голосовой репетитор временно перегружен. Попробуй чуть позже.";
+      }
+      return fallback;
     }
 
     function renderLessonState(nextState) {
@@ -1926,7 +1998,7 @@ async function renderChat() {
       }
       realtimeAssistantSpeaking = active;
       setRealtimeMicEnabled(!active);
-      updateVoiceModeUi(active ? "Говорю..." : "Слушаю...");
+      updateVoiceModeUi(active ? "Отвечаю..." : "Твой ход", active ? "speaking" : "ready");
       setFace(active ? "speaking" : "listening");
     }
 
@@ -1939,9 +2011,9 @@ async function renderChat() {
       return Math.min(26000, Math.max(3500, Math.max(byWords, byChars)));
     }
 
-    function scheduleRealtimeMicResume(delayMs = 800) {
+    function scheduleRealtimeMicResume(delayMs = 800, forceEarlier = false) {
       const resumeAt = Date.now() + delayMs;
-      if (realtimeMicResumeTimer && realtimeMicResumeAt >= resumeAt) return;
+      if (!forceEarlier && realtimeMicResumeTimer && realtimeMicResumeAt >= resumeAt) return;
       realtimeMicResumeAt = resumeAt;
       if (realtimeMicResumeTimer) clearTimeout(realtimeMicResumeTimer);
       realtimeMicResumeTimer = setTimeout(() => {
@@ -1990,19 +2062,19 @@ async function renderChat() {
       }
       const type = event.type || "";
       if (type === "session.created") {
-        updateVoiceModeUi("Слушаю...");
+        updateVoiceModeUi("Слушаю...", "listening");
         setFace("listening");
         return;
       }
       if (type === "input_audio_buffer.speech_started") {
         if (realtimeAssistantSpeaking) return;
-        updateVoiceModeUi("Слушаю...");
+        updateVoiceModeUi("Слушаю...", "listening");
         setFace("listening");
         return;
       }
       if (type === "input_audio_buffer.speech_stopped") {
         realtimeAwaitingResponse = true;
-        updateVoiceModeUi("Думаю...");
+        updateVoiceModeUi("Думаю...", "thinking");
         setFace("thinking");
         armRealtimeResponseTimer();
         armRealtimeResponseNudge(1400);
@@ -2033,14 +2105,13 @@ async function renderChat() {
           bubble("assistant", text);
           logRealtimeMessage("assistant", text, key);
         }
-        scheduleRealtimeMicResume(900);
+        scheduleRealtimeMicResume(estimateRealtimeSpeechMs(text) + 400);
         return;
       }
       if (type === "response.created") {
         realtimeAwaitingResponse = false;
         clearRealtimeResponseNudgeTimer();
-        setRealtimeAssistantSpeaking(true);
-        updateVoiceModeUi("Отвечаю...");
+        updateVoiceModeUi("Думаю...", "thinking");
         setFace("thinking");
         return;
       }
@@ -2053,7 +2124,7 @@ async function renderChat() {
         return;
       }
       if (type === "response.output_audio.done" || type === "response.audio.done") {
-        scheduleRealtimeMicResume(700);
+        scheduleRealtimeMicResume(700, true);
         return;
       }
       if (type === "response.done") {
@@ -2067,12 +2138,13 @@ async function renderChat() {
           bubble("assistant", text);
           logRealtimeMessage("assistant", text, key);
         }
-        scheduleRealtimeMicResume(900);
+        scheduleRealtimeMicResume(estimateRealtimeSpeechMs(text) + 400);
         return;
       }
       if (type === "error") {
         const message = event.error?.message || "Ошибка живого голоса";
         console.error("Realtime voice error:", message);
+        updateVoiceModeUi("Переключаюсь на запасной голос...", "reconnecting");
         switchToStableVoice("realtime_error", realtimeLastUserText).catch(console.error);
       }
     }
@@ -2197,18 +2269,20 @@ async function renderChat() {
       }
     }
 
-    async function speakTutor(text, onDone = null, voice = false) {
+    async function speakTutor(text, onDone = null, voice = false, speed = null) {
       if (isAssistantError(text)) {
         finishTutorSpeech(onDone);
         return;
       }
       stopTutorSpeech();
       setFace("thinking");
-      if (voice) updateVoiceModeUi("Озвучиваю...");
+      if (voice) updateVoiceModeUi("Готовлю голос...", "thinking");
       try {
+        const payload = { text, mode: voice ? "voice" : "chat" };
+        if (voice && speed) payload.speed = speed;
         const audioBlob = await apiBlob(
           "/api/audio/speech",
-          { text, mode: voice ? "voice" : "chat" },
+          payload,
           voice ? VOICE_TTS_TIMEOUT_MS : CHAT_TTS_TIMEOUT_MS,
         );
         await playTutorAudioBlob(audioBlob, text, onDone);
@@ -2223,7 +2297,10 @@ async function renderChat() {
       tutorAudioUrl = URL.createObjectURL(audioBlob);
       tutorAudio = new Audio(tutorAudioUrl);
       tutorAudio.preload = "auto";
-      tutorAudio.onplaying = () => setFace("speaking");
+      tutorAudio.onplaying = () => {
+        setFace("speaking");
+        if (voiceModeActive) updateVoiceModeUi("Отвечаю...", "speaking");
+      };
       tutorAudio.onended = () => {
         stopTutorSpeech();
         finishTutorSpeech(onDone);
@@ -2305,14 +2382,14 @@ async function renderChat() {
           heardVoice = true;
           lastVoiceAt = now;
           missedAutoRecordings = 0;
-          updateVoiceModeUi("Говори...");
+          updateVoiceModeUi("Слушаю...", "listening");
         }
         if (heardVoice && now - lastVoiceAt > VOICE_SILENCE_MS && now - recordingStartedAt > VOICE_MIN_RECORDING_MS) {
           stopRecording();
           return;
         }
         if (!heardVoice && now - recordingStartedAt > 2800) {
-          updateVoiceModeUi("Я слушаю. Можно по-русски...");
+          updateVoiceModeUi("Я слушаю. Можно по-русски...", "listening");
         }
         if (!heardVoice && now - recordingStartedAt > VOICE_NO_SPEECH_MS) {
           missedAutoRecordings += 1;
@@ -2395,6 +2472,7 @@ async function renderChat() {
           reply.reply,
           options.autoContinue ? () => scheduleVoiceListen(650) : null,
           Boolean(options.voice),
+          options.voice ? voicePlaybackSpeed : null,
         );
       } catch (e) {
         typing.remove();
@@ -2430,10 +2508,14 @@ async function renderChat() {
       const onDone = wasAuto ? () => scheduleVoiceListen(VOICE_RESTART_DELAY_MS) : null;
       if (result.audio_base64) {
         const audioBlob = base64ToBlob(result.audio_base64, result.audio_content_type || "audio/mpeg");
-        updateVoiceModeUi("Говорю...");
+        updateVoiceModeUi("Отвечаю...", "speaking");
         await playTutorAudioBlob(audioBlob, reply, onDone);
       } else if (reply) {
-        await speakTutor(reply, onDone, true);
+        if (result.audio_error) {
+          speakTutorFallback(reply, onDone);
+        } else {
+          await speakTutor(reply, onDone, true, voicePlaybackSpeed);
+        }
       } else if (wasAuto) {
         scheduleVoiceListen(900);
       }
@@ -2442,14 +2524,14 @@ async function renderChat() {
     function scheduleVoiceListen(delay = 500) {
       clearVoiceModeTimer();
       if (!voiceModeActive) return;
-      updateVoiceModeUi("Слушаю...");
+      updateVoiceModeUi("Твой ход", "ready");
       voiceModeTimer = setTimeout(() => {
         if (!voiceModeActive || sending) return;
         if (recorder && recorder.state === "recording") return;
         startRecording(true).catch(error => {
-          bubble("assistant", `Не удалось начать запись: ${error.message}`);
+          bubble("assistant", friendlyVoiceError(error, "Не удалось начать запись. Попробуй ещё раз."));
           voiceModeActive = false;
-          updateVoiceModeUi();
+          updateVoiceModeUi("", isMicrophonePermissionError(error) ? "microphone_denied" : "error");
           setFace("idle");
         });
       }, delay);
@@ -2476,7 +2558,7 @@ async function renderChat() {
         const blob = new Blob(audioChunks, { type: mimeType || "audio/webm" });
         audioChunks = [];
         if (blob.size < 300) {
-          updateVoiceModeUi("Скажи чуть дольше");
+          updateVoiceModeUi("Повтори, пожалуйста", "ready");
           if (!wasAuto && !shortVoiceHintShown) {
             shortVoiceHintShown = true;
             bubble("assistant", "Я не успел расслышать. Нажми микрофон и скажи фразу чуть дольше.");
@@ -2488,10 +2570,11 @@ async function renderChat() {
         missedAutoRecordings = 0;
         await sendStableVoiceTurn(blob, wasAuto);
       } catch (e) {
-        if (!wasAuto) tg.showAlert(e.message);
+        const message = friendlyVoiceError(e);
+        if (!wasAuto) tg.showAlert(message);
         else {
-          updateVoiceModeUi("Ошибка голоса");
-          bubble("assistant", `Ошибка голоса: ${e.message}`);
+          updateVoiceModeUi("Повтори, пожалуйста", "error");
+          bubble("assistant", message);
         }
         setFace("idle");
         if (wasAuto) scheduleVoiceListen(1500);
@@ -2518,6 +2601,7 @@ async function renderChat() {
         audioChunks = [];
         skipUploadOnStop = false;
         autoRecording = auto;
+        updateVoiceModeUi("Запрашиваю микрофон...", "requesting_microphone");
         recordingStream = await navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: true,
@@ -2556,18 +2640,20 @@ async function renderChat() {
         sendButton.disabled = true;
         setFace("listening");
         if (auto) {
-          updateVoiceModeUi("Слушаю...");
+          updateVoiceModeUi("Слушаю...", "listening");
           startSilenceMonitor(recordingStream);
+        } else {
+          updateVoiceModeUi("Слушаю...", "listening");
         }
         haptic();
       } catch (e) {
         stopTracks();
-        const message = `Не удалось включить микрофон: ${e.message}`;
+        const message = friendlyVoiceError(e, "Не удалось включить микрофон. Проверь разрешение и попробуй снова.");
         if (auto) bubble("assistant", message);
         else tg.showAlert(message);
         if (auto) {
           voiceModeActive = false;
-          updateVoiceModeUi();
+          updateVoiceModeUi(message, isMicrophonePermissionError(e) ? "microphone_denied" : "error");
         }
         setFace("idle");
       }
@@ -2593,7 +2679,7 @@ async function renderChat() {
       clearVoiceModeTimer();
       voiceModeActive = true;
       missedAutoRecordings = 0;
-      updateVoiceModeUi("Готовлюсь...");
+      updateVoiceModeUi("Готовлюсь...", "thinking");
       haptic();
       if (!voiceIntroPlayed && box.querySelector(".chat-empty")) {
         voiceIntroPlayed = true;
@@ -2646,7 +2732,7 @@ async function renderChat() {
       realtimeActive = true;
       missedAutoRecordings = 0;
       if (box.querySelector(".chat-empty")) box.innerHTML = "";
-      updateVoiceModeUi("Подключаю живой голос...");
+      updateVoiceModeUi("Подключаю живой голос...", "reconnecting");
       setFace("thinking");
       haptic();
 
@@ -2673,6 +2759,7 @@ async function renderChat() {
         }
       };
 
+      updateVoiceModeUi("Запрашиваю микрофон...", "requesting_microphone");
       realtimeStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: { ideal: true },
@@ -2688,7 +2775,7 @@ async function renderChat() {
       realtimeDataChannel = realtimePc.createDataChannel("oai-events");
       realtimeDataChannel.onmessage = handleRealtimeEvent;
       realtimeDataChannel.onopen = () => {
-        updateVoiceModeUi("Слушаю...");
+        updateVoiceModeUi("Твой ход", "ready");
         setFace("listening");
         const ageGroup = state.me?.user?.age_group || "default";
         const childName = state.me?.user?.child_name || "друг";
@@ -2745,7 +2832,14 @@ async function renderChat() {
           preferStableVoice("realtime_start_failed");
           stopRealtimeSession();
           voiceModeActive = false;
-          updateVoiceModeUi("Включаю запасной режим...");
+          if (isMicrophonePermissionError(e)) {
+            const message = friendlyVoiceError(e);
+            updateVoiceModeUi(message, "microphone_denied");
+            bubble("assistant", message);
+            setFace("idle");
+            return;
+          }
+          updateVoiceModeUi("Включаю запасной режим...", "reconnecting");
           if (!realtimeFallbackShown) {
             realtimeFallbackShown = true;
             bubble("assistant", "Живой голос сейчас не включился, попробую запасной режим.");
@@ -2761,7 +2855,7 @@ async function renderChat() {
       voiceModeActive = false;
       autoRecording = false;
       skipUploadOnStop = true;
-      updateVoiceModeUi("Обычный режим");
+      updateVoiceModeUi("Обычный режим", "ended");
       stopRealtimeSession();
       if (recorder && recorder.state === "recording") {
         stopRecording();
@@ -2780,6 +2874,18 @@ async function renderChat() {
 
     mic.onclick = toggleRecording;
     voiceModeButton.onclick = toggleVoiceMode;
+    voiceRepeatButton.onclick = () => {
+      if (!lastTutorReply || sending) return;
+      haptic();
+      speakTutor(lastTutorReply, null, true, voicePlaybackSpeed);
+    };
+    voiceSlowerButton.onclick = () => {
+      if (!lastTutorReply || sending) return;
+      haptic();
+      voicePlaybackSpeed = voicePlaybackSpeed < 0.9 ? 0.94 : 0.86;
+      updateVoiceActionButtons();
+      speakTutor(lastTutorReply, null, true, voicePlaybackSpeed);
+    };
     sendButton.onclick = send;
     input.addEventListener("keypress", e => { if (e.key === "Enter") send(); });
     setBack(() => {

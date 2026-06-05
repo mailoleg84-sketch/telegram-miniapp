@@ -119,8 +119,15 @@ class LessonEngineTests(unittest.TestCase):
         self.assertIn("CREATE TABLE IF NOT EXISTS voice_lesson_state", database)
         self.assertGreaterEqual(server.count("_advance_voice_lesson_state("), 4)
         self.assertGreaterEqual(server.count("public_lesson_state("), 4)
+        self.assertIn("_voice_unclear_payload", server)
         self.assertIn('id="voiceLessonStrip"', app)
         self.assertIn("renderLessonState(result.lesson_state)", app)
+        self.assertIn("VOICE_STATE_LABELS", app)
+        self.assertIn('id="voiceRepeat"', app)
+        self.assertIn('id="voiceSlower"', app)
+        self.assertIn("friendlyVoiceError", app)
+        self.assertIn("microphone_denied", app)
+        self.assertIn("estimateRealtimeSpeechMs(text) + 400", app)
 
     def test_voice_prompts_receive_authoritative_lesson_state(self):
         state = create_lesson_state("8_10", seed="kid")

@@ -5,6 +5,7 @@ from config import GAME_PERFECT_BONUS_POINTS, GAME_POINTS_CORRECT
 from data.words import INITIAL_WORDS, LEARNING_WORDS
 from webapp.openai_service import (
     VOICE_REPLY_MAX_CHARS,
+    _clamp_speech_speed,
     _needs_russian_repair,
     _runtime_instructions,
     _safety_guard_reply,
@@ -257,10 +258,18 @@ class OpenAISafetyTests(unittest.TestCase):
 
         self.assertIn("Контракт каждого голосового хода", prompt)
         self.assertIn("Никогда не делай больше трех", prompt)
+        self.assertIn("Простая болтовня без обучения запрещена", prompt)
         self.assertIn("не предлагай меню тем", prompt)
         self.assertIn("Voice turn contract, highest priority", realtime)
+        self.assertIn("Do not merely chat", realtime)
         self.assertIn("directly connected question", realtime)
         self.assertIn("do not offer a menu of topics", realtime)
+
+    def test_voice_tts_speed_is_clamped_for_child_safe_controls(self):
+        self.assertEqual(_clamp_speech_speed("0.86", 0.94), 0.86)
+        self.assertEqual(_clamp_speech_speed("0.1", 0.94), 0.75)
+        self.assertEqual(_clamp_speech_speed("3", 0.94), 1.15)
+        self.assertEqual(_clamp_speech_speed("bad", 0.94), 0.94)
 
     def test_voice_turn_trimmer_keeps_complete_short_reply(self):
         reply = (

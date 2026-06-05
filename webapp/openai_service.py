@@ -377,6 +377,14 @@ def _usage_int(usage, field: str) -> int:
         return 0
 
 
+def _clamp_speech_speed(value: float | int | str | None, default: float) -> float:
+    try:
+        speed = float(value)
+    except (TypeError, ValueError):
+        speed = default
+    return round(max(0.75, min(1.15, speed)), 2)
+
+
 def _estimate_cost(input_tokens: int, output_tokens: int) -> float:
     input_cost = input_tokens * OPENAI_INPUT_COST_PER_1M / 1_000_000
     output_cost = output_tokens * OPENAI_OUTPUT_COST_PER_1M / 1_000_000
@@ -645,6 +653,7 @@ def _voice_module_prompt(
 2) Дай только одну полезную подсказку, модель фразы или мягкое исправление.
 3) Закончи одним вопросом или микро-заданием, которое прямо продолжает слова ребенка.
 Это три смысловых шага, а не обязательные три предложения. Обычно достаточно 2-3 коротких предложений. Никогда не делай больше трех.
+В каждом ходе обязательно должен быть обучающий элемент английского: одно слово, одна фраза, одно исправление, выбор из двух вариантов или микро-практика. Простая болтовня без обучения запрещена.
 
 Жесткие правила:
 - Максимум 3 коротких предложения и 220 символов. Без markdown, списков, анализа и лекций.
@@ -654,6 +663,7 @@ def _voice_module_prompt(
 - Не выдавай обрывки вроде "Great! song." Скажи законченную естественную мысль: "Great choice! What song do you like?"
 - Никогда не пиши русские слова латиницей: не "Pochti", а "Почти". Не смешивай английское слово с русской грамматикой: не "Какой song?", а "Какая песня тебе нравится?"
 - Не просто болтай. В каждом ответе должен быть учебный шаг: model, correction, practice, choice или review. Исключение: ребенок явно просит “по-русски без английского” или говорит, что не понимает — тогда сначала объясни по-русски, но все равно мягко верни к обучению следующим ходом.
+- Если ответ получился просто разговорным, перепиши его в учебный ход: реакция + одна английская польза + один следующий шаг.
 - Не меняй тему сам по времени. Продолжай текущую линию урока и мини-сцену, пока ребенок сам не попросит другую тему, не устанет или не закончит задание.
 - Не используй markdown: никаких **звездочек**, списков, заголовков, кавычек-оформлений.
 - Не используй команды “Say:” и “Repeat:”. Если исправляешь, скажи по-человечески: “лучше так: ...”
@@ -883,186 +893,6 @@ def _normalize_realtime_age_group(age_group: str | None, age: str | int | None =
     return "default"
 
 
-# ── Блочные промпт-билдеры для Realtime WebRTC ──────────────────────────────
-
-def _rt_identity_block(profile: dict, name: str) -> str:
-    return (
-        f"You are {profile['persona']} named Alex. "
-        f"You are having a live spoken English conversation with {name}. "
-        "You are warm, patient, and genuinely interested in the child. "
-        "You sound like a real person — not an AI, not a robot, not an announcer. "
-        "Your voice is natural, with real emotion, tiny pauses, and a friendly smile."
-    )
-
-
-def _rt_speech_style_block(profile: dict, age_group: str) -> str:
-    max_words = profile["max_sentence_words"]
-    if age_group == "5_7":
-        return (
-            f"SPEECH STYLE: Speak in very short, simple sentences — maximum {max_words} words each. "
-            "Use a warm, sing-song, kindergarten-teacher voice. "
-            "React with genuine excitement: 'Wow!', 'Great job!', 'Ooh, nice!'. "
-            "Pause naturally between sentences. "
-            "Never use complicated words. If you must use a new word, say it slowly and explain it playfully. "
-            "Use lots of sound effects and playful intonation."
-        )
-    elif age_group == "8_10":
-        return (
-            f"SPEECH STYLE: Keep sentences under {max_words} words. "
-            "Be enthusiastic and encouraging — like a fun coach. "
-            "Use age-appropriate comparisons ('as big as a school bus!'). "
-            "Celebrate small wins out loud. Be energetic but not over-the-top."
-        )
-    elif age_group == "11_13":
-        return (
-            f"SPEECH STYLE: Speak naturally, sentences up to {max_words} words. "
-            "Be friendly but not over-the-top — tweens dislike being talked down to. "
-            "Use relatable references (games, YouTube, school life). "
-            "Encourage with genuine, specific praise, not generic 'good job'."
-        )
-    else:  # 14_18
-        return (
-            f"SPEECH STYLE: Speak like a knowledgeable peer-mentor, sentences up to {max_words} words. "
-            "Use rich vocabulary appropriate for the learner's level. "
-            "You can discuss real-world topics: news, careers, culture, science. "
-            "Treat the student as an intelligent young adult learner."
-        )
-
-
-def _rt_pedagogy_block(profile: dict, level: str, goal: str) -> str:
-    focus = "grammar and accuracy" if profile["grammar_focus"] else "fluency, fun, and confidence"
-    return (
-        f"PEDAGOGY: The student's English level is {level}. Their goal: {goal}. "
-        f"Your pedagogical focus: {focus}. "
-        "Follow the 3-step micro-loop for each exchange: "
-        "1) MODEL — demonstrate the language point naturally in your own speech. "
-        "2) ELICIT — ask one clear, open question to make them produce language. "
-        "3) RESPOND — react to what they said with genuine interest, then gently model/elicit again. "
-        "Never lecture. Keep the student talking more than you. "
-        "One task at a time. One question at a time. Never sound like a quiz."
-        " If the child asks for a story, give a tiny story, not a full tale: 1-2 short sentences, then one simple question."
-    )
-
-
-def _rt_topic_block(topics: str, age_group: str) -> str:
-    if not topics:
-        return ""
-    activities = {
-        "5_7":   "simple story-telling, pretend play, naming things, guessing games, silly questions",
-        "8_10":  "word games, short role-plays (shopping, animals), mini-quests, 'would you rather'",
-        "11_13": "opinions on movies/games, 'would you rather', storytelling, mini-debates, escape room scenarios",
-        "14_18": "debates, real-world scenarios, interview practice, storytelling, opinion challenges",
-    }
-    return (
-        f"TOPICS: Suggested topics for today: {topics}. "
-        f"Suitable activities: {activities.get(age_group, activities['11_13'])}. "
-        "Weave topics naturally into conversation — never announce 'now we will do…'. "
-        "If the child picks a topic, stay with it for 2-5 exchanges before gently shifting. "
-        "Don't repeat the same topic twice in a row."
-    )
-
-
-def _rt_correction_block(profile: dict) -> str:
-    strategy = profile["corrections"]
-    if strategy == "never":
-        return (
-            "CORRECTIONS: Never explicitly correct errors. "
-            "If the student makes a mistake, simply use the correct form naturally in your reply "
-            "('Oh, you SAW a dog! Cool, what did the dog look like?'). "
-            "This is called a recast. Never say 'wrong', 'mistake', or 'try again'. "
-            "Just model the right way and move on warmly."
-        )
-    elif strategy == "recast":
-        return (
-            "CORRECTIONS: Use recasts — weave the correct form into your response without flagging the error. "
-            "For serious repeated errors only, gently offer the correct form: 'We usually say… — can you try that?' "
-            "Always praise the content before addressing the form."
-        )
-    elif strategy == "explicit_gentle":
-        return (
-            "CORRECTIONS: For clear grammar errors, gently highlight them: "
-            "'Good idea! Just a small thing — we say \"I went\" not \"I goed\" — can you say the full sentence again?' "
-            "Always praise the content before addressing the form. Maximum one correction per exchange."
-        )
-    else:  # explicit
-        return (
-            "CORRECTIONS: Correct errors clearly but kindly. "
-            "Explain briefly WHY (e.g. 'In English, we put the adjective before the noun'). "
-            "Ask the student to repeat the corrected version. Maximum one correction per turn."
-        )
-
-
-def _rt_language_block(age_group: str) -> str:
-    if age_group in ("5_7", "8_10", "under_12", "under_10", "default"):
-        extra = (
-            "For this child, Russian is the safe base language. "
-            "Use English only as a tiny learning sprinkle, not as the main language unless the child clearly speaks English first."
-        )
-    elif age_group == "11_13":
-        extra = (
-            "For this age, you may use a little more English, but never force English after a Russian question. "
-            "First answer in Russian, then add one useful English phrase only if it fits."
-        )
-    else:
-        extra = (
-            "For teenagers, still mirror the student's language. "
-            "If they choose Russian, keep the answer in Russian and add English only when it helps the learning goal."
-        )
-    return (
-        "HARD LANGUAGE RULES, highest priority: The student's native language is Russian. "
-        "Mirror the language of the student's latest message. "
-        "If the student speaks Russian, respond in Russian. Do not switch to English just because this is an English lesson. "
-        "If the student asks 'по-русски', 'без английского', 'не надо английский', answer entirely in Russian with no English words in that turn. "
-        "If the student says 'не понимаю', 'что?', 'переведи', 'помоги', 'говори медленнее', or sounds unsure, answer entirely in Russian in that turn. "
-        "If the student speaks English, respond in simple English and praise the attempt. "
-        "In a normal Russian answer, use at most ONE short English word or phrase, and only when it is useful right now. "
-        "After confusion, tiredness, or a request for Russian, use ZERO English words. "
-        "Do not end a Russian answer with an English question unless the student asked for English practice in that message. "
-        "When you use an English word inside Russian, immediately give the meaning: 'good — хорошо'. "
-        "Do not ask the child to translate their Russian message into English unless they explicitly want a challenge. "
-        f"{extra}"
-    )
-
-
-def _rt_safety_block() -> str:
-    return (
-        "SAFETY: You are speaking with a child. "
-        "Never discuss violence, politics, adult content, drugs, or any inappropriate topic. "
-        "If the student goes off-topic, gently redirect to English practice. "
-        "Keep the conversation positive, safe, and encouraging at all times. "
-        "If the child says they're tired or bored, respect it — offer something easier or a fun game."
-    )
-
-
-def _rt_webrtc_rules_block(age_group: str) -> str:
-    base = (
-        "LIVE VOICE RULES: You are in a live WebRTC voice call. "
-        "Respond like a real person on a phone call — no processing delays, no long introductions. "
-        "Speak slowly and clearly. Use relaxed pacing, tiny pauses, and short bursts of 3-6 seconds. If a thought is longer, split it across turns. "
-        "Pronounce English words with natural English pronunciation, even inside Russian sentences. "
-        "Lead the conversation yourself — suggest small next steps, but never list menu options or buttons. "
-        "Vary your activities: question, mini-role-play, short story, choice, gentle correction. "
-        "If the child is silent or confused, help in Russian: 'Давай легко: скажи, день был хороший или так себе?' "
-        "If the child asks to speak Russian or says they do not understand, do not sprinkle English in that turn. "
-        "If the child asks for a story, tell only 1-2 short sentences and stop with one simple question. "
-        "Never use markdown, asterisks, lists, or any text formatting. "
-        "Never use emoji in your speech. "
-        "Never rush. It is better to say less, slower, and let the child answer. "
-        "Sound like a real warm human, not a textbook."
-    )
-    if age_group == "5_7":
-        base += (
-            " For this young child: use the simplest words possible. "
-            "Make it feel like a game, not a lesson. Use sound effects and playful reactions."
-        )
-    elif age_group in ("14_18",):
-        base += (
-            " For this teenager: speak naturally, like a cool older friend who happens to be great at English. "
-            "Don't be patronizing. Discuss real topics they care about."
-        )
-    return base
-
-
 def build_voice_realtime_instructions(
     user_name: str,
     age_label: str = "",
@@ -1123,6 +953,7 @@ Speak like a real human in a live call: warm, relaxed, attentive, with natural p
 Voice turn contract, highest priority:
 - Use at most three short conversational sentences and at most {max_total_words} words total. For a young child, two sentences are often enough.
 - Build one natural turn from three small beats: react to the child's exact words; give one useful hint, model, or correction; ask one directly connected question or tiny task.
+- Every turn must teach English in a tiny way: one word, one phrase, one correction, one two-option choice, or one micro-practice. Do not merely chat.
 - The three beats do not need labels and do not need separate sentences. Never announce the structure.
 - The final question or task must continue the child's exact idea. Never append an arbitrary topic choice just to end with a question.
 - Once a topic is selected, do not offer a menu of topics. Stay in the current scene.
@@ -1171,42 +1002,6 @@ Audio behavior:
 
 Safety:
 Child-safe topics only. Avoid scary, adult, violent, political, or inappropriate content."""
-    context = dict(prompt_context or {})
-    context["mode"] = "voice"
-    age_group = _normalize_realtime_age_group(context.get("age_group", "default"), context.get("age"))
-    context["age_group"] = age_group
-    profile = _get_realtime_profile(context)
-
-    name = user_name or "друг"
-    level = context.get("level") or TUTOR_DEFAULT_LEVEL
-    goal = context.get("goal") or "разговорная практика"
-    topics = context.get("topic_suggestions") or context.get("topics") or TUTOR_DEFAULT_TOPICS
-
-    # Контекст недавних сообщений для непрерывности разговора
-    recent_user = context.get("recent_user_messages") or ""
-    recent_assistant = context.get("recent_assistant_messages") or ""
-    context_block = ""
-    if recent_user or recent_assistant:
-        context_block = (
-            f"CONVERSATION CONTEXT: Recent student messages: {recent_user or 'none yet'}. "
-            f"Recent tutor messages: {recent_assistant or 'none yet'}. "
-            "Continue naturally from where the conversation left off. Don't repeat what was already discussed."
-        )
-
-    blocks = [
-        _rt_identity_block(profile, name),
-        _rt_speech_style_block(profile, age_group),
-        _rt_pedagogy_block(profile, level, goal),
-        _rt_topic_block(topics, age_group),
-        _rt_correction_block(profile),
-        _rt_language_block(age_group),
-        _rt_safety_block(),
-        _rt_webrtc_rules_block(age_group),
-    ]
-    if context_block:
-        blocks.append(context_block)
-
-    return "\n\n".join(blocks)
 
 
 def _transcription_hint(prompt_context: dict | None) -> str:
@@ -1464,7 +1259,7 @@ async def transcribe_audio(file_bytes: bytes, filename: str = "voice.webm", cont
     return str(text or "").strip()
 
 
-async def synthesize_speech(text: str, mode: str = "chat") -> bytes:
+async def synthesize_speech(text: str, mode: str = "chat", speed: float | int | str | None = None) -> bytes:
     """Generates a short MP3 tutor voice response."""
     if _client is None:
         raise RuntimeError("OPENAI_API_KEY is not configured")
@@ -1472,8 +1267,10 @@ async def synthesize_speech(text: str, mode: str = "chat") -> bytes:
     clean_text = " ".join((text or "").split())
     if not clean_text:
         raise ValueError("Text is empty")
-    max_chars = 160 if mode == "word" else 900 if mode == "voice" else 1100
+    max_chars = 160 if mode == "word" else 420 if mode == "voice" else 1100
     clean_text = _cut_at_sentence_boundary(clean_text, max_chars)
+    default_speed = 0.88 if mode == "word" else 0.94 if mode == "voice" else 1.0
+    speech_speed = _clamp_speech_speed(speed, default_speed)
 
     has_russian = _has_cyrillic(clean_text)
     has_english = _has_latin(clean_text)
@@ -1517,7 +1314,7 @@ async def synthesize_speech(text: str, mode: str = "chat") -> bytes:
             "voice": voice,
             "input": clean_text,
             "response_format": "mp3",
-            "speed": 0.92 if mode == "word" else 0.97 if mode == "voice" else 1.0,
+            "speed": speech_speed,
         }
         if include_instructions:
             request["instructions"] = instructions
