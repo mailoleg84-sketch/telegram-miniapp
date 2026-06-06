@@ -398,3 +398,87 @@ input:focus-visible {
     animation: none !important;
   }
 }
+
+/* ===================== АНИМИРОВАННЫЙ ПЕРСОНАЖ (младшие 5-10) ===================== */
+.chat-wrap .tutor-face.is-character {
+  height: 250px;
+  margin: -10px -14px -4px;
+  display: grid;
+  place-items: center;
+  overflow: visible;
+  background:
+    radial-gradient(circle at 50% 44%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 60%);
+  -webkit-mask-image: none;
+  mask-image: none;
+  animation: none;
+}
+.chat-wrap .tutor-face.is-character .avatar-glow { display: none; }
+
+.char-avatar {
+  width: 216px;
+  height: 216px;
+  display: block;
+  transform-origin: 50% 72%;
+  animation: charBreath 4.2s ease-in-out infinite;
+}
+.char-bg { fill: color-mix(in srgb, var(--accent) 16%, #ffffff); }
+.char-body { fill: var(--accent); }
+.char-collar { fill: color-mix(in srgb, var(--accent) 65%, #ffffff); }
+.char-skin { fill: #f7c9a0; }
+.char-hair { fill: #6b4a37; }
+.char-cheek { fill: #ffb1b9; opacity: 0.85; }
+.char-brow { fill: #5a3f30; transform-origin: center; transition: transform 0.2s ease; }
+.eye-white { fill: #ffffff; }
+.eye-pupil { fill: #38323e; transition: transform 0.25s ease; }
+.eye-shine { fill: #ffffff; }
+.eye-lid { fill: #f7c9a0; transform-origin: 50% 0; transform: scaleY(0); animation: charBlink 5s ease-in-out infinite; }
+.char-mouth {
+  fill: none;
+  stroke: #7a4a44;
+  stroke-width: 5;
+  stroke-linecap: round;
+  transform-origin: 100px 134px;
+  transition: transform 0.18s ease;
+}
+.char-spark { fill: #ffd45e; opacity: 0; transform-origin: 160px 54px; }
+
+@keyframes charBreath {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-2px) scale(1.012); }
+}
+@keyframes charBlink {
+  0%, 92%, 100% { transform: scaleY(0); }
+  95%, 97% { transform: scaleY(1); }
+}
+@keyframes charTalk {
+  from { transform: scaleY(0.55); }
+  to { transform: scaleY(1.45) translateY(1px); }
+}
+@keyframes charSpark {
+  0%, 100% { opacity: 0; transform: scale(0.6) rotate(0deg); }
+  40%, 70% { opacity: 1; transform: scale(1.08) rotate(20deg); }
+}
+
+/* Говорит — рот «открывается/закрывается», брови чуть выше. */
+.tutor-face[data-state="speaking"] .char-mouth { animation: charTalk 0.26s ease-in-out infinite alternate; }
+.tutor-face[data-state="speaking"] .char-brow { transform: translateY(-2px); }
+/* Думает — рот маленький, взгляд вверх, бровки домиком. */
+.tutor-face[data-state="thinking"] .char-mouth,
+.tutor-face[data-state="correcting"] .char-mouth { transform: scaleX(0.6) scaleY(0.5); }
+.tutor-face[data-state="thinking"] .eye-pupil { transform: translateY(-3px); }
+.tutor-face[data-state="thinking"] .char-brow.brow-left { transform: translateY(-1px) rotate(-7deg); }
+.tutor-face[data-state="thinking"] .char-brow.brow-right { transform: translateY(-1px) rotate(7deg); }
+/* Хвалит — широкая улыбка + искра. */
+.tutor-face[data-state="praising"] .char-mouth { transform: scaleY(1.7); }
+.tutor-face[data-state="praising"] .char-spark { animation: charSpark 1s ease-in-out 2; }
+/* Слушает/ждёт — дышит живее. */
+.tutor-face[data-state="listening"] .char-avatar,
+.tutor-face[data-state="waiting"] .char-avatar,
+.tutor-face[data-state="encouraging"] .char-avatar { animation: charBreath 2.4s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .char-avatar,
+  .eye-lid,
+  .char-mouth,
+  .char-spark { animation: none !important; }
+}

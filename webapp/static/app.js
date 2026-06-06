@@ -2199,12 +2199,55 @@ async function renderDailyFinish(phraseWasCorrect = true, phrase = "") {
   }
 }
 
-function tutorAvatarHtml() {
-  // Спокойное фото без накладной «мимики»: состояние показываем мягким
-  // свечением по краю и волной речи снизу, не рисуя фейковые глаза/рот на лице.
+// Младшим (5-10) — нарисованный анимированный персонаж с настоящей мимикой
+// (черты в SVG, поэтому всё совпадает). Старшим (11-18) — спокойное фото + свечение.
+const CHARACTER_AGE_GROUPS = ["5_7", "8_10"];
+
+function tutorCharacterSvg() {
   return `
-    <div class="tutor-face idle" id="tutorFace" data-state="idle" aria-hidden="true">
-      <img class="tutor-avatar-img" src="/static/assets/tutor-avatar-v2.jpg?v=20260606-kids-v107" alt="">
+    <svg class="char-avatar" viewBox="0 0 200 200" aria-hidden="true">
+      <defs><clipPath id="charClip"><circle cx="100" cy="100" r="94"/></clipPath></defs>
+      <circle class="char-bg" cx="100" cy="100" r="94"/>
+      <g clip-path="url(#charClip)">
+        <ellipse class="char-body" cx="100" cy="210" rx="82" ry="52"/>
+        <rect class="char-collar" x="84" y="150" width="32" height="26" rx="12"/>
+        <rect class="char-skin char-neck" x="89" y="134" width="22" height="24" rx="10"/>
+        <ellipse class="char-hair char-hair-back" cx="100" cy="94" rx="60" ry="58"/>
+        <ellipse class="char-skin char-faceshape" cx="100" cy="102" rx="50" ry="54"/>
+        <circle class="char-skin char-ear" cx="51" cy="106" r="8"/>
+        <circle class="char-skin char-ear" cx="149" cy="106" r="8"/>
+        <path class="char-hair" d="M50 78 Q60 44 100 42 Q140 44 150 78 Q150 92 140 86 Q132 60 100 60 Q68 60 60 86 Q50 92 50 78 Z"/>
+        <circle class="char-cheek" cx="68" cy="118" r="8.5"/>
+        <circle class="char-cheek" cx="132" cy="118" r="8.5"/>
+        <rect class="char-brow brow-left" x="60" y="88" width="22" height="5" rx="3"/>
+        <rect class="char-brow brow-right" x="118" y="88" width="22" height="5" rx="3"/>
+        <g class="char-eye eye-left">
+          <ellipse class="eye-white" cx="76" cy="104" rx="11" ry="13"/>
+          <circle class="eye-pupil" cx="76" cy="106" r="6"/>
+          <circle class="eye-shine" cx="79" cy="102" r="2.4"/>
+          <rect class="eye-lid" x="64" y="89" width="24" height="30" rx="12"/>
+        </g>
+        <g class="char-eye eye-right">
+          <ellipse class="eye-white" cx="124" cy="104" rx="11" ry="13"/>
+          <circle class="eye-pupil" cx="124" cy="106" r="6"/>
+          <circle class="eye-shine" cx="127" cy="102" r="2.4"/>
+          <rect class="eye-lid" x="112" y="89" width="24" height="30" rx="12"/>
+        </g>
+        <path class="char-mouth" d="M82 130 Q100 146 118 130"/>
+      </g>
+      <g class="char-spark"><path d="M158 50 l3.5 8 8 3.5 -8 3.5 -3.5 8 -3.5 -8 -8 -3.5 8 -3.5 z"/></g>
+    </svg>`;
+}
+
+function tutorAvatarHtml() {
+  const ageGroup = state.me?.user?.age_group || "";
+  const useCharacter = CHARACTER_AGE_GROUPS.includes(ageGroup);
+  const inner = useCharacter
+    ? tutorCharacterSvg()
+    : `<img class="tutor-avatar-img" src="/static/assets/tutor-avatar-v2.jpg?v=20260606-kids-v109" alt="">`;
+  return `
+    <div class="tutor-face idle ${useCharacter ? "is-character" : "is-photo"}" id="tutorFace" data-state="idle" aria-hidden="true">
+      ${inner}
       <span class="avatar-glow"></span>
     </div>`;
 }
