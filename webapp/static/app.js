@@ -1267,6 +1267,31 @@ function quizProgressHtml(index) {
     </div>`;
 }
 
+function quizPromptCard(q, badge = "") {
+  const badgeHtml = badge ? `<div class="daily-badge">${esc(badge)}</div>` : "<span></span>";
+  if (q.type === "word") {
+    // Показываем перевод -> ребёнок выбирает английское слово.
+    return `
+      <div class="card word-card compact">
+        <div class="word-card-top">${badgeHtml}<span></span></div>
+        <div class="quiz-ask-word">${esc(q.translation)}</div>
+        <p class="hint mt-12">${esc(q.prompt)}</p>
+      </div>`;
+  }
+  if (q.type === "gap") {
+    // Показываем пример с пропуском -> ребёнок выбирает пропущенное слово.
+    return `
+      <div class="card word-card compact">
+        <div class="word-card-top">${badgeHtml}<span></span></div>
+        <div class="quiz-ask-gap">${esc(q.gap_text || q.example)}</div>
+        ${q.translation ? `<div class="word-hint">${esc(q.translation)}</div>` : ""}
+        <p class="hint mt-12">${esc(q.prompt)}</p>
+      </div>`;
+  }
+  // translation (по умолчанию): показываем слово + транскрипцию -> выбрать перевод.
+  return wordStudyCard(q, { badge, prompt: q.prompt, compact: true, showTranslation: false, showLearningDetails: false });
+}
+
 function renderQuizQuestion(index) {
   const q = state.quiz.questions[index];
   if (!q) return finishVocabRound();
@@ -1275,9 +1300,9 @@ function renderQuizQuestion(index) {
     <div class="screen">
       <h1>Тест по словам</h1>
       ${quizProgressHtml(index)}
-      ${wordStudyCard(q, { badge: progress, prompt: q.prompt, compact: true, showTranslation: false, showLearningDetails: false })}
+      ${quizPromptCard(q, progress)}
       ${q.options.map(o => `
-        <button class="btn btn-secondary answer" data-id="${o.id}">${esc(o.translation)}</button>
+        <button class="btn btn-secondary answer" data-id="${o.id}">${esc(o.label)}</button>
       `).join("")}
     </div>`;
 
@@ -1309,7 +1334,7 @@ function renderQuizQuestion(index) {
     };
   });
   bindPronunciationButtons();
-  queueWordAudioPreload([q.word]);
+  if (q.word) queueWordAudioPreload([q.word]);
 }
 
 function finishVocabRound() {

@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import random
+import re
 import time
 from pathlib import Path
 from urllib.parse import urlencode
@@ -1540,19 +1541,81 @@ async def _current_user_or_404(request: web.Request):
     return user
 
 
-async def _build_vocab_question(word, age_group: str) -> dict:
-    wrong = await database.get_word_options(word["id"], age_group, count=3)
-    options = [{"id": word["id"], "translation": word["translation"]}]
-    options += [{"id": item["id"], "translation": item["translation"]} for item in wrong]
+def _blank_word_in_example(word: str, example: str) -> str:
+    """Заменяет первое вхождение целевого слова в примере на пропуск.
+
+    Возвращает '' если слова нет в примере (тогда формат «пропуск» не предлагается).
+    """
+    word = (word or "").strip()
+    example = (example or "").strip()
+    if not word or not example:
+        return ""
+    pattern = re.compile(rf"\b{re.escape(word)}\b", re.IGNORECASE)
+    if not pattern.search(example):
+        return ""
+    return pattern.sub("_____", example, count=1)
+
+
+async def _build_vocab_question(word, age_group: str, index: int = 0) -> dict:
+    """Строит вопрос теста по словам.
+
+    Тип чередуется по позиции слова, чтобы тест не был однообразным:
+    - translation: показываем слово -> выбрать перевод;
+    - word: показываем перевод -> выбрать английское слово;
+    - gap: показываем пример с пропуском -> выбрать пропущенное слово.
+    Во всех типах правильный вариант — это тот, чей id == word_id, поэтому
+    логика подсчёта на /api/vocab/finish не меняется.
+    """
+    example = (word["example"] or "").strip()
+    gap_text = _blank_word_in_example(word["word"], example)
+
+    qtypes = ["translation", "word"]
+    if gap_text and age_group != "5_7":
+        qtypes.append("gap")
+    qtype = qtypes[index % len(qtypes)]
+
+    if qtype == "translation":
+        wrong = await database.get_word_options(word["id"], age_group, count=3)
+        options = [{"id": word["id"], "label": word["translation"]}]
+        options += [{"id": item["id"], "label": item["translation"]} for item in wrong]
+        prompt = "Выбери перевод"
+    else:
+        wrong = await database.get_random_words(3, exclude_id=word["id"], age_group=age_group)
+        options = [{"id": word["id"], "label": word["word"]}]
+        options += [{"id": item["id"], "label": item["word"]} for item in wrong]
+        prompt = "Вставь пропущенное слово" if qtype == "gap" else "Выбери английское слово"
+
     random.shuffle(options)
+
+    # Перевод показываем как ВОПРОС только для типов word/gap (там ответ —
+    # английское слово). Для типа translation перевод — это ответ, поэтому в
+    # payload он не попадает.
+    prompt_translation = word["translation"]
+    if qtype == "translation":
+        return {
+            "word_id": word["id"],
+            "type": "translation",
+            "word": word["word"],
+            "transcription": word["transcription"] or "",
+            "translation": "",
+            "example": "",
+            "gap_text": "",
+            "image_url": _word_image_url(word["word"], word["topic"] or "basic"),
+            "prompt": prompt,
+            "options": options,
+        }
+    # Ответ — английское слово: прячем слово, транскрипцию, картинку и полный
+    # пример (gap_text уже с пропуском).
     return {
         "word_id": word["id"],
-        "word": word["word"],
-        "transcription": word["transcription"] or "",
-        "example": word["example"] or "",
-        "image_url": _word_image_url(word["word"], word["topic"] or "basic"),
-        "type": "picture" if age_group == "5_7" else "translation",
-        "prompt": "Выбери перевод",
+        "type": qtype,
+        "word": "",
+        "transcription": "",
+        "translation": prompt_translation,
+        "example": "",
+        "gap_text": gap_text if qtype == "gap" else "",
+        "image_url": "",
+        "prompt": prompt,
         "options": options,
     }
 
@@ -2552,7 +2615,10 @@ async def api_vocab_quiz(request: web.Request):
     if not session:
         return web.json_response({"error": "session not found"}, status=404)
     words = await database.get_words_by_ids(list(session["word_ids"]))
-    questions = [await _build_vocab_question(word, session["age_group"]) for word in words]
+    questions = [
+        await _build_vocab_question(word, session["age_group"], idx)
+        for idx, word in enumerate(words)
+    ]
     return web.json_response({
         "session_id": session_id,
         "questions": questions,
