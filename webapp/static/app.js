@@ -2200,19 +2200,12 @@ async function renderDailyFinish(phraseWasCorrect = true, phrase = "") {
 }
 
 function tutorAvatarHtml() {
+  // Спокойное фото без накладной «мимики»: состояние показываем мягким
+  // свечением по краю и волной речи снизу, не рисуя фейковые глаза/рот на лице.
   return `
-    <div class="tutor-face idle" id="tutorFace" aria-hidden="true">
-      <img class="tutor-avatar-img" src="/static/assets/tutor-avatar-v2.jpg?v=20260606-kids-v100" alt="">
-      <span class="avatar-eyelid left"></span>
-      <span class="avatar-eyelid right"></span>
-      <span class="avatar-brow left"></span>
-      <span class="avatar-brow right"></span>
-      <span class="avatar-mouth-motion"></span>
-      <span class="avatar-emotion-mark"></span>
-      <span class="avatar-thinking-dot one"></span>
-      <span class="avatar-thinking-dot two"></span>
-      <span class="avatar-thinking-dot three"></span>
-      <span class="avatar-speech-bars"><i></i><i></i><i></i></span>
+    <div class="tutor-face idle" id="tutorFace" data-state="idle" aria-hidden="true">
+      <img class="tutor-avatar-img" src="/static/assets/tutor-avatar-v2.jpg?v=20260606-kids-v107" alt="">
+      <span class="avatar-glow"></span>
     </div>`;
 }
 

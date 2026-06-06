@@ -337,3 +337,64 @@ input:focus-visible {
 .points-orb b {
   color: #3a2500;
 }
+
+/* ===================== ГОЛОСОВОЙ АВАТАР: спокойное фото без накладной мимики ===================== */
+/* Убираем старые фейковые элементы лица (глаза/брови/рот/искры/точки) —
+   на фото они не совпадали и выглядели артефактами. */
+.avatar-eyelid,
+.avatar-brow,
+.avatar-mouth-motion,
+.avatar-emotion-mark,
+.avatar-thinking-dot,
+.avatar-speech-bars,
+.avatar-state-ring,
+.avatar-breath,
+.avatar-listen-wave {
+  display: none !important;
+}
+
+/* Фото не двигаем (баннер с обрезкой — любое смещение покажет края). */
+.chat-wrap .tutor-face {
+  animation: none;
+}
+
+/* Мягкое свечение по всему периметру баннера — цвет зависит от состояния.
+   По периметру (а не только снизу), чтобы было видно поверх статус-карточки. */
+.avatar-glow {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 0 rgba(22, 135, 232, 0);
+  transition: box-shadow 0.45s ease;
+}
+.tutor-face[data-state="listening"] .avatar-glow,
+.tutor-face[data-state="encouraging"] .avatar-glow,
+.tutor-face[data-state="waiting"] .avatar-glow {
+  box-shadow: inset 0 0 52px -6px rgba(18, 165, 148, 0.6);
+}
+.tutor-face[data-state="speaking"] .avatar-glow {
+  box-shadow: inset 0 0 52px -6px rgba(22, 135, 232, 0.6);
+  animation: avatarGlowPulse 1.6s ease-in-out infinite;
+}
+.tutor-face[data-state="thinking"] .avatar-glow,
+.tutor-face[data-state="correcting"] .avatar-glow {
+  box-shadow: inset 0 0 52px -6px rgba(245, 165, 36, 0.55);
+}
+.tutor-face[data-state="praising"] .avatar-glow {
+  box-shadow: inset 0 0 52px -6px rgba(52, 199, 89, 0.6);
+}
+.tutor-face[data-state="error"] .avatar-glow {
+  box-shadow: inset 0 0 52px -6px rgba(240, 106, 43, 0.55);
+}
+@keyframes avatarGlowPulse {
+  0%, 100% { box-shadow: inset 0 0 46px -8px rgba(22, 135, 232, 0.5); }
+  50% { box-shadow: inset 0 0 60px -4px rgba(22, 135, 232, 0.72); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tutor-face[data-state="speaking"] .avatar-glow {
+    animation: none !important;
+  }
+}
