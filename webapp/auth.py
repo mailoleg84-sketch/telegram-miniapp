@@ -24,7 +24,7 @@ def make_fallback_auth_params(user_id: int, first_name: str = "") -> dict[str, s
     return params
 
 
-def verify_fallback_auth(auth_data: str, max_age_seconds: int = 30 * 86400) -> dict | None:
+def verify_fallback_auth(auth_data: str, max_age_seconds: int = 86400) -> dict | None:
     if not auth_data:
         return None
 

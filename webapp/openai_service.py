@@ -577,6 +577,31 @@ def _safety_guard_reply(last_user_text: str) -> str | None:
     return None
 
 
+_PII_PHONE_RE = re.compile(r"\+?\d[\d\s().\-]{7,}\d")
+_PII_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+_PII_ADDRESS_RE = re.compile(
+    r"(мо[йя]\s+адрес|наш\s+адрес|по\s+адресу|my\s+address|home\s+address)(.*)$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def redact_personal_data(text: str) -> str:
+    """Маскирует личные данные ребёнка перед сохранением в БД (QA H1).
+
+    Телефоны и email маскируются точечно. После явного маркера адреса
+    («мой адрес», «my address») всё содержимое заменяется на [скрыт], но сам
+    маркер сохраняется — чтобы детерминированный safety-guard всё ещё узнал
+    намерение и мягко отговорил ребёнка. История читается моделью уже из БД,
+    поэтому в OpenAI исходные данные тоже не уходят.
+    """
+    if not text:
+        return text
+    redacted = _PII_PHONE_RE.sub("[номер скрыт]", text)
+    redacted = _PII_EMAIL_RE.sub("[email скрыт]", redacted)
+    redacted = _PII_ADDRESS_RE.sub(lambda m: f"{m.group(1)} [скрыт]", redacted)
+    return redacted
+
+
 def _clean_voice_reply(text: str) -> str:
     cleaned = " ".join((text or "").split())
     cleaned = _DUPLICATE_GLOSS_RE.sub(r"\1 — ", cleaned)

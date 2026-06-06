@@ -53,6 +53,7 @@ from webapp.openai_service import (
     generate_vocabulary_image,
     openai_config_status,
     public_openai_error,
+    redact_personal_data,
     synthesize_speech,
     transcribe_audio,
 )
@@ -2196,7 +2197,6 @@ async def api_leaderboard(request: web.Request):
         age_label = next((l for l, v in AGE_GROUPS if v == row["age_group"]), row["age_group"])
         leaders.append({
             "rank": index,
-            "id": row["user_id"],
             "name": row["name"],
             "age_label": age_label,
             "points": row["points"],
@@ -3012,7 +3012,7 @@ async def api_chat_send(request: web.Request):
     user_name = user["name"] if user else "друг"
 
     # Сохраняем сообщение пользователя
-    await database.add_message(user_id, "user", text)
+    await database.add_message(user_id, "user", redact_personal_data(text))
     lesson_state = None
     if mode == "voice":
         lesson_state = await _advance_voice_lesson_state(user_id, user, "user", text)
@@ -3136,7 +3136,7 @@ async def _voice_text_turn_payload(user_id: int, text: str) -> dict:
     user = await database.get_user(user_id)
     user_name = user["name"] if user else "друг"
 
-    await database.add_message(user_id, "user", text)
+    await database.add_message(user_id, "user", redact_personal_data(text))
     lesson_state = await _advance_voice_lesson_state(user_id, user, "user", text)
     rows = await database.get_recent_messages(user_id, limit=CHAT_HISTORY_LIMIT)
     history = [{"role": r["role"], "content": r["content"]} for r in rows]
@@ -3348,7 +3348,8 @@ async def api_realtime_log(request: web.Request):
         return web.json_response({"ok": True})
     if len(content) > 1000:
         content = content[:1000]
-    await database.add_message(user_id, role, content)
+    stored_content = redact_personal_data(content) if role == "user" else content
+    await database.add_message(user_id, role, stored_content)
     lesson_state = await _advance_voice_lesson_state(user_id, user, role, content)
     return web.json_response({
         "ok": True,
