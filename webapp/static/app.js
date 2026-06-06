@@ -33,6 +33,19 @@ const state = {
 let fallbackAuth = window.location.search || "";
 const LOGGED_OUT_KEY = "englishTutorKidsLoggedOut";
 
+// Тема (светлая/тёмная) и возрастная адаптация дизайн-системы (design.css).
+function applyAppearance() {
+  const root = document.documentElement;
+  const age = state.me?.user?.age_group;
+  if (age) root.dataset.age = age;
+  const scheme =
+    tg.colorScheme ||
+    (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  if (scheme) root.dataset.theme = scheme;
+}
+applyAppearance();
+if (typeof tg.onEvent === "function") tg.onEvent("themeChanged", applyAppearance);
+
 function authHeaders(contentType = "application/json") {
   const headers = {
     "X-Telegram-Init-Data": tg.initData || "",
@@ -938,6 +951,7 @@ function renderRegistration() {
     try {
       await api("/api/register", "POST", { parent_name, child_name, child_age, age_group: ageGroup, goal });
       state.me = await api("/api/me", "GET");
+      applyAppearance();
       haptic("success");
       renderLevelTestIntro({ afterRegistration: true });
     } catch (e) {
@@ -4520,6 +4534,7 @@ async function start() {
   }
   try {
     state.me = await api("/api/me", "GET");
+    applyAppearance();
     if (state.me.registered) renderMenu();
     else renderRegistration();
   } catch (e) {

@@ -1,0 +1,295 @@
+/* =====================================================================
+   Design System v100 — единый авторитетный слой
+   Загружается ПОСЛЕ styles.css и владеет:
+   • токенами (поверхности, текст, акцент, семантика, форма, тени);
+   • светлой/тёмной темой (prefers-color-scheme + [data-theme] от Telegram);
+   • адаптацией по возрасту ([data-age]): акцент синий→индиго, скругление
+     5-7 крупнее/ярче → 14-18 строже/спокойнее.
+   Старые слои в styles.css постепенно мигрируют сюда и удаляются.
+   ===================================================================== */
+
+:root {
+  /* — поверхности и текст (светлая тема) — */
+  --c-bg-1: #fbfdff;
+  --c-bg-2: #eef3f9;
+  --c-ink: #14213a;
+  --c-muted: #586577;
+  --c-card: #ffffff;
+  --c-line: rgba(16, 24, 40, 0.10);
+  --c-line-strong: rgba(16, 24, 40, 0.16);
+  --c-tint: rgba(16, 24, 40, 0.04);
+
+  /* — акцент (значения по умолчанию = 8-10 лет; переопределяется [data-age]) — */
+  --accent-hi: #1d9bf0;
+  --accent-lo: #0b78d4;
+  --accent: #1380e0;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(22, 135, 232, 0.12);
+
+  /* — семантика — */
+  --c-green: #1ca64c;
+  --c-amber: #e0890a;
+  --c-red: #e5463c;
+  --c-teal: #12a594;
+  --c-violet: #7b5cf0;
+  --c-rose: #e95f83;
+
+  /* — форма и тени (часть переопределяется по возрасту) — */
+  --r-card: 18px;
+  --r-control: 15px;
+  --sh-card: 0 6px 18px rgba(16, 24, 40, 0.07);
+  --sh-soft: 0 4px 14px rgba(16, 24, 40, 0.06);
+  --sh-accent: 0 8px 18px var(--accent-soft);
+}
+
+/* ── Прокидываем канонические токены в старые наборы переменных,
+      чтобы весь styles.css (base / refresh / premium) автоматически
+      перенял новую тему и акцент. ── */
+:root {
+  /* premium-слой */
+  --premium-bg: var(--c-bg-2);
+  --premium-bg-soft: var(--c-bg-2);
+  --premium-card: var(--c-card);
+  --premium-ink: var(--c-ink);
+  --premium-muted: var(--c-muted);
+  --premium-blue: var(--accent);
+  --premium-teal: var(--c-teal);
+  --premium-amber: var(--c-amber);
+  --premium-violet: var(--c-violet);
+  --premium-rose: var(--c-rose);
+  --shadow-premium: var(--sh-card);
+  --shadow-premium-soft: var(--sh-soft);
+
+  /* refresh-слой */
+  --surface: var(--c-card);
+  --canvas: var(--c-bg-2);
+  --line: var(--c-line);
+  --line-strong: var(--c-line-strong);
+  --shadow-card: var(--sh-card);
+  --shadow-control: var(--sh-accent);
+  --radius-card: var(--r-card);
+  --radius-control: var(--r-control);
+
+  /* base / Telegram-слой */
+  --text: var(--c-ink);
+  --hint: var(--c-muted);
+  --secondary-bg: var(--c-bg-2);
+  --button: var(--accent);
+  --button-text: var(--accent-ink);
+  --link: var(--accent);
+  --green: var(--c-green);
+  --red: var(--c-red);
+  --yellow: var(--c-amber);
+  --sky: var(--accent);
+  --mint: var(--c-teal);
+  --violet: var(--c-violet);
+  --ink-soft: var(--c-line);
+  --shadow-soft: var(--sh-card);
+}
+
+/* ===================== ТЁМНАЯ ТЕМА ===================== */
+/* Системная тёмная тема (если приложение не форсит светлую). */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --c-bg-1: #0f141b;
+    --c-bg-2: #141b25;
+    --c-ink: #e9eef6;
+    --c-muted: #9aa7b8;
+    --c-card: #1b2330;
+    --c-line: rgba(255, 255, 255, 0.10);
+    --c-line-strong: rgba(255, 255, 255, 0.18);
+    --c-tint: rgba(255, 255, 255, 0.05);
+    --accent-soft: rgba(60, 160, 255, 0.18);
+    --sh-card: 0 8px 22px rgba(0, 0, 0, 0.34);
+    --sh-soft: 0 4px 14px rgba(0, 0, 0, 0.28);
+  }
+}
+/* Явная тёмная тема от Telegram (data-theme="dark" выставляет app.js). */
+:root[data-theme="dark"] {
+  --c-bg-1: #0f141b;
+  --c-bg-2: #141b25;
+  --c-ink: #e9eef6;
+  --c-muted: #9aa7b8;
+  --c-card: #1b2330;
+  --c-line: rgba(255, 255, 255, 0.10);
+  --c-line-strong: rgba(255, 255, 255, 0.18);
+  --c-tint: rgba(255, 255, 255, 0.05);
+  --accent-soft: rgba(60, 160, 255, 0.18);
+  --sh-card: 0 8px 22px rgba(0, 0, 0, 0.34);
+  --sh-soft: 0 4px 14px rgba(0, 0, 0, 0.28);
+}
+
+/* ===================== АДАПТАЦИЯ ПО ВОЗРАСТУ ===================== */
+/* Малыши — ярче и круглее; подростки — спокойнее, строже, индиго. */
+:root[data-age="5_7"] {
+  --accent-hi: #37b6ff;
+  --accent-lo: #0e8ee8;
+  --accent: #1597ef;
+  --r-card: 22px;
+  --r-control: 18px;
+}
+:root[data-age="8_10"] {
+  --accent-hi: #1d9bf0;
+  --accent-lo: #0b78d4;
+  --accent: #1380e0;
+  --r-card: 18px;
+  --r-control: 15px;
+}
+:root[data-age="11_13"] {
+  --accent-hi: #2f7ff0;
+  --accent-lo: #1559cf;
+  --accent: #1d63d8;
+  --r-card: 14px;
+  --r-control: 12px;
+}
+:root[data-age="14_18"] {
+  --accent-hi: #5566f0;
+  --accent-lo: #3340d4;
+  --accent: #3f4fe0;
+  --r-card: 12px;
+  --r-control: 10px;
+}
+
+/* ===================== ГЛОБАЛЬНЫЕ ПОВЕРХНОСТИ ===================== */
+html,
+body {
+  background: linear-gradient(180deg, var(--c-bg-1) 0%, var(--c-bg-2) 58%, var(--c-bg-1) 100%);
+  background-attachment: fixed;
+  color: var(--c-ink);
+}
+
+h1,
+h2 {
+  color: var(--c-ink);
+}
+
+/* ===================== АКЦЕНТ: прокидываем захардкоженные хексы ===================== */
+.btn,
+.chat-send {
+  background: linear-gradient(180deg, var(--accent-hi), var(--accent-lo));
+  color: var(--accent-ink);
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.14), 0 8px 16px var(--accent-soft);
+}
+.btn:active,
+.chat-send:active {
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.14);
+}
+
+.btn-secondary {
+  background: var(--c-card);
+  color: var(--accent);
+  border: 1px solid var(--c-line-strong);
+  box-shadow: var(--sh-soft);
+}
+
+.bubble.user {
+  background: linear-gradient(180deg, var(--accent-hi), var(--accent-lo));
+  color: var(--accent-ink);
+}
+.bubble.bot {
+  background: var(--c-card);
+  border: 1px solid var(--c-line);
+  color: var(--c-ink);
+}
+
+.dashboard-hero {
+  border-color: color-mix(in srgb, var(--accent) 22%, transparent);
+  background:
+    linear-gradient(135deg, var(--accent-soft), transparent 58%),
+    var(--c-card);
+}
+
+.action-tile,
+.action-row {
+  background:
+    linear-gradient(0deg, var(--tile-tint, var(--c-tint)), var(--tile-tint, var(--c-tint))),
+    var(--c-card);
+}
+.action-tile.primary,
+.action-row.primary {
+  --tile-accent: var(--accent);
+  --tile-tint: var(--accent-soft);
+}
+
+.word-card {
+  border-top-color: var(--accent);
+}
+
+.chat-mic {
+  background: var(--c-card);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.chat-mic.recording {
+  background: linear-gradient(180deg, #ff5a52, #ec3b34);
+  color: #fff;
+}
+
+.voice-lesson-progress span {
+  background: linear-gradient(90deg, var(--accent-hi), var(--c-teal));
+}
+
+input[type="text"]:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+button:focus-visible,
+input:focus-visible {
+  outline: 3px solid var(--accent-soft);
+}
+
+/* ===================== ТЁМНЫЕ ИСПРАВЛЕНИЯ для захардкоженных белых поверхностей ===================== */
+.tutor-stage,
+.chat-wrap .tutor-stage {
+  border-color: color-mix(in srgb, var(--accent) 16%, transparent);
+  background: linear-gradient(180deg, var(--accent-soft), var(--c-card));
+}
+.tutor-face {
+  background: var(--c-bg-2);
+}
+.chat-wrap .tutor-face {
+  background: transparent;
+}
+.chat-input-row {
+  background: color-mix(in srgb, var(--c-card) 92%, transparent);
+}
+.chat-input-row input {
+  background: var(--c-card);
+}
+.chat-meta {
+  background: var(--c-tint);
+}
+.voice-status-card,
+.voice-feedback-card,
+.voice-feedback-grid div {
+  border-color: var(--c-line);
+  background: var(--c-card);
+  color: var(--c-ink);
+}
+.voice-mode-toggle {
+  background: var(--c-card);
+  border-color: var(--c-line-strong);
+  color: var(--c-ink);
+}
+.voice-action {
+  background: var(--c-card);
+  border-color: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+.word-image-status {
+  background: var(--c-card);
+  color: var(--c-ink);
+}
+.word-visual {
+  border-color: var(--c-line);
+  background: linear-gradient(145deg, var(--c-card), var(--accent-soft));
+}
+.word-visual.generated-ai,
+.result-card .word-image {
+  background: var(--c-card);
+}
+
+/* Бейдж очков остаётся тёплым (вторичный бренд-цвет) и в тёмной теме. */
+.points-orb b {
+  color: #3a2500;
+}
