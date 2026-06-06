@@ -40,6 +40,11 @@ from config import (
     WEBAPP_PORT,
     WEBAPP_URL,
     OPENAI_IMAGE_MODEL,
+    OPENAI_TTS_MODEL,
+    OPENAI_REALTIME_MODEL,
+    OPENAI_TTS_COST_PER_1K_CHARS,
+    OPENAI_IMAGE_COST_PER_CALL,
+    OPENAI_REALTIME_SESSION_COST,
 )
 from webapp.auth import verify_fallback_auth, verify_init_data
 from webapp.lesson_engine import (
@@ -990,6 +995,24 @@ async def _read_audio_upload(request: web.Request) -> tuple[bytes, str, str]:
         field.filename or "voice.webm",
         field.headers.get("Content-Type", "audio/webm"),
     )
+
+
+async def _record_ai_cost(user_id: int, model: str, cost_usd: float, *, tokens: int = 0) -> None:
+    """Учитывает расход OpenAI (TTS/картинки/Realtime) для видимости в админке.
+
+    Никогда не ломает пользовательский поток: ошибки записи проглатываются.
+    """
+    try:
+        await database.add_ai_usage(
+            user_id=user_id,
+            model=model,
+            input_tokens=tokens,
+            output_tokens=0,
+            total_tokens=tokens,
+            cost_usd=round(float(cost_usd), 6),
+        )
+    except Exception:
+        log.exception("Не удалось записать расход AI (%s)", model)
 
 
 def _chat_usage_payload(stats) -> dict:
@@ -2552,6 +2575,7 @@ async def api_vocab_image_generate(request: web.Request):
         result = await asyncio.wait_for(generate_vocabulary_image(word_payload, user_id), timeout=75)
     except Exception as exc:
         log.exception("Vocabulary image generation failed for word_id=%s", word_id)
+        await _record_ai_cost(user_id, OPENAI_IMAGE_MODEL, OPENAI_IMAGE_COST_PER_CALL)
         public_error = public_openai_error(exc)
         review_json = json.dumps({"reason": public_error}, ensure_ascii=False)
         try:
@@ -2573,6 +2597,12 @@ async def api_vocab_image_generate(request: web.Request):
             "image_review": {"reason": public_error},
         }, status=502)
 
+    # result получен (успех или fail-после-генерации) — обе ветки потратили попытки.
+    await _record_ai_cost(
+        user_id,
+        OPENAI_IMAGE_MODEL,
+        max(1, int(getattr(result, "attempts", 1) or 1)) * OPENAI_IMAGE_COST_PER_CALL,
+    )
     review_json = json.dumps(result.review, ensure_ascii=False)
     if result.generation_status == "failed" or not result.image_bytes:
         await database.update_word_generated_image(
@@ -3186,6 +3216,12 @@ async def api_audio_speech(request: web.Request):
         log.exception("Speech synthesis failed")
         return web.json_response({"error": f"Не удалось озвучить ответ. {public_openai_error(e)}"}, status=502)
 
+    await _record_ai_cost(
+        request["tg_user"]["id"],
+        OPENAI_TTS_MODEL,
+        len(text) / 1000 * OPENAI_TTS_COST_PER_1K_CHARS,
+    )
+
     cache_headers = {
         "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     }
@@ -3256,6 +3292,11 @@ async def _voice_text_turn_payload(user_id: int, text: str) -> dict:
         try:
             speech = await synthesize_speech(reply.text, mode="voice")
             audio_b64 = base64.b64encode(speech).decode("ascii")
+            await _record_ai_cost(
+                user_id,
+                OPENAI_TTS_MODEL,
+                len(reply.text) / 1000 * OPENAI_TTS_COST_PER_1K_CHARS,
+            )
         except Exception as e:
             log.exception("Hybrid voice speech synthesis failed")
             audio_error = public_openai_error(e)
@@ -3425,6 +3466,9 @@ async def api_realtime_token(request: web.Request):
         log.exception("Realtime token setup failed: %s", e)
         return web.json_response({"error": public_openai_error(e)}, status=502)
 
+    # Учитываем старт Realtime-сессии: видимость расходов в админке и заодно
+    # этот ход считается в дневной freemium-лимит (раньше голос его обходил).
+    await _record_ai_cost(user_id, OPENAI_REALTIME_MODEL, OPENAI_REALTIME_SESSION_COST)
     return web.json_response(token, headers={"Cache-Control": "no-store"})
 
 
@@ -3496,18 +3540,35 @@ async def vocabulary_visual_handler(request: web.Request):
 
 # ---------- App factory ----------
 
+def _log_slow_or_failed_api(request: web.Request, status: int, started: float) -> None:
+    """Логирует только медленные (>2с) или ошибочные (5xx) API-запросы — без спама."""
+    if not request.path.startswith("/api/"):
+        return
+    latency_ms = int((time.monotonic() - started) * 1000)
+    if status >= 500 or latency_ms > 2000:
+        user_id = (request.get("tg_user") or {}).get("id", "")
+        log.warning(
+            "api %s %s -> %s %dms user=%s",
+            request.method, request.path, status, latency_ms, user_id,
+        )
+
+
 @web.middleware
 async def hardening_middleware(request: web.Request, handler):
-    """Ловит необработанные исключения (без утечки трейсбека) и ставит nosniff."""
+    """Ловит необработанные исключения (без утечки трейсбека), ставит nosniff
+    и логирует медленные/ошибочные API-запросы для отладки."""
+    started = time.monotonic()
     try:
         response = await handler(request)
-    except web.HTTPException:
+    except web.HTTPException as exc:
+        _log_slow_or_failed_api(request, exc.status, started)
         raise
     except Exception:
         log.exception("Необработанная ошибка на %s %s", request.method, request.path)
         response = web.json_response({"error": "Внутренняя ошибка сервера"}, status=500)
     if request.path.startswith("/api/"):
         response.headers["X-Content-Type-Options"] = "nosniff"
+    _log_slow_or_failed_api(request, response.status, started)
     return response
 
 

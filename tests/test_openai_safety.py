@@ -383,6 +383,18 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertIn("LEAST($2, completed_steps + 1)", block)
         self.assertNotIn("completed_steps = GREATEST(completed_steps, $2)", block)
 
+    def test_ai_cost_tracking_covers_tts_image_realtime(self):
+        root = Path(__file__).resolve().parents[1]
+        server_py = (root / "webapp" / "server.py").read_text(encoding="utf-8")
+        self.assertIn("async def _record_ai_cost", server_py)
+        self.assertIn("OPENAI_TTS_COST_PER_1K_CHARS", server_py)
+        self.assertIn("OPENAI_IMAGE_COST_PER_CALL", server_py)
+        # Realtime-сессия учитывается (видимость + считается в freemium-лимит).
+        self.assertIn(
+            "_record_ai_cost(user_id, OPENAI_REALTIME_MODEL, OPENAI_REALTIME_SESSION_COST)",
+            server_py,
+        )
+
     def test_production_readiness_infrastructure(self):
         root = Path(__file__).resolve().parents[1]
         server_py = (root / "webapp" / "server.py").read_text(encoding="utf-8")

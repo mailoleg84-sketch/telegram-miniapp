@@ -81,6 +81,11 @@ API_RATE_LIMIT_PER_MINUTE = int(os.getenv("API_RATE_LIMIT_PER_MINUTE", "120"))
 AI_RATE_LIMIT_PER_MINUTE = int(os.getenv("AI_RATE_LIMIT_PER_MINUTE", "30"))
 OPENAI_INPUT_COST_PER_1M = float(os.getenv("OPENAI_INPUT_COST_PER_1M", "0.75"))
 OPENAI_OUTPUT_COST_PER_1M = float(os.getenv("OPENAI_OUTPUT_COST_PER_1M", "4.50"))
+# Оценочные стоимости для учёта расходов на TTS / картинки / Realtime в админке.
+# Приблизительные значения для видимости трат — уточняй под свой тариф OpenAI.
+OPENAI_TTS_COST_PER_1K_CHARS = float(os.getenv("OPENAI_TTS_COST_PER_1K_CHARS", "0.015"))
+OPENAI_IMAGE_COST_PER_CALL = float(os.getenv("OPENAI_IMAGE_COST_PER_CALL", "0.02"))
+OPENAI_REALTIME_SESSION_COST = float(os.getenv("OPENAI_REALTIME_SESSION_COST", "0.05"))
 
 # --- Настройки репетитора для Prompt Variables ---
 TUTOR_DEFAULT_LEVEL = _env("TUTOR_DEFAULT_LEVEL", "beginner")
