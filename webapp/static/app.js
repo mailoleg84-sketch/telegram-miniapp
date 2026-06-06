@@ -1839,6 +1839,7 @@ function renderChoiceTrainingTask(task, session) {
           word_id: task.word_id,
           selected_id: selectedId,
           focus: session.focus,
+          attempt_id: task.attempt_id,
         });
         if (state.me?.user) state.me.user.points = result.points;
         button.classList.remove("btn-secondary");
@@ -1885,6 +1886,7 @@ function renderInputTrainingTask(task, session) {
         word_id: task.word_id,
         answer,
         focus: session.focus,
+        attempt_id: task.attempt_id,
       });
       if (state.me?.user) state.me.user.points = result.points;
       showTrainingAnswerFeedback(result, session);

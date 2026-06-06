@@ -1465,21 +1465,26 @@ async def get_learning_streak(user_id: int) -> dict:
 
 
 async def update_daily_lesson_progress(user_id: int, completed_steps: int, total_steps: int):
+    # QA H3: шаг урока двигает СЕРВЕР, а не клиент. Принятый номер шага
+    # ограничивается значением «текущий + 1» — нельзя перепрыгнуть на финал и
+    # мгновенно забрать награду. Монотонно (GREATEST) и идемпотентно (повторный
+    # тот же шаг ничего не меняет).
     pool = await _get_pool()
     completed_steps = max(0, min(completed_steps, total_steps))
+    next_steps = "LEAST(GREATEST(completed_steps, LEAST($2, completed_steps + 1)), $3)"
     async with pool.acquire() as conn:
         await conn.execute("""
             INSERT INTO daily_lessons (user_id)
             VALUES ($1)
             ON CONFLICT (user_id, lesson_date) DO NOTHING
         """, user_id)
-        return await conn.fetchrow("""
+        return await conn.fetchrow(f"""
             UPDATE daily_lessons
             SET
-                completed_steps = GREATEST(completed_steps, $2),
-                completed = GREATEST(completed_steps, $2) >= $3,
+                completed_steps = {next_steps},
+                completed = {next_steps} >= $3,
                 completed_at = CASE
-                    WHEN GREATEST(completed_steps, $2) >= $3
+                    WHEN {next_steps} >= $3
                      AND completed_at IS NULL
                     THEN NOW()
                     ELSE completed_at

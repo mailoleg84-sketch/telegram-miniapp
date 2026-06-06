@@ -7,6 +7,7 @@ import json
 import logging
 import random
 import re
+import secrets
 import time
 from pathlib import Path
 from urllib.parse import urlencode
@@ -2822,6 +2823,41 @@ async def api_word_hunt_finish(request: web.Request):
     })
 
 
+# Одноразовые токены тренировочных заданий (анти-накрутка прогресса, QA H2).
+# Сервер выдаёт токен в /next и гасит его в /answer; повторный ответ на то же
+# задание не начисляет баллы и прогресс. Хранилище в памяти процесса — для
+# одного инстанса этого достаточно, чтобы заблокировать replay.
+_training_attempts: dict[str, dict] = {}
+_TRAINING_ATTEMPT_TTL = 600  # секунд
+
+
+def _prune_training_attempts() -> None:
+    now = time.time()
+    for token in [t for t, rec in _training_attempts.items() if rec["expires_at"] < now]:
+        _training_attempts.pop(token, None)
+
+
+def _issue_training_attempt(user_id: int, word_id: int) -> str:
+    _prune_training_attempts()
+    token = secrets.token_urlsafe(16)
+    _training_attempts[token] = {
+        "user_id": user_id,
+        "word_id": word_id,
+        "expires_at": time.time() + _TRAINING_ATTEMPT_TTL,
+    }
+    return token
+
+
+def _consume_training_attempt(token: str, user_id: int, word_id: int) -> bool:
+    """Гасит токен. True только если он валиден, не истёк и ещё не использован."""
+    record = _training_attempts.pop(str(token or ""), None)
+    if not record:
+        return False
+    if record["user_id"] != user_id or record["word_id"] != word_id:
+        return False
+    return record["expires_at"] >= time.time()
+
+
 async def api_choice_next(request: web.Request):
     user_id = request["tg_user"]["id"]
     user = await _current_user_or_404(request)
@@ -2870,6 +2906,7 @@ async def api_choice_next(request: web.Request):
         "options": options,
         "focus": focus,
         "review_empty": review_empty,
+        "attempt_id": _issue_training_attempt(user_id, correct["id"]),
     })
 
 
@@ -2888,15 +2925,18 @@ async def api_choice_answer(request: web.Request):
 
     correct = selected_id == word_id
     focus = "review" if body.get("focus") == "review" else "all"
-    delta = POINTS_CORRECT if correct else POINTS_WRONG
-    await database.update_points(user_id, delta)
-    await database.update_progress(user_id, word_id, correct=correct)
-    await database.add_training_attempt(user_id, "choice", focus, correct)
+    counted = _consume_training_attempt(body.get("attempt_id"), user_id, word_id)
+    delta = (POINTS_CORRECT if correct else POINTS_WRONG) if counted else 0
+    if counted:
+        await database.update_points(user_id, delta)
+        await database.update_progress(user_id, word_id, correct=correct)
+        await database.add_training_attempt(user_id, "choice", focus, correct)
 
     user = await database.get_user(user_id)
     return web.json_response({
         "word_id":     word_id,
         "correct":     correct,
+        "counted":     counted,
         "word":        word["word"],
         "translation": word["translation"],
         "transcription": word["transcription"] or "",
@@ -2947,6 +2987,7 @@ async def api_input_next(request: web.Request):
         "image_url":   _word_image_url(word["word"], word["topic"] or "basic"),
         "focus": focus,
         "review_empty": review_empty,
+        "attempt_id": _issue_training_attempt(user_id, word["id"]),
     })
 
 
@@ -2966,15 +3007,18 @@ async def api_input_answer(request: web.Request):
 
     correct = answer == word["word"].lower()
     focus = "review" if body.get("focus") == "review" else "all"
-    delta = POINTS_CORRECT if correct else POINTS_WRONG
-    await database.update_points(user_id, delta)
-    await database.update_progress(user_id, word_id, correct=correct)
-    await database.add_training_attempt(user_id, "input", focus, correct)
+    counted = _consume_training_attempt(body.get("attempt_id"), user_id, word_id)
+    delta = (POINTS_CORRECT if correct else POINTS_WRONG) if counted else 0
+    if counted:
+        await database.update_points(user_id, delta)
+        await database.update_progress(user_id, word_id, correct=correct)
+        await database.add_training_attempt(user_id, "input", focus, correct)
 
     user = await database.get_user(user_id)
     return web.json_response({
         "word_id":     word_id,
         "correct":     correct,
+        "counted":     counted,
         "word":        word["word"],
         "translation": word["translation"],
         "transcription": word["transcription"] or "",
