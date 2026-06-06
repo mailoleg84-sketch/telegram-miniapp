@@ -1,243 +1,138 @@
-# 📱 Telegram Mini App для изучения английских слов
+# 🧒🇬🇧 AI English Tutor Kids
 
-Полноценное приложение внутри Telegram (Telegram Web App / Mini App) +
-бот-лаунчер. Раньше всё было кнопками в чате — теперь у нас:
+Telegram Mini App — персональный AI-репетитор английского для детей и подростков **5–18 лет**.
+Покупатель — родитель: он видит прогресс ребёнка, результаты тестов и список выученных слов.
 
-- 🤖 **Бот** (`aiogram`) — даёт кнопку «📱 Открыть приложение»
-- 🌐 **Mini App** (HTML/CSS/JS) — нативный интерфейс внутри Telegram
-- ⚙️ **API** (`aiohttp`) — JSON-эндпоинты для фронта
-- 💾 **SQLite** — общая база для бота и Mini App
-- 🔐 **Авторизация** — проверка подписи `initData` от Telegram
+> Продуктовая концепция и дорожная карта — в папке [`Концепция/`](Концепция/).
 
 ---
 
-## ✨ Что умеет приложение
+## 🏗️ Архитектура
 
-- 👤 **Регистрация** — имя + возрастная группа (выбор плитками)
-- 📖 **Учить слова** — карточки со словом, переводом и примером
-- 🎯 **Тренировка:**
-  - ✅ Выбор перевода из 4 вариантов (мгновенная подсветка)
-  - ⌨️ Ввод английского слова с клавиатуры
-- 💎 **Баллы** — +10 / −3, защита от ухода в минус
-- 📊 **Профиль** — статистика по словам, правильным и ошибкам
-- 🌗 **Тема** — автоматически светлая/тёмная под Telegram
-- 📳 **Haptic feedback** + **MainButton** + **BackButton** — нативное поведение
+| Слой | Технология | Файлы |
+|------|-----------|-------|
+| 🤖 Бот-лаунчер | `aiogram` 3 | [`main.py`](main.py), [`handlers/start.py`](handlers/start.py) |
+| 🌐 Mini App (SPA) | Vanilla JS / CSS | [`webapp/static/`](webapp/static/) |
+| ⚙️ API | `aiohttp` | [`webapp/server.py`](webapp/server.py) |
+| 💾 База данных | PostgreSQL (Neon) через `asyncpg` | [`database.py`](database.py) |
+| 🧠 ИИ | OpenAI: Responses, TTS, Whisper, **Realtime WebRTC**, `gpt-image-1` | [`webapp/openai_service.py`](webapp/openai_service.py) |
+| 🎓 Логика урока | Детерминированная машина состояний | [`webapp/lesson_engine.py`](webapp/lesson_engine.py) |
+| 🔐 Авторизация | Подпись `initData` Telegram (HMAC-SHA256) + fallback | [`webapp/auth.py`](webapp/auth.py) |
 
----
-
-## 📁 Структура проекта
-
-```
-telegram_app/
-├── main.py                  # Запускает бота И веб-сервер в одном процессе
-├── config.py                # Токен, URL приложения, баллы, возрасты
-├── database.py              # SQLite (общая для бота и API)
-├── requirements.txt
-├── README.md
-│
-├── handlers/                # Бот
-│   ├── __init__.py
-│   └── start.py             # /start, /app, /help — кнопка Mini App
-│
-├── webapp/                  # Mini App
-│   ├── __init__.py
-│   ├── auth.py              # Проверка initData (HMAC-SHA256)
-│   ├── server.py            # aiohttp: статика + JSON API
-│   └── static/
-│       ├── index.html
-│       ├── styles.css       # Темизация под Telegram
-│       └── app.js           # Vanilla JS SPA
-│
-└── data/
-    ├── __init__.py
-    └── words.py             # Стартовый словарь
-```
+Бот делает одно: даёт кнопку «📱 Открыть приложение». Всё обучение — внутри Mini App.
 
 ---
 
-## 🚀 Запуск
+## ✨ Возможности
 
-### 0. Что нужно
+- 👨‍👩‍👧 Регистрация: родитель + ребёнок, возрастная группа, цель обучения
+- 🎯 Возрастной **тест уровня** (5-7 / 8-10 / 11-13 / 14-18)
+- 📅 **Урок дня** (4 шага) и учебный «маршрут дня»
+- 📖 **Изучение слов + тест** — карточки (перевод, транскрипция, картинка, озвучка, пример) и квиз
+- 🏋️ Тренировки (выбор перевода / ввод слова), режим работы над ошибками
+- 🎮 Игра «Словесная охота»
+- 🗣️ **Голосовой репетитор** — Realtime WebRTC + надёжный hybrid-fallback (Whisper → чат → TTS)
+- 📚 Словарь ребёнка со статусами (учим / повторить / выучено) и повторением
+- 🏅 Достижения, серии дней, история занятий, рейтинг
+- 👪 **Родительский отчёт** с рекомендациями
+- 🛡️ Детерминированный safety-guard детских ответов
+- 🛠️ Защищённая админ-панель (`ADMIN_USER_IDS`)
 
+---
+
+## 🚀 Локальная разработка
+
+### 0. Требования
 - Python 3.10+
+- Строка подключения PostgreSQL (Neon) — `DATABASE_URL`
 - Токен бота от [@BotFather](https://t.me/BotFather)
-- **HTTPS-URL** для Mini App (Telegram открывает только HTTPS)
-- Для локальной разработки: [ngrok](https://ngrok.com) или
-  [cloudflared](https://github.com/cloudflare/cloudflared)
+- Ключ OpenAI API
 
-### 1. Установка зависимостей
-
+### 1. Установка
 ```bash
-cd telegram_app
 python -m venv .venv
-source .venv/bin/activate                # Windows: .venv\Scripts\Activate.ps1
+.venv\Scripts\Activate.ps1        # Windows; Linux/macOS: source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Поднимаем HTTPS-туннель к локальному порту 8080
+### 2. Переменные окружения
+Скопируй [`.env.example`](.env.example) в `.env` и заполни как минимум `BOT_TOKEN`, `DATABASE_URL`, `OPENAI_API_KEY`.
 
-**Вариант A — ngrok** (нужен бесплатный аккаунт + `ngrok config add-authtoken ...`):
-```bash
-ngrok http 8080
-```
-В выводе появится строка типа:
-```
-Forwarding   https://abc123.ngrok-free.app -> http://localhost:8080
-```
-Это твой `WEBAPP_URL`.
-
-**Вариант B — cloudflared** (без регистрации):
-```bash
-cloudflared tunnel --url http://localhost:8080
-```
-В выводе появится `https://something.trycloudflare.com` — твой `WEBAPP_URL`.
-
-### 3. Настраиваем переменные окружения
-
-**Linux / macOS:**
-```bash
-export BOT_TOKEN="123456789:AAH..."
-export WEBAPP_URL="https://abc123.ngrok-free.app"
-```
-
-**Windows PowerShell:**
-```powershell
-$env:BOT_TOKEN="123456789:AAH..."
-$env:WEBAPP_URL="https://abc123.ngrok-free.app"
-```
-
-(Альтернатива — прописать значения прямо в `config.py`.)
-
-### 4. Регистрируем домен в BotFather (один раз)
-
-Без этого Telegram откажется открывать приложение по твоему URL.
-
-1. Открой [@BotFather](https://t.me/BotFather)
-2. `/mybots` → выбери своего бота → **Bot Settings** → **Configure Mini App** → **Enable Mini App**
-3. Отправь публичный HTTPS-URL (тот же, что в `WEBAPP_URL`)
-
-> 💡 **Бонус:** там же можно настроить **Menu Button** — постоянную кнопку
-> «🚀 Открыть» рядом с полем ввода сообщения. `Bot Settings` →
-> `Menu Button` → введи название и URL приложения.
-
-### 5. Запуск
-
+### 3a. Запуск всего (бот + Mini App)
 ```bash
 python main.py
 ```
+> ⚠️ Локально бот стартует в **polling-режиме** и вызывает `delete_webhook` —
+> это **снимет webhook продакшен-бота** на Render. Не запускай `main.py` с
+> продакшен-токеном, пока живой бот работает на вебхуке.
 
-В логах увидишь:
+### 3b. Запуск только Mini App (безопасно для прода) — для дизайна и QA
+```bash
+.venv\Scripts\python.exe -m tools.run_webapp_local
 ```
-... | INFO | webapp.server | Mini App сервер слушает http://0.0.0.0:8080
-... | INFO | __main__      | ✅ Бот и Mini App запущены.
+Поднимает **только** веб-сервер на `http://localhost:8080`, **без** бота и
+**без** касания webhook. Бота не трогает.
+
+Чтобы открыть Mini App в обычном браузере (вне Telegram нет `initData`),
+нужна подписанная fallback-авторизация в query-параметрах URL:
+`?fa_user_id=...&fa_first_name=...&fa_auth_date=...&fa_hash=...`
+(подпись считается тем же `BOT_TOKEN`, см. [`webapp/auth.py`](webapp/auth.py)).
+
+### 4. Тесты и статические проверки
+```bash
+.venv\Scripts\python.exe -m unittest discover -s tests -v
+.venv\Scripts\python.exe -m py_compile config.py database.py webapp\server.py webapp\openai_service.py webapp\lesson_engine.py
+node --check webapp\static\app.js
 ```
-
-### 6. Проверка
-
-1. Открой бота в Telegram
-2. Отправь `/start`
-3. Жми «📱 Открыть приложение»
-4. Должно открыться полноэкранное окно с регистрацией → меню → обучением
 
 ---
 
-## 🤖 Команды бота
+## ☁️ Деплой (Render)
 
-| Команда   | Описание                       |
-|-----------|--------------------------------|
-| `/start`  | Приветствие + кнопка Mini App  |
-| `/app`    | Снова показать кнопку          |
-| `/help`   | Справка                        |
-
-Всё остальное — внутри приложения.
+- Web Service на Render (Docker), регион Ohio, **авто-деплой при push в `main`**.
+- На Render бот работает в **webhook-режиме** (`BOT_RUN_MODE=webhook`).
+- База — отдельный проект **Neon** (PostgreSQL).
+- Конфигурация переменных — вкладка *Environment* в дашборде Render
+  (файл [`render.yaml`](render.yaml) — для документации).
 
 ---
 
-## 🔐 Как работает авторизация
+## ⚙️ Ключевые переменные окружения
 
-Когда Telegram открывает Mini App, он передаёт в браузер строку
-`window.Telegram.WebApp.initData` — querystring вида:
-```
-user=%7B%22id%22%3A12345%2C...%7D&auth_date=1700000000&hash=...
-```
+| Переменная | Назначение |
+|-----------|------------|
+| `BOT_TOKEN` | Токен Telegram-бота |
+| `DATABASE_URL` | Строка подключения Neon (`postgresql://…?sslmode=require`) |
+| `WEBAPP_URL` | Публичный HTTPS-URL Mini App |
+| `OPENAI_API_KEY` | Ключ OpenAI |
+| `OPENAI_MODEL` | Модель чата (по умолчанию `gpt-5.4-mini`) |
+| `ADMIN_USER_IDS` | Telegram id админов (через запятую) для `/diag`, `/openai_test` и админ-панели |
+| `BOT_RUN_MODE` | `webhook` (Render) или `polling` (локально) |
+| `API_RATE_LIMIT_PER_MINUTE` / `AI_RATE_LIMIT_PER_MINUTE` | Лимиты запросов |
 
-Фронтенд кладёт её в заголовок `X-Telegram-Init-Data` при каждом запросе.
-Бэкенд (`webapp/auth.py`) проверяет подпись:
-```
-secret_key = HMAC_SHA256("WebAppData", BOT_TOKEN)
-expected   = HMAC_SHA256(secret_key, sorted_key_value_lines).hexdigest()
-```
-Если `expected == hash` и `auth_date` свежий — пускаем; иначе 401.
-Это значит: подделать запрос без `BOT_TOKEN` невозможно, а сам токен нигде
-не уходит на фронт.
+Полный список и значения по умолчанию — в [`config.py`](config.py) и [`.env.example`](.env.example).
 
 ---
 
-## 🌐 API эндпоинты
+## 🔐 Авторизация
 
-Все, кроме `/`, требуют заголовок `X-Telegram-Init-Data`.
-
-| Метод | Путь                              | Что делает                          |
-|-------|-----------------------------------|-------------------------------------|
-| GET   | `/`                               | Отдаёт `index.html`                 |
-| GET   | `/api/me`                         | Профиль или флаг `registered:false` |
-| POST  | `/api/register`                   | `{name, age_group}`                 |
-| POST  | `/api/learn/next`                 | Случайное слово (`current_id?`)     |
-| POST  | `/api/training/choice/next`       | Слово + 4 варианта                  |
-| POST  | `/api/training/choice/answer`     | `{word_id, selected_id}`            |
-| POST  | `/api/training/input/next`        | Перевод → ждём слово                |
-| POST  | `/api/training/input/answer`      | `{word_id, answer}`                 |
-
----
-
-## ⚙️ Настройка
-
-Всё в `config.py`:
-- `BOT_TOKEN`, `WEBAPP_URL`, `WEBAPP_HOST`, `WEBAPP_PORT`
-- `POINTS_CORRECT` / `POINTS_WRONG`
-- `AGE_GROUPS`
-- `DB_PATH`
-
-Стартовый словарь — в `data/words.py`. Чтобы добавить свои слова,
-дополни список **до** первого запуска, либо удали `bot_database.db`
-и перезапусти (он перезальётся).
-
----
-
-## 🧩 Куда развивать
-
-- **Категории слов** — добавь поле `category` в `words`, фильтр в API,
-  пикер на фронте
-- **Spaced repetition** — поле `last_seen` уже есть, добавь приоритет
-  выбора слова в `get_random_word`
-- **Озвучка** — храни `audio_file_id`, отдавай через бота
-- **Лидерборд** — `SELECT name, points FROM users ORDER BY points DESC`
-- **Темы** — Mini App уже подхватывает тему Telegram через CSS-переменные
+Telegram передаёт в Mini App `window.Telegram.WebApp.initData`. Фронтенд кладёт
+её в заголовок `X-Telegram-Init-Data`, бэкенд проверяет подпись HMAC-SHA256 с
+ключом `HMAC("WebAppData", BOT_TOKEN)`. Для случаев, когда Telegram не отдал
+`initData` (desktop/браузер), есть короткоживущая подписанная fallback-ссылка
+(заголовок `X-App-Fallback-Auth`). Без `BOT_TOKEN` запрос подделать нельзя.
 
 ---
 
 ## 📦 Зависимости
 
-- `aiogram==3.13.1` — бот
-- `aiohttp==3.10.10` — веб-сервер Mini App
-- `aiosqlite==0.20.0` — асинхронный SQLite
+`aiogram` · `aiohttp` · `asyncpg` · `openai` · `pronouncing` — см. [`requirements.txt`](requirements.txt).
 
 ---
 
-## 🐛 Частые проблемы
+## 📄 Документация
 
-**Кнопка «Открыть приложение» не работает.**
-В BotFather не подтверждён HTTPS-домен Mini App (шаг 4).
-
-**Открывается, но «😕 Что-то пошло не так: unauthorized».**
-`BOT_TOKEN` в окружении не совпадает с токеном бота, через которого
-ты открыл приложение. Проверь, что переменные окружения переданы тому
-самому процессу, который ты запустил.
-
-**Открывается, но `Откройте приложение через бота в Telegram`.**
-Ты открываешь URL в обычном браузере. Так и должно быть — `initData`
-есть только когда Telegram сам открывает страницу.
-
-**ngrok URL меняется при каждом запуске.**
-В бесплатном тарифе — да. Запиши новый URL в `WEBAPP_URL` и в BotFather,
-либо используй платный статический домен.
+- [`Концепция/`](Концепция/) — продуктовая концепция, roadmap, карта функций
+- [`VOICE_TUTOR_ARCHITECTURE.md`](VOICE_TUTOR_ARCHITECTURE.md) — архитектура голосового репетитора
+- [`VOICE_QA_CHECKLIST.md`](VOICE_QA_CHECKLIST.md) — чек-лист QA голоса
+- [`QA_REPORT.md`](QA_REPORT.md) — отчёт по безопасности и открытым задачам
