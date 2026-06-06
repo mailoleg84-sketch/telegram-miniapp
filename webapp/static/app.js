@@ -2364,10 +2364,10 @@ async function renderChat() {
     const realtimeLogged = new Set();
     const realtimeResponseText = new Map();
 
-    const VOICE_VOLUME_THRESHOLD = 0.008;
-    const VOICE_SILENCE_MS = 950;
+    const VOICE_VOLUME_THRESHOLD = 0.005;
+    const VOICE_SILENCE_MS = 1200;
     const VOICE_MIN_RECORDING_MS = 650;
-    const VOICE_NO_SPEECH_MS = 5200;
+    const VOICE_NO_SPEECH_MS = 6000;
     const VOICE_MAX_RECORDING_MS = 18000;
     const VOICE_RESTART_DELAY_MS = 450;
     const VOICE_TTS_TIMEOUT_MS = 25000;
@@ -2781,7 +2781,7 @@ async function renderChat() {
       }, delayMs);
     }
 
-    function waitForIceGatheringComplete(pc, timeoutMs = 5000) {
+    function waitForIceGatheringComplete(pc, timeoutMs = 1500) {
       if (pc.iceGatheringState === "complete") return Promise.resolve();
       return new Promise(resolve => {
         const timeoutId = setTimeout(done, timeoutMs);
@@ -2848,15 +2848,6 @@ async function renderChat() {
 
     function setRealtimeAssistantSpeakingSafe(active) {
       setRealtimeAssistantSpeaking(active);
-    }
-
-    function estimateRealtimeSpeechMs(text) {
-      const clean = String(text || "").trim();
-      if (!clean) return 5000;
-      const words = clean.split(/\s+/).filter(Boolean).length;
-      const byWords = words * 760;
-      const byChars = clean.length * 95;
-      return Math.min(26000, Math.max(3500, Math.max(byWords, byChars)));
     }
 
     function scheduleRealtimeMicResume(delayMs = 800, forceEarlier = false) {
@@ -2961,7 +2952,8 @@ async function renderChat() {
           showVoiceFeedback(lastVoiceUserText || realtimeLastUserText, text);
           logRealtimeMessage("assistant", text, key);
         }
-        scheduleRealtimeMicResume(estimateRealtimeSpeechMs(text) + 400);
+        // Микрофон возвращаем по реальному окончанию аудио (audio.done), а не по
+        // завершению транскрипта — иначе оценка длины речи (до 26с) надолго глушила ребёнка.
         return;
       }
       if (type === "response.created") {
@@ -2981,7 +2973,7 @@ async function renderChat() {
         return;
       }
       if (type === "response.output_audio.done" || type === "response.audio.done") {
-        scheduleRealtimeMicResume(700, true);
+        scheduleRealtimeMicResume(400, true);
         return;
       }
       if (type === "response.done") {
@@ -2996,7 +2988,9 @@ async function renderChat() {
           showVoiceFeedback(lastVoiceUserText || realtimeLastUserText, text);
           logRealtimeMessage("assistant", text, key);
         }
-        scheduleRealtimeMicResume(estimateRealtimeSpeechMs(text) + 400);
+        // Страховка: если audio.done не пришёл — вернуть микрофон быстро и предсказуемо
+        // (а не через оценку длины речи до 26с).
+        scheduleRealtimeMicResume(500, true);
         return;
       }
       if (type === "error") {

@@ -149,7 +149,9 @@ class LessonEngineTests(unittest.TestCase):
         self.assertIn("VOICE_STATE_LABELS", app)
         self.assertIn("friendlyVoiceError", app)
         self.assertIn("microphone_denied", app)
-        self.assertIn("estimateRealtimeSpeechMs(text) + 400", app)
+        # Микрофон возвращается коротким forceEarlier-таймером по окончании аудио,
+        # без оценки длины речи (которая раньше глушила ребёнка до 26с).
+        self.assertIn("scheduleRealtimeMicResume(400, true)", app)
 
     def test_voice_prompts_receive_authoritative_lesson_state(self):
         state = create_lesson_state("8_10", seed="kid")

@@ -45,7 +45,7 @@ from config import (
 )
 
 log = logging.getLogger(__name__)
-VOICE_REPLY_MAX_CHARS = 220
+VOICE_REPLY_MAX_CHARS = 320
 VOICE_REPLY_MAX_SENTENCES = 3
 _DUPLICATE_GLOSS_RE = re.compile(r"\b([A-Za-z][A-Za-z' -]{0,40}?)\s+[—-]\s+\1\s+[—-]\s+", re.IGNORECASE)
 
@@ -1420,6 +1420,11 @@ async def chat_reply(
         reasoning_effort = OPENAI_VOICE_REASONING_EFFORT if mode == "voice" else OPENAI_REASONING_EFFORT
         if reasoning_effort and _supports_reasoning(OPENAI_MODEL):
             request["reasoning"] = {"effort": reasoning_effort}
+        else:
+            # Без reasoning держим температуру ниже дефолтного 1.0 — у детского
+            # репетитора это заметно стабилизирует грамматику и убирает «фантазийные» фразы.
+            # (Reasoning-моделям temperature слать нельзя — отсюда ветка else.)
+            request["temperature"] = 0.6 if mode == "voice" else 0.7
 
         response = await _client.responses.create(**request)
         usage = getattr(response, "usage", None)
@@ -1446,7 +1451,7 @@ async def chat_reply(
                     ),
                 }],
                 instructions="Ты исправляешь язык ответа детского репетитора. Ответь только финальной репликой.",
-                max_output_tokens=min(max_output_tokens, 140),
+                max_output_tokens=min(max_output_tokens, 200),
             )
             repair_text = (repair_response.output_text or "").strip()
             if mode == "voice":
