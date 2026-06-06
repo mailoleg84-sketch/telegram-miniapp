@@ -177,8 +177,8 @@
 html,
 body {
   background: linear-gradient(180deg, var(--c-bg-1) 0%, var(--c-bg-2) 58%, var(--c-bg-1) 100%);
-  background-attachment: fixed;
   color: var(--c-ink);
+  min-height: 100vh;
 }
 
 h1,
