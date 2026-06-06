@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # Заглушки, чтобы импорт config/openai_service не падал без реальных секретов.
+    env:
+      DATABASE_URL: postgresql://unused
+      BOT_TOKEN: "test:token"
+      OPENAI_API_KEY: sk-test
+      WEBAPP_URL: http://localhost
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Compile Python
+        run: git ls-files '*.py' | xargs python -m py_compile
+
+      - name: Check frontend JS
+        run: node --check webapp/static/app.js
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -v

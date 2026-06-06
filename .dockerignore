@@ -21,3 +21,6 @@ run*.log
 .codex/
 Концепция/
 QA_REPORT.md
+webapp/static/generated/
+tmp/
+.github/

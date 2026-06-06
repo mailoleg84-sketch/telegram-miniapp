@@ -5,6 +5,7 @@ from collections import defaultdict, deque
 import hashlib
 import json
 import logging
+import os
 import random
 import re
 import secrets
@@ -65,7 +66,10 @@ STATIC_DIR = Path(__file__).parent / "static"
 GENERATED_VOCAB_DIR = STATIC_DIR / "generated" / "vocabulary"
 AUDIO_CACHE_DIR = STATIC_DIR / "generated" / "audio"
 MAX_AUDIO_BYTES = 8 * 1024 * 1024
-MAX_SDP_BYTES = 512 * 1024
+MAX_SDP_BYTES = 16 * 1024  # реальный WebRTC SDP < 4 КБ; жёсткий предел тела
+# Кэши на эфемерном диске Render не должны расти бесконечно (QA-аудит).
+AUDIO_CACHE_MAX_FILES = int(os.getenv("AUDIO_CACHE_MAX_FILES", "4000"))
+VOCAB_IMAGE_CACHE_MAX_FILES = int(os.getenv("VOCAB_IMAGE_CACHE_MAX_FILES", "4000"))
 PUBLIC_API_PATHS = {"/api/me", "/api/register"}
 AI_API_PATHS = {
     "/api/chat/send",
@@ -88,11 +92,24 @@ def _rate_limit_for_key(key: str) -> int:
     return AI_RATE_LIMIT_PER_MINUTE if key == "ai" else API_RATE_LIMIT_PER_MINUTE
 
 
+_rate_limit_calls = 0
+
+
+def _sweep_rate_buckets(now: float) -> None:
+    """Убирает корзины неактивных пользователей, чтобы словарь не рос вечно."""
+    for bucket_key in [k for k, b in _rate_buckets.items() if not b or now - b[-1] > 60]:
+        _rate_buckets.pop(bucket_key, None)
+
+
 def _rate_limit_ok(user_id: int, key: str) -> bool:
+    global _rate_limit_calls
     limit = _rate_limit_for_key(key)
     if limit <= 0:
         return True
     now = time.monotonic()
+    _rate_limit_calls += 1
+    if _rate_limit_calls % 500 == 0:
+        _sweep_rate_buckets(now)
     bucket = _rate_buckets[(user_id, key)]
     while bucket and now - bucket[0] > 60:
         bucket.popleft()
@@ -100,6 +117,21 @@ def _rate_limit_ok(user_id: int, key: str) -> bool:
         return False
     bucket.append(now)
     return True
+
+
+def _evict_cache_dir(directory: Path, max_files: int) -> None:
+    """Удаляет самые старые файлы кэша, если их больше лимита (эфемерный диск)."""
+    if max_files <= 0:
+        return
+    try:
+        files = [p for p in directory.glob("*") if p.is_file()]
+        if len(files) <= max_files:
+            return
+        files.sort(key=lambda p: p.stat().st_mtime)
+        for path in files[: len(files) - max_files]:
+            path.unlink(missing_ok=True)
+    except OSError:
+        log.exception("Не удалось почистить кэш %s", directory)
 
 
 TOPIC_IMAGE_STYLES = {
@@ -2564,6 +2596,7 @@ async def api_vocab_image_generate(request: web.Request):
     filename = f"{prompt_hash}.{extension}"
     image_path = GENERATED_VOCAB_DIR / filename
     image_path.write_bytes(result.image_bytes)
+    _evict_cache_dir(GENERATED_VOCAB_DIR, VOCAB_IMAGE_CACHE_MAX_FILES)
     image_url = _generated_vocab_static_url(filename)
     await database.update_word_generated_image(
         word_id,
@@ -2850,6 +2883,7 @@ def _issue_training_attempt(user_id: int, word_id: int) -> str:
 
 def _consume_training_attempt(token: str, user_id: int, word_id: int) -> bool:
     """Гасит токен. True только если он валиден, не истёк и ещё не использован."""
+    _prune_training_attempts()
     record = _training_attempts.pop(str(token or ""), None)
     if not record:
         return False
@@ -3159,6 +3193,7 @@ async def api_audio_speech(request: web.Request):
         try:
             AUDIO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
             cache_path.write_bytes(audio)
+            _evict_cache_dir(AUDIO_CACHE_DIR, AUDIO_CACHE_MAX_FILES)
             cache_headers = {
                 "Cache-Control": "public, max-age=31536000, immutable",
                 "X-Audio-Cache": "miss",
@@ -3461,14 +3496,38 @@ async def vocabulary_visual_handler(request: web.Request):
 
 # ---------- App factory ----------
 
+@web.middleware
+async def hardening_middleware(request: web.Request, handler):
+    """Ловит необработанные исключения (без утечки трейсбека) и ставит nosniff."""
+    try:
+        response = await handler(request)
+    except web.HTTPException:
+        raise
+    except Exception:
+        log.exception("Необработанная ошибка на %s %s", request.method, request.path)
+        response = web.json_response({"error": "Внутренняя ошибка сервера"}, status=500)
+    if request.path.startswith("/api/"):
+        response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+async def healthz_handler(request: web.Request):
+    """Liveness-проба для Render/Docker (без обращения к БД, всегда быстрая)."""
+    return web.Response(text="ok")
+
+
 def create_app(
     bot=None,
     dispatcher=None,
     webhook_path: str | None = None,
     webhook_secret: str | None = None,
 ) -> web.Application:
-    app = web.Application(middlewares=[auth_middleware], client_max_size=MAX_AUDIO_BYTES + 1024 * 1024)
+    app = web.Application(
+        middlewares=[hardening_middleware, auth_middleware],
+        client_max_size=MAX_AUDIO_BYTES + 1024 * 1024,
+    )
 
+    app.router.add_get("/healthz", healthz_handler)
     app.router.add_get("/",        index_handler)
     app.router.add_get("/word-image.svg", word_image_handler)
     app.router.add_get("/vocabulary-visual.svg", vocabulary_visual_handler)
