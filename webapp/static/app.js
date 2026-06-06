@@ -3162,20 +3162,157 @@ async function renderChat() {
       updateVoiceActionButtons();
       setFace("thinking");
       if (voice) updateVoiceModeUi("Готовлю голос...", "thinking");
+      const payload = { text, mode: voice ? "voice" : "chat" };
+      if (voice && speed) payload.speed = speed;
+      const timeoutMs = voice ? VOICE_TTS_TIMEOUT_MS : CHAT_TTS_TIMEOUT_MS;
+      // Прогрессивное воспроизведение через MediaSource там, где поддерживается
+      // (Chrome/Android Telegram). При неудаче/неподдержке — буферный путь ниже.
+      if (canStreamSpeech()) {
+        try {
+          await streamTutorSpeech(payload, text, onDone, speechId, timeoutMs);
+          return;
+        } catch (_) {
+          if (speechId !== tutorSpeechId) return;
+          // тихо падаем на буферный путь
+        }
+      }
       try {
-        const payload = { text, mode: voice ? "voice" : "chat" };
-        if (voice && speed) payload.speed = speed;
-        const audioBlob = await apiBlob(
-          "/api/audio/speech",
-          payload,
-          voice ? VOICE_TTS_TIMEOUT_MS : CHAT_TTS_TIMEOUT_MS,
-        );
+        const audioBlob = await apiBlob("/api/audio/speech", payload, timeoutMs);
         if (speechId !== tutorSpeechId) return;
         await playTutorAudioBlob(audioBlob, text, onDone, speechId);
       } catch (_) {
         if (speechId !== tutorSpeechId) return;
         speakTutorFallback(text, onDone);
       }
+    }
+
+    function canStreamSpeech() {
+      try {
+        return typeof window.MediaSource !== "undefined"
+          && typeof window.MediaSource.isTypeSupported === "function"
+          && window.MediaSource.isTypeSupported("audio/mpeg")
+          && typeof ReadableStream !== "undefined";
+      } catch (_) {
+        return false;
+      }
+    }
+
+    // Прогрессивная озвучка: тянем аудио из /api/audio/speech потоком и скармливаем
+    // его в MediaSource, чтобы репетитор начинал говорить, не дожидаясь всего MP3.
+    // Возвращается, как только воспроизведение СТАРТОВАЛО (как playTutorAudioBlob);
+    // докачка идёт в фоне, onended -> finishTutorSpeech(onDone).
+    async function streamTutorSpeech(payload, text, onDone, speechId, timeoutMs) {
+      const controller = new AbortController();
+      const timeoutId = timeoutMs ? setTimeout(() => controller.abort(), timeoutMs) : null;
+      const res = await fetch("/api/audio/speech", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      if (!res.ok || !res.body) {
+        if (timeoutId) clearTimeout(timeoutId);
+        throw new Error("speech stream http " + res.status);
+      }
+      if (speechId !== tutorSpeechId) {
+        if (timeoutId) clearTimeout(timeoutId);
+        try { controller.abort(); } catch (_) {}
+        throw new Error("stale");
+      }
+
+      releaseTutorAudio();
+      window.speechSynthesis?.cancel?.();
+      tutorSpeechBusy = true;
+      tutorSpeechPlaying = false;
+      updateVoiceActionButtons();
+
+      const mediaSource = new MediaSource();
+      tutorAudioUrl = URL.createObjectURL(mediaSource);
+      const audio = new Audio();
+      tutorAudio = audio;
+      audio.src = tutorAudioUrl;
+      audio.preload = "auto";
+
+      let started = false;
+      const clearTimer = () => { if (timeoutId) clearTimeout(timeoutId); };
+
+      return await new Promise((resolve, reject) => {
+        let settled = false;
+        let finished = false;
+        const finishOnce = () => {
+          if (finished) return;
+          finished = true;
+          finishTutorSpeech(onDone, speechId);
+        };
+        const fail = (err) => {
+          if (settled) return;
+          settled = true;
+          clearTimer();
+          try { controller.abort(); } catch (_) {}
+          if (started) {
+            // Звук уже шёл — не роняем диалог, просто завершаем ход.
+            finishOnce();
+            resolve();
+          } else {
+            reject(err || new Error("mse error"));
+          }
+        };
+        const markStarted = () => {
+          if (started || settled) return;
+          started = true;
+          clearTimer();
+          if (speechId !== tutorSpeechId) return fail(new Error("stale"));
+          tutorSpeechBusy = true;
+          tutorSpeechPlaying = true;
+          setFace("speaking");
+          if (voiceModeActive) updateVoiceModeUi("Отвечаю...", "speaking");
+          resolve();
+        };
+
+        audio.onplaying = markStarted;
+        audio.onended = () => { settled = true; finishOnce(); };
+        audio.onerror = () => fail(new Error("audio element error"));
+        mediaSource.addEventListener("error", () => fail(new Error("mediasource error")), { once: true });
+
+        mediaSource.addEventListener("sourceopen", () => {
+          let sb;
+          try {
+            sb = mediaSource.addSourceBuffer("audio/mpeg");
+          } catch (e) {
+            return fail(e);
+          }
+          const reader = res.body.getReader();
+          const queue = [];
+          let reading = true;
+          const pump = () => {
+            if (settled && !started) return;
+            if (sb.updating) return;
+            if (queue.length) {
+              try { sb.appendBuffer(queue.shift()); } catch (e) { return fail(e); }
+              return;
+            }
+            if (!reading) {
+              try { if (mediaSource.readyState === "open") mediaSource.endOfStream(); } catch (_) {}
+            }
+          };
+          sb.addEventListener("updateend", pump);
+          (async () => {
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (speechId !== tutorSpeechId) { reading = false; return fail(new Error("stale")); }
+                if (done) { reading = false; pump(); break; }
+                if (value && value.length) { queue.push(value); pump(); }
+              }
+            } catch (e) {
+              reading = false;
+              fail(e);
+            }
+          })();
+        }, { once: true });
+
+        audio.play().catch((e) => fail(e));
+      });
     }
 
     async function playTutorAudioBlob(audioBlob, text, onDone = null, speechId = null) {

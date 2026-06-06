@@ -1296,11 +1296,8 @@ async def transcribe_audio(file_bytes: bytes, filename: str = "voice.webm", cont
     return str(text or "").strip()
 
 
-async def synthesize_speech(text: str, mode: str = "chat", speed: float | int | str | None = None) -> bytes:
-    """Generates a short MP3 tutor voice response."""
-    if _client is None:
-        raise RuntimeError("OPENAI_API_KEY is not configured")
-
+def _tts_setup(text: str, mode: str, speed: float | int | str | None) -> tuple[str, str, str, float]:
+    """Shared TTS preparation: returns (clean_text, instructions, voice, speech_speed)."""
     clean_text = " ".join((text or "").split())
     if not clean_text:
         raise ValueError("Text is empty")
@@ -1344,17 +1341,32 @@ async def synthesize_speech(text: str, mode: str = "chat", speed: float | int | 
             + instructions
         )
     voice = OPENAI_VOICE_TTS_VOICE if mode == "voice" else OPENAI_TTS_VOICE
+    return clean_text, instructions, voice, speech_speed
+
+
+def _tts_request(model: str, clean_text: str, voice: str, speech_speed: float,
+                 instructions: str, include_instructions: bool) -> dict:
+    request = {
+        "model": model,
+        "voice": voice,
+        "input": clean_text,
+        "response_format": "mp3",
+        "speed": speech_speed,
+    }
+    if include_instructions:
+        request["instructions"] = instructions
+    return request
+
+
+async def synthesize_speech(text: str, mode: str = "chat", speed: float | int | str | None = None) -> bytes:
+    """Generates a short MP3 tutor voice response (fully buffered)."""
+    if _client is None:
+        raise RuntimeError("OPENAI_API_KEY is not configured")
+
+    clean_text, instructions, voice, speech_speed = _tts_setup(text, mode, speed)
 
     async def create_audio(model: str, include_instructions: bool = True) -> bytes:
-        request = {
-            "model": model,
-            "voice": voice,
-            "input": clean_text,
-            "response_format": "mp3",
-            "speed": speech_speed,
-        }
-        if include_instructions:
-            request["instructions"] = instructions
+        request = _tts_request(model, clean_text, voice, speech_speed, instructions, include_instructions)
         response = await _client.audio.speech.create(**request)
         return await response.aread()
 
@@ -1365,6 +1377,35 @@ async def synthesize_speech(text: str, mode: str = "chat", speed: float | int | 
             raise
         log.warning("TTS model %s is unavailable, falling back to tts-1", OPENAI_TTS_MODEL)
         return await create_audio("tts-1", include_instructions=False)
+
+
+async def synthesize_speech_stream(text: str, mode: str = "chat", speed: float | int | str | None = None):
+    """Yields MP3 chunks as OpenAI produces them so the client can start playing sooner.
+
+    Same voice/instructions/speed as synthesize_speech, including the tts-1 fallback.
+    The BadRequest fallback fires before any chunk is yielded, so no audio is duplicated.
+    """
+    if _client is None:
+        raise RuntimeError("OPENAI_API_KEY is not configured")
+
+    clean_text, instructions, voice, speech_speed = _tts_setup(text, mode, speed)
+
+    async def stream_audio(model: str, include_instructions: bool = True):
+        request = _tts_request(model, clean_text, voice, speech_speed, instructions, include_instructions)
+        async with _client.audio.speech.with_streaming_response.create(**request) as response:
+            async for chunk in response.iter_bytes():
+                if chunk:
+                    yield chunk
+
+    try:
+        async for chunk in stream_audio(OPENAI_TTS_MODEL, include_instructions=True):
+            yield chunk
+    except BadRequestError:
+        if OPENAI_TTS_MODEL == "tts-1":
+            raise
+        log.warning("TTS model %s is unavailable for streaming, falling back to tts-1", OPENAI_TTS_MODEL)
+        async for chunk in stream_audio("tts-1", include_instructions=False):
+            yield chunk
 
 
 async def chat_reply(

@@ -62,6 +62,7 @@ from webapp.openai_service import (
     public_openai_error,
     redact_personal_data,
     synthesize_speech,
+    synthesize_speech_stream,
     transcribe_audio,
 )
 from webapp.vocabulary_visualizer import build_vocabulary_visual, vocabulary_image_url
@@ -3210,8 +3211,13 @@ async def api_audio_speech(request: web.Request):
             },
         )
 
+    # Cache miss → stream from OpenAI and tee chunks into the disk cache.
+    # Pull the first chunk before prepare() so an immediate failure still returns JSON.
+    gen = synthesize_speech_stream(text, mode=mode, speed=speed)
     try:
-        audio = await synthesize_speech(text, mode=mode, speed=speed)
+        first_chunk = await gen.__anext__()
+    except StopAsyncIteration:
+        first_chunk = b""
     except Exception as e:
         log.exception("Speech synthesis failed")
         return web.json_response({"error": f"Не удалось озвучить ответ. {public_openai_error(e)}"}, status=502)
@@ -3222,26 +3228,38 @@ async def api_audio_speech(request: web.Request):
         len(text) / 1000 * OPENAI_TTS_COST_PER_1K_CHARS,
     )
 
-    cache_headers = {
+    response = web.StreamResponse(headers={
+        "Content-Type": "audio/mpeg",
         "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-    }
-    if cache_path:
+        "X-Audio-Cache": "miss",
+    })
+    await response.prepare(request)
+    buffer = bytearray()
+    try:
+        if first_chunk:
+            buffer.extend(first_chunk)
+            await response.write(first_chunk)
+        async for chunk in gen:
+            buffer.extend(chunk)
+            await response.write(chunk)
+    except Exception:
+        # Headers/200 already sent — end the stream; the client falls back on a short clip.
+        log.exception("Speech streaming interrupted")
+        await response.write_eof()
+        return response
+
+    await response.write_eof()
+
+    # Persist to cache only after a full, successful stream.
+    if cache_path and buffer:
         try:
             AUDIO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-            cache_path.write_bytes(audio)
+            cache_path.write_bytes(bytes(buffer))
             _evict_cache_dir(AUDIO_CACHE_DIR, AUDIO_CACHE_MAX_FILES)
-            cache_headers = {
-                "Cache-Control": "public, max-age=31536000, immutable",
-                "X-Audio-Cache": "miss",
-            }
         except OSError:
             log.exception("Failed to store word audio cache")
 
-    return web.Response(
-        body=audio,
-        content_type="audio/mpeg",
-        headers=cache_headers,
-    )
+    return response
 
 
 async def _voice_text_turn_payload(user_id: int, text: str) -> dict:
@@ -3286,27 +3304,15 @@ async def _voice_text_turn_payload(user_id: int, text: str) -> dict:
         )
         stats = await database.get_ai_usage_today(user_id)
 
-    audio_b64 = ""
-    audio_error = ""
-    if not reply.text.startswith("Ошибка:") and not reply.text.startswith("⚠️"):
-        try:
-            speech = await synthesize_speech(reply.text, mode="voice")
-            audio_b64 = base64.b64encode(speech).decode("ascii")
-            await _record_ai_cost(
-                user_id,
-                OPENAI_TTS_MODEL,
-                len(reply.text) / 1000 * OPENAI_TTS_COST_PER_1K_CHARS,
-            )
-        except Exception as e:
-            log.exception("Hybrid voice speech synthesis failed")
-            audio_error = public_openai_error(e)
-
+    # Аудио инлайн не синтезируем: текст уходит сразу, а озвучку клиент берёт
+    # потоково из /api/audio/speech (бинарь + дисковый кэш + прогрессивное
+    # воспроизведение). Это убирает ожидание полного MP3 и base64-оверхед.
     return {
         "text": text,
         "reply": reply.text,
-        "audio_base64": audio_b64,
-        "audio_content_type": "audio/mpeg" if audio_b64 else "",
-        "audio_error": audio_error,
+        "audio_base64": "",
+        "audio_content_type": "",
+        "audio_error": "",
         "usage": _chat_usage_payload(stats),
         "lesson_state": public_lesson_state(lesson_state),
     }
