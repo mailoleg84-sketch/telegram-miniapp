@@ -18,7 +18,7 @@ __pycache__/
 run.log
 run.err.log
 run.full.log
-run.pid
+*.pid
 run_app.ps1
 
 # Системное
