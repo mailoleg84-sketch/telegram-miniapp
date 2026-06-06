@@ -264,6 +264,81 @@ SCENE_PROMPTS = {
 }
 
 
+# Бесплатные «картинки» для конкретных слов: нативные цветные эмодзи (рендерятся
+# системным шрифтом на всех платформах, без внешних запросов и без оплаты).
+# Абстрактные/грамматические слова сюда не входят — для них остаётся SVG-сцена.
+WORD_EMOJI = {
+    # предметы и объекты
+    "apple": "🍎", "dog": "🐶", "car": "🚗", "ball": "⚽", "cat": "🐱",
+    "book": "📖", "bus": "🚌", "cake": "🍰", "camera": "📷", "computer": "💻",
+    "cup": "🍵", "flower": "🌸", "guitar": "🎸", "house": "🏠", "moon": "🌙",
+    "pencil": "✏️", "plane": "✈️", "robot": "🤖", "school": "🏫", "sun": "☀️",
+    "teacher": "🧑‍🏫", "train": "🚆", "tree": "🌳", "chair": "🪑",
+    # люди и тело
+    "baby": "👶", "boy": "👦", "girl": "👧", "brother": "👦", "sister": "👧",
+    "child": "🧒", "children": "🧒", "dad": "👨", "father": "👨", "daughter": "👧",
+    "son": "👦", "mom": "👩", "mother": "👩", "man": "👨", "woman": "👩",
+    "men": "👨", "women": "👩", "grandma": "👵", "grandpa": "👴", "people": "👥",
+    "person": "🧍", "family": "👨‍👩‍👧‍👦", "friend": "🧑‍🤝‍🧑", "doctor": "🧑‍⚕️",
+    "nurse": "🧑‍⚕️", "student": "🧑‍🎓", "eye": "👁️", "face": "🙂", "hand": "✋",
+    "leg": "🦵", "tooth": "🦷", "teeth": "🦷",
+    # вещи и места
+    "bag": "🎒", "bed": "🛏️", "bike": "🚲", "building": "🏢", "cap": "🧢",
+    "city": "🏙️", "cloud": "☁️", "clouds": "☁️", "clothes": "👕", "coat": "🧥",
+    "couch": "🛋️", "farm": "🚜", "fire": "🔥", "hat": "🎩", "home": "🏠",
+    "lamp": "💡", "leaf": "🍃", "office": "🏢", "stairs": "🪜", "wallet": "👛",
+    "zoo": "🦁", "lake": "🏞️", "star": "⭐", "phone": "📱", "key": "🔑",
+    "clock": "🕐", "gift": "🎁", "umbrella": "☂️", "ship": "🚢", "boat": "⛵",
+    "rocket": "🚀", "balloon": "🎈", "drum": "🥁", "piano": "🎹",
+    # действия
+    "run": "🏃", "jump": "🤸", "eat": "🍽️", "sleep": "😴", "read": "📖",
+    "swim": "🏊", "walk": "🚶", "write": "✍️", "draw": "🎨", "play": "🎮",
+    "carry": "🛍️", "clean": "🧹", "dance": "💃", "drink": "🥤", "help": "🤝",
+    "listen": "👂", "look": "👀", "sing": "🎤", "sit": "🪑", "stand": "🧍",
+    "study": "📚", "cook": "🍳", "paint": "🎨", "ride": "🚴", "fly": "🛫",
+    # эмоции
+    "happy": "😀", "sad": "😢", "angry": "😠", "scared": "😨", "surprised": "😲",
+    "tired": "😴", "excited": "🤩", "bored": "😑", "afraid": "😨", "calm": "😌",
+    "nervous": "😰", "love": "❤️", "cry": "😭", "laugh": "😂",
+    # еда
+    "banana": "🍌", "orange": "🍊", "grapes": "🍇", "pizza": "🍕", "bread": "🍞",
+    "egg": "🥚", "milk": "🥛", "water": "💧", "rice": "🍚", "fish": "🐟",
+    "meat": "🍖", "chicken": "🍗", "cheese": "🧀", "ice cream": "🍦", "candy": "🍬",
+    "cookie": "🍪", "soup": "🍲", "tea": "🍵", "coffee": "☕", "juice": "🧃",
+    "carrot": "🥕", "tomato": "🍅", "potato": "🥔", "corn": "🌽", "lemon": "🍋",
+    "strawberry": "🍓", "watermelon": "🍉", "honey": "🍯", "salad": "🥗",
+    # животные
+    "bird": "🐦", "cow": "🐄", "horse": "🐴", "pig": "🐷", "sheep": "🐑",
+    "rabbit": "🐰", "bear": "🐻", "lion": "🦁", "tiger": "🐯", "elephant": "🐘",
+    "monkey": "🐵", "mouse": "🐭", "duck": "🦆", "frog": "🐸", "snake": "🐍",
+    "bee": "🐝", "butterfly": "🦋", "spider": "🕷️", "eagle": "🦅", "owl": "🦉",
+    "penguin": "🐧", "dolphin": "🐬", "whale": "🐳", "shark": "🦈", "turtle": "🐢",
+    "fox": "🦊", "wolf": "🐺", "deer": "🦌", "panda": "🐼", "koala": "🐨",
+    # природа и погода
+    "rain": "🌧️", "snow": "❄️", "wind": "🌬️", "rainbow": "🌈", "mountain": "⛰️",
+    "sea": "🌊", "river": "🏞️", "beach": "🏖️", "park": "🏞️", "forest": "🌲",
+    "grass": "🌿", "rose": "🌹", "leaves": "🍂",
+    # транспорт
+    "truck": "🚚", "taxi": "🚕", "bicycle": "🚲", "helicopter": "🚁", "subway": "🚇",
+    # спорт и музыка
+    "football": "⚽", "basketball": "🏀", "tennis": "🎾", "music": "🎵", "song": "🎶",
+}
+
+
+def emoji_for(word: str) -> str:
+    """Returns a native color emoji for a concrete word, or "" if there is none."""
+    w = _clean(word).lower()
+    if not w:
+        return ""
+    if w in WORD_EMOJI:
+        return WORD_EMOJI[w]
+    if w.endswith("es") and w[:-2] in WORD_EMOJI:
+        return WORD_EMOJI[w[:-2]]
+    if w.endswith("s") and w[:-1] in WORD_EMOJI:
+        return WORD_EMOJI[w[:-1]]
+    return ""
+
+
 def is_complex_visual_type(visual_type: str) -> bool:
     return visual_type in COMPLEX_VISUAL_TYPES
 
@@ -530,6 +605,7 @@ def build_vocabulary_visual(
         "image_prompt": create_image_prompt(word, visual_type, age_group),
         "image_url": vocabulary_image_url(word, visual_type, topic),
         "image_alt": create_image_alt(word, visual_type),
+        "emoji": emoji_for(word),
         "example_sentence": create_example_sentence(word, part_of_speech, visual_type, example_sentence),
         "simple_meaning": create_simple_meaning(word, part_of_speech, translation),
         "russian_hint": create_russian_hint(word, translation, part_of_speech),

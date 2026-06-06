@@ -2464,6 +2464,23 @@ h1::after {
   background: transparent;
 }
 
+.word-emoji-box {
+  background:
+    radial-gradient(circle at 30% 22%, rgba(47, 157, 244, 0.18), transparent 46%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(47, 157, 244, 0.10));
+}
+.word-emoji {
+  font-size: clamp(64px, 26vw, 120px);
+  line-height: 1;
+  text-align: center;
+  user-select: none;
+  filter: drop-shadow(0 6px 12px rgba(24, 39, 75, 0.16));
+}
+.word-visual.small .word-emoji {
+  font-size: 34px;
+  filter: none;
+}
+
 .word-visual.loading .word-image,
 .word-visual.failed .word-image {
   opacity: 0;

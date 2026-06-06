@@ -599,6 +599,14 @@ function wordImageHtml(wordData, small = false) {
   const generationStatus = wordData?.image_generation_status || "";
   const promptHash = wordData?.image_prompt_hash || "";
   const label = wordData?.image_alt || wordData?.word || wordData?.translation || "word";
+  const emoji = wordData?.emoji || "";
+  if (emoji) {
+    // Бесплатная «картинка»: нативный цветной эмодзи, без генерации и без запросов.
+    return `
+      <div class="word-visual word-emoji-box loaded ${small ? "small" : ""}" data-word-id="${esc(wordId)}">
+        <span class="word-emoji" role="img" aria-label="${esc(label)}">${esc(emoji)}</span>
+      </div>`;
+  }
   if (!src) {
     return `
       <div class="word-visual failed ${small ? "small" : ""}" data-word-id="${esc(wordId)}" data-generate="${canGenerate}" data-generation-status="${esc(generationStatus)}" data-prompt-hash="${esc(promptHash)}" data-fallback-src="${esc(fallbackSrc)}">
