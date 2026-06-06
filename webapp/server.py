@@ -2389,6 +2389,17 @@ async def api_results_reset(request: web.Request):
     })
 
 
+async def api_account_delete(request: web.Request):
+    """Полное удаление профиля и всех данных ребёнка (QA H6)."""
+    user_id = request["tg_user"]["id"]
+    body = await _safe_json(request)
+    if body.get("confirm") != "delete_account":
+        return web.json_response({"error": "Нужно подтвердить удаление аккаунта"}, status=400)
+
+    await database.delete_user_account(user_id)
+    return web.json_response({"ok": True, "deleted": True})
+
+
 async def api_activity_history(request: web.Request):
     user_id = request["tg_user"]["id"]
     try:
@@ -3428,6 +3439,7 @@ def create_app(
     app.router.add_get("/api/motivation/status",        api_motivation_status)
     app.router.add_get("/api/parent/report",            api_parent_report)
     app.router.add_post("/api/results/reset",           api_results_reset)
+    app.router.add_post("/api/account/delete",          api_account_delete)
     app.router.add_get("/api/activity/history",         api_activity_history)
     app.router.add_get("/api/level/test",               api_level_test)
     app.router.add_post("/api/level/submit",            api_level_submit)

@@ -4575,6 +4575,8 @@ async function renderProfile() {
           <p class="hint">Сброс результатов обнулит баллы, уровень, выученные слова, тесты и ежедневные уроки. Профиль и чат с репетитором останутся.</p>
           <button class="btn btn-danger" id="resetResults">Обнулить результаты</button>
           <button class="btn btn-secondary" id="logout">Выйти из аккаунта</button>
+          <p class="hint mt-12">Удаление навсегда стирает профиль, прогресс, историю и все диалоги с репетитором. Отменить нельзя.</p>
+          <button class="btn btn-danger" id="deleteAccount">Удалить профиль и все данные</button>
         </div>
         <button class="btn btn-secondary" id="profileHome">В меню</button>
       </div>`;
@@ -4596,6 +4598,18 @@ async function renderProfile() {
       haptic("warning");
       const ok = await confirmAction("Выйти из аккаунта на этом устройстве? Для другого аккаунта переключитесь в Telegram и откройте приложение снова.");
       if (ok) logoutFromApp();
+    };
+    document.getElementById("deleteAccount").onclick = async () => {
+      haptic("warning");
+      const ok = await confirmAction("Удалить профиль и ВСЕ данные ребёнка навсегда? Прогресс, история и диалоги будут стёрты без возможности восстановления.");
+      if (!ok) return;
+      try {
+        await api("/api/account/delete", "POST", { confirm: "delete_account" });
+        tg.showAlert("Профиль и все данные удалены.");
+        logoutFromApp();
+      } catch (e) {
+        renderError(e.message);
+      }
     };
     document.getElementById("profileHome").onclick = () => { haptic(); renderMenu(); };
   } catch (e) {

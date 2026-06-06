@@ -424,6 +424,30 @@ async def reset_learning_results(user_id: int) -> None:
             await conn.execute("DELETE FROM voice_lesson_sessions WHERE user_id = $1", user_id)
 
 
+async def delete_user_account(user_id: int) -> None:
+    """Полное удаление профиля ребёнка и всех связанных данных (QA H6).
+
+    Удаляет историю диалогов, прогресс, сессии, расход AI и саму строку
+    пользователя. Транзакционно, чтобы не осталось «осиротевших» данных.
+    """
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            for table in (
+                "user_progress",
+                "daily_lessons",
+                "vocabulary_sessions",
+                "game_sessions",
+                "training_attempts",
+                "voice_lesson_state",
+                "voice_lesson_sessions",
+                "conversations",
+                "ai_usage",
+                "users",
+            ):
+                await conn.execute(f"DELETE FROM {table} WHERE user_id = $1", user_id)
+
+
 # ---------- Админка ----------
 
 async def get_admin_overview() -> dict:
