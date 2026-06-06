@@ -399,6 +399,26 @@ input:focus-visible {
   }
 }
 
+/* «Дыхание» 3D-персонажа: очень мягкий масштаб самой картинки внутри
+   баннера (overflow: hidden — края не вылезают, layout не прыгает).
+   Чуть живее, когда репетитор говорит. */
+.chat-wrap .tutor-face.is-photo .tutor-avatar-img {
+  animation: avatarBreathe 4.8s ease-in-out infinite;
+  will-change: transform;
+}
+.chat-wrap .tutor-face.is-photo[data-state="speaking"] .tutor-avatar-img {
+  animation-duration: 3.2s;
+}
+@keyframes avatarBreathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.035); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-wrap .tutor-face.is-photo .tutor-avatar-img {
+    animation: none;
+  }
+}
+
 /* ===================== АНИМИРОВАННЫЙ ПЕРСОНАЖ (младшие 5-10) ===================== */
 .chat-wrap .tutor-face.is-character {
   height: 250px;
@@ -427,17 +447,23 @@ input:focus-visible {
 .char-skin { fill: #f7c9a0; }
 .char-hair { fill: #6b4a37; }
 .char-cheek { fill: #ffb1b9; opacity: 0.85; }
-.char-brow { fill: #5a3f30; transform-origin: center; transition: transform 0.2s ease; }
+.char-brow {
+  fill: none;
+  stroke: #b0855f;
+  stroke-width: 4;
+  stroke-linecap: round;
+  transform-origin: center;
+  transition: transform 0.2s ease;
+}
 .eye-white { fill: #ffffff; }
-.eye-pupil { fill: #38323e; transition: transform 0.25s ease; }
+.eye-pupil { fill: #4a3b3a; transition: transform 0.25s ease; }
 .eye-shine { fill: #ffffff; }
+.eye-shine2 { fill: #ffffff; opacity: 0.9; }
 .eye-lid { fill: #f7c9a0; transform-origin: 50% 0; transform: scaleY(0); animation: charBlink 5s ease-in-out infinite; }
 .char-mouth {
-  fill: none;
-  stroke: #7a4a44;
-  stroke-width: 5;
-  stroke-linecap: round;
-  transform-origin: 100px 134px;
+  fill: #d76a78;
+  stroke: none;
+  transform-origin: 100px 136px;
   transition: transform 0.18s ease;
 }
 .char-spark { fill: #ffd45e; opacity: 0; transform-origin: 160px 54px; }

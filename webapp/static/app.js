@@ -2209,45 +2209,43 @@ function tutorCharacterSvg() {
       <defs><clipPath id="charClip"><circle cx="100" cy="100" r="94"/></clipPath></defs>
       <circle class="char-bg" cx="100" cy="100" r="94"/>
       <g clip-path="url(#charClip)">
-        <ellipse class="char-body" cx="100" cy="210" rx="82" ry="52"/>
-        <rect class="char-collar" x="84" y="150" width="32" height="26" rx="12"/>
-        <rect class="char-skin char-neck" x="89" y="134" width="22" height="24" rx="10"/>
-        <ellipse class="char-hair char-hair-back" cx="100" cy="94" rx="60" ry="58"/>
-        <ellipse class="char-skin char-faceshape" cx="100" cy="102" rx="50" ry="54"/>
-        <circle class="char-skin char-ear" cx="51" cy="106" r="8"/>
-        <circle class="char-skin char-ear" cx="149" cy="106" r="8"/>
-        <path class="char-hair" d="M50 78 Q60 44 100 42 Q140 44 150 78 Q150 92 140 86 Q132 60 100 60 Q68 60 60 86 Q50 92 50 78 Z"/>
-        <circle class="char-cheek" cx="68" cy="118" r="8.5"/>
-        <circle class="char-cheek" cx="132" cy="118" r="8.5"/>
-        <rect class="char-brow brow-left" x="60" y="88" width="22" height="5" rx="3"/>
-        <rect class="char-brow brow-right" x="118" y="88" width="22" height="5" rx="3"/>
+        <ellipse class="char-body" cx="100" cy="214" rx="78" ry="48"/>
+        <path class="char-collar" d="M74 170 Q100 190 126 170 L126 202 L74 202 Z"/>
+        <ellipse class="char-hair char-hair-back" cx="100" cy="90" rx="60" ry="56"/>
+        <ellipse class="char-skin char-faceshape" cx="100" cy="100" rx="55" ry="53"/>
+        <circle class="char-skin char-ear" cx="46" cy="102" r="9"/>
+        <circle class="char-skin char-ear" cx="154" cy="102" r="9"/>
+        <path class="char-hair" d="M45 82 Q42 44 100 42 Q158 44 155 82 Q146 64 124 62 Q132 76 110 74 Q104 60 100 60 Q96 60 90 74 Q68 76 76 62 Q54 64 45 82 Z"/>
+        <circle class="char-cheek" cx="58" cy="118" r="11"/>
+        <circle class="char-cheek" cx="142" cy="118" r="11"/>
+        <path class="char-brow brow-left" d="M58 84 Q73 77 88 84"/>
+        <path class="char-brow brow-right" d="M112 84 Q127 77 142 84"/>
         <g class="char-eye eye-left">
-          <ellipse class="eye-white" cx="76" cy="104" rx="11" ry="13"/>
-          <circle class="eye-pupil" cx="76" cy="106" r="6"/>
-          <circle class="eye-shine" cx="79" cy="102" r="2.4"/>
-          <rect class="eye-lid" x="64" y="89" width="24" height="30" rx="12"/>
+          <ellipse class="eye-white" cx="74" cy="104" rx="14.5" ry="17.5"/>
+          <circle class="eye-pupil" cx="75" cy="106" r="9.5"/>
+          <circle class="eye-shine" cx="79" cy="101" r="4"/>
+          <circle class="eye-shine2" cx="70" cy="110" r="2.2"/>
+          <rect class="eye-lid" x="58" y="86" width="30" height="38" rx="15"/>
         </g>
         <g class="char-eye eye-right">
-          <ellipse class="eye-white" cx="124" cy="104" rx="11" ry="13"/>
-          <circle class="eye-pupil" cx="124" cy="106" r="6"/>
-          <circle class="eye-shine" cx="127" cy="102" r="2.4"/>
-          <rect class="eye-lid" x="112" y="89" width="24" height="30" rx="12"/>
+          <ellipse class="eye-white" cx="126" cy="104" rx="14.5" ry="17.5"/>
+          <circle class="eye-pupil" cx="125" cy="106" r="9.5"/>
+          <circle class="eye-shine" cx="129" cy="101" r="4"/>
+          <circle class="eye-shine2" cx="120" cy="110" r="2.2"/>
+          <rect class="eye-lid" x="112" y="86" width="30" height="38" rx="15"/>
         </g>
-        <path class="char-mouth" d="M82 130 Q100 146 118 130"/>
+        <path class="char-mouth" d="M83 130 Q100 151 117 130 Q100 140 83 130 Z"/>
       </g>
-      <g class="char-spark"><path d="M158 50 l3.5 8 8 3.5 -8 3.5 -3.5 8 -3.5 -8 -8 -3.5 8 -3.5 z"/></g>
+      <g class="char-spark"><path d="M162 48 l3.5 8 8 3.5 -8 3.5 -3.5 8 -3.5 -8 -8 -3.5 8 -3.5 z"/></g>
     </svg>`;
 }
 
 function tutorAvatarHtml() {
-  const ageGroup = state.me?.user?.age_group || "";
-  const useCharacter = CHARACTER_AGE_GROUPS.includes(ageGroup);
-  const inner = useCharacter
-    ? tutorCharacterSvg()
-    : `<img class="tutor-avatar-img" src="/static/assets/tutor-avatar-v2.jpg?v=20260606-kids-v109" alt="">`;
+  // Анимированный 3D-персонаж (девушка-репетитор) для всех возрастов:
+  // статичная картинка + свечение по состоянию + мягкое «дыхание» (CSS).
   return `
-    <div class="tutor-face idle ${useCharacter ? "is-character" : "is-photo"}" id="tutorFace" data-state="idle" aria-hidden="true">
-      ${inner}
+    <div class="tutor-face idle is-photo" id="tutorFace" data-state="idle" aria-hidden="true">
+      <img class="tutor-avatar-img" src="/static/assets/tutor-girl-v1.jpg?v=20260606-kids-v113" alt="">
       <span class="avatar-glow"></span>
     </div>`;
 }
@@ -2281,12 +2279,6 @@ async function renderChat() {
               <span id="voiceModeText">Начать</span>
             </button>
             <div class="voice-mode-status" id="voiceStatus">Готова слушать</div>
-            <div class="voice-actions">
-              <button class="voice-action" id="voiceRepeat" type="button" disabled>Повторить</button>
-              <button class="voice-action" id="voiceSlower" type="button" disabled>Медленнее</button>
-              <button class="voice-action" id="voiceAgain" type="button" disabled>Ещё раз</button>
-              <button class="voice-action" id="voiceNext" type="button" disabled>Следующий вопрос</button>
-            </div>
           </div>
           <div class="voice-lesson-strip" id="voiceLessonStrip">
             <div class="voice-lesson-copy">
@@ -2316,10 +2308,6 @@ async function renderChat() {
     const voiceStatusLabel = document.getElementById("voiceStatusLabel");
     const voiceStatusTitle = document.getElementById("voiceStatusTitle");
     const voiceStatusHint = document.getElementById("voiceStatusHint");
-    const voiceRepeatButton = document.getElementById("voiceRepeat");
-    const voiceSlowerButton = document.getElementById("voiceSlower");
-    const voiceAgainButton = document.getElementById("voiceAgain");
-    const voiceNextButton = document.getElementById("voiceNext");
     const voiceLessonPhase = document.getElementById("voiceLessonPhase");
     const voiceLessonTopic = document.getElementById("voiceLessonTopic");
     const voiceLessonProgress = document.getElementById("voiceLessonProgress");
@@ -2636,12 +2624,7 @@ async function renderChat() {
     }
 
     function updateVoiceActionButtons() {
-      const hasReply = Boolean(lastTutorReply && !sending && !tutorSpeechBusy);
-      voiceRepeatButton.disabled = !hasReply;
-      voiceSlowerButton.disabled = !hasReply;
-      voiceAgainButton.disabled = Boolean(sending || tutorSpeechBusy);
-      voiceNextButton.disabled = Boolean(sending || tutorSpeechBusy);
-      voiceSlowerButton.textContent = voicePlaybackSpeed < 0.9 ? "Обычный темп" : "Медленнее";
+      // Кнопки быстрых действий убраны из UI — заглушка, чтобы не трогать места вызова.
     }
 
     function updateVoiceModeUi(status = "", nextState = "") {
@@ -3842,77 +3825,8 @@ async function renderChat() {
       stopVoiceMode();
     }
 
-    async function askNextVoiceQuestion() {
-      if (sending || tutorSpeechBusy) return;
-      if (box.querySelector(".chat-empty")) box.innerHTML = "";
-      sending = true;
-      sendButton.disabled = true;
-      mic.disabled = true;
-      updateVoiceModeUi("Думаю...", "thinking");
-      setFace("thinking");
-      try {
-        const result = await voiceTextTurn("Дай следующий короткий вопрос по текущему уроку. Не меняй тему без причины.");
-        const reply = String(result.reply || "").trim();
-        if (reply) bubble("assistant", reply);
-        renderLessonState(result.lesson_state);
-        if (reply) {
-          await speakTutor(reply, voiceModeActive ? () => scheduleVoiceListen(VOICE_RESTART_DELAY_MS) : null, true, voicePlaybackSpeed);
-        }
-      } catch (e) {
-        const message = friendlyVoiceError(e, "Не удалось получить следующий вопрос. Попробуй ещё раз.");
-        bubble("assistant", message);
-        updateVoiceModeUi(message, "error");
-        setFace("error");
-      } finally {
-        sending = false;
-        sendButton.disabled = false;
-        mic.disabled = voiceModeActive;
-        updateVoiceActionButtons();
-      }
-    }
-
-    async function repeatVoiceAttempt() {
-      if (sending || tutorSpeechBusy) return;
-      if (!voiceModeActive) {
-        await startVoiceMode();
-        return;
-      }
-      if (realtimeActive) {
-        setRealtimeMicEnabled(true);
-        updateVoiceModeUi("Слушаю...", "listening");
-        setFace("listening");
-        return;
-      }
-      await startRecording(true);
-    }
-
     mic.onclick = toggleRecording;
     voiceModeButton.onclick = handleVoiceModeButton;
-    voiceRepeatButton.onclick = () => {
-      if (!lastTutorReply || sending || tutorSpeechBusy) return;
-      haptic();
-      speakTutor(lastTutorReply, null, true, voicePlaybackSpeed);
-    };
-    voiceSlowerButton.onclick = () => {
-      if (!lastTutorReply || sending || tutorSpeechBusy) return;
-      haptic();
-      voicePlaybackSpeed = voicePlaybackSpeed < 0.9 ? 0.94 : 0.86;
-      updateVoiceActionButtons();
-      speakTutor(lastTutorReply, null, true, voicePlaybackSpeed);
-    };
-    voiceAgainButton.onclick = () => {
-      haptic();
-      repeatVoiceAttempt().catch(error => {
-        const message = friendlyVoiceError(error, "Не удалось включить голос. Попробуй ещё раз.");
-        bubble("assistant", message);
-        updateVoiceModeUi(message, "error");
-        setFace("error");
-      });
-    };
-    voiceNextButton.onclick = () => {
-      haptic();
-      askNextVoiceQuestion();
-    };
     sendButton.onclick = send;
     input.addEventListener("keypress", e => { if (e.key === "Enter") send(); });
     setBack(() => {

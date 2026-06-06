@@ -147,8 +147,6 @@ class LessonEngineTests(unittest.TestCase):
         self.assertIn('id="voiceLessonStrip"', app)
         self.assertIn("renderLessonState(result.lesson_state)", app)
         self.assertIn("VOICE_STATE_LABELS", app)
-        self.assertIn('id="voiceRepeat"', app)
-        self.assertIn('id="voiceSlower"', app)
         self.assertIn("friendlyVoiceError", app)
         self.assertIn("microphone_denied", app)
         self.assertIn("estimateRealtimeSpeechMs(text) + 400", app)

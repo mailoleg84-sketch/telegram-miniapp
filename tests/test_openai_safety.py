@@ -265,11 +265,9 @@ class OpenAISafetyTests(unittest.TestCase):
             "let tutorSpeechBusy = false;",
             "let tutorSpeechId = 0;",
             "function tutorAvatarHtml()",
-            "tutor-avatar-v2.jpg",
+            "tutor-girl-v1.jpg",
             "avatar-glow",
             "voice-status-card",
-            "voiceAgain",
-            "voiceNext",
             "VOICE_STATUS_UI",
             "faceModeForVoiceState",
             "\"error\"",
@@ -283,7 +281,6 @@ class OpenAISafetyTests(unittest.TestCase):
             "function setRealtimeAssistantSpeakingSafe(active)",
             "setRealtimeMicEnabled(false);",
             "stopTutorSpeech();",
-            "if (!lastTutorReply || sending || tutorSpeechBusy) return;",
         )
         for marker in required_markers:
             self.assertIn(marker, app_js, marker)
