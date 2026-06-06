@@ -995,13 +995,13 @@ function renderMenu() {
         </button>
         <button class="action-tile progress" id="progressHub">
           <span>Прогресс</span>
-          <b>Достижения и отчет</b>
-          <small>история, рейтинг, родительский отчет</small>
+          <b>Достижения</b>
+          <small>серии, бейджи, рейтинг</small>
         </button>
-        <button class="action-tile profile" id="profile">
-          <span>Аккаунт</span>
-          <b>Профиль</b>
-          <small>уровень, данные, выход</small>
+        <button class="action-tile profile" id="parentZone">
+          <span>Родителям</span>
+          <b>Кабинет родителя</b>
+          <small>отчёт, история, аккаунт</small>
         </button>
       </div>
       ${state.me.is_admin ? `
@@ -1017,7 +1017,7 @@ function renderMenu() {
   document.getElementById("chat").onclick = () => { haptic(); renderChat(); };
   document.getElementById("learnHub").onclick = () => { haptic(); renderLearningHub(); };
   document.getElementById("progressHub").onclick = () => { haptic(); renderProgressHub(); };
-  document.getElementById("profile").onclick = () => { haptic(); renderProfile(); };
+  document.getElementById("parentZone").onclick = () => { haptic(); renderParentZone(); };
   const adminPanel = document.getElementById("adminPanel");
   if (adminPanel) adminPanel.onclick = () => { haptic(); renderAdminPanel(); };
   loadLearningPath();
@@ -1086,14 +1086,6 @@ function renderProgressHub() {
           <b>Достижения</b>
           <small>серии, бейджи, следующий шаг</small>
         </button>
-        <button class="action-tile report" id="report">
-          <b>Отчет</b>
-          <small>что получается и что повторить</small>
-        </button>
-        <button class="action-tile history" id="history">
-          <b>История занятий</b>
-          <small>уроки, слова, тесты</small>
-        </button>
         <button class="action-tile leaderboard-tile" id="leaderboard">
           <b>Рейтинг</b>
           <small>место среди учеников</small>
@@ -1102,10 +1094,95 @@ function renderProgressHub() {
     </div>`;
 
   document.getElementById("motivation").onclick = () => { haptic(); renderMotivation(); };
-  document.getElementById("report").onclick = () => { haptic(); renderParentReport(); };
-  document.getElementById("history").onclick = () => { haptic(); renderActivityHistory(); };
   document.getElementById("leaderboard").onclick = () => { haptic(); renderLeaderboard(); };
   loadMotivationPreview();
+}
+
+// Кабинет родителя: отдельная зона с детским gate «реши пример», собирающая
+// отчёт, историю занятий и аккаунт ребёнка в одном месте.
+let parentZoneUnlocked = false;
+
+function renderParentGate() {
+  setBack(renderMenu);
+  tg.MainButton.hide();
+  const a = 3 + Math.floor(Math.random() * 6); // 3..8
+  const b = 4 + Math.floor(Math.random() * 6); // 4..9
+  const answer = a + b;
+  const options = [answer, answer + 1, answer - 2, answer + 3]
+    .sort(() => Math.random() - 0.5);
+  app.innerHTML = `
+    <div class="screen">
+      <h1>Раздел для родителей</h1>
+      <div class="card">
+        <p class="hint">Этот раздел для родителей. Чтобы войти, реши пример.</p>
+        <div class="big mt-12">${a} + ${b} = ?</div>
+      </div>
+      <div class="action-list mt-12">
+        ${options.map(value => `
+          <button class="btn btn-secondary parent-gate-opt" data-value="${value}">${value}</button>
+        `).join("")}
+      </div>
+    </div>`;
+  document.querySelectorAll(".parent-gate-opt").forEach(button => {
+    button.onclick = () => {
+      if (Number(button.dataset.value) === answer) {
+        parentZoneUnlocked = true;
+        haptic("success");
+        renderParentZone();
+      } else {
+        haptic("error");
+        button.classList.remove("btn-secondary");
+        button.classList.add("btn-wrong");
+        button.disabled = true;
+      }
+    };
+  });
+}
+
+function renderParentZone() {
+  setBack(renderMenu);
+  tg.MainButton.hide();
+  if (!parentZoneUnlocked) {
+    renderParentGate();
+    return;
+  }
+  const u = state.me.user;
+  app.innerHTML = `
+    <div class="screen">
+      <h1>Кабинет родителя</h1>
+      <div class="card">
+        <b>${esc(u.child_name)}</b>
+        <p class="hint mt-8">${esc(u.age_label || "")} · ${esc(u.goal_label || "Английский")} · ${esc(u.level_label || "Beginner / A1")}</p>
+        <div class="stat-row"><span>Баллы</span><b>${u.points}</b></div>
+        <div class="stat-row"><span>Тест уровня</span><b>${u.level_test_completed ? "пройден" : "не пройден"}</b></div>
+      </div>
+
+      <div class="section-label">Прогресс ребёнка</div>
+      <div class="hub-grid">
+        <button class="action-tile report" id="pzReport">
+          <b>Отчёт</b>
+          <small>что получается и что повторить</small>
+        </button>
+        <button class="action-tile history" id="pzHistory">
+          <b>История занятий</b>
+          <small>уроки, слова, тесты</small>
+        </button>
+      </div>
+
+      <div class="section-label">Аккаунт</div>
+      <div class="action-list">
+        <button class="action-row profile" id="pzProfile">
+          <span>Аккаунт</span>
+          <b>Профиль и данные</b>
+          <small>уровень, сброс результатов, выход</small>
+        </button>
+      </div>
+
+      <p class="hint mt-12">Занятия безопасны и подобраны по возрасту. Личные данные ребёнка приложение не запрашивает.</p>
+    </div>`;
+  document.getElementById("pzReport").onclick = () => { haptic(); renderParentReport(); };
+  document.getElementById("pzHistory").onclick = () => { haptic(); renderActivityHistory(); };
+  document.getElementById("pzProfile").onclick = () => { haptic(); renderProfile(); };
 }
 
 async function renderLevelTestIntro({ afterRegistration = false } = {}) {
@@ -3899,7 +3976,7 @@ async function renderMotivation() {
 }
 
 async function renderParentReport() {
-  setBack(renderProgressHub);
+  setBack(renderParentZone);
   loading();
   try {
     const data = await api("/api/parent/report", "GET");
@@ -4003,7 +4080,7 @@ function groupHistoryEvents(events) {
 }
 
 async function renderActivityHistory() {
-  setBack(renderProgressHub);
+  setBack(renderParentZone);
   loading();
   try {
     const data = await api("/api/activity/history", "GET");
@@ -4474,7 +4551,7 @@ async function renderAdminUserDetail(userId) {
 }
 
 async function renderProfile() {
-  setBack(renderMenu);
+  setBack(renderParentZone);
   loading();
   try {
     state.me = await api("/api/me", "GET");

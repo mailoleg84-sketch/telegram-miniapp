@@ -137,13 +137,25 @@ class OpenAISafetyTests(unittest.TestCase):
 
         progress_back_screens = (
             "async function renderMotivation",
-            "async function renderParentReport",
-            "async function renderActivityHistory",
             "async function renderLeaderboard",
         )
         for marker in progress_back_screens:
             start = app_js.index(marker)
             self.assertIn("setBack(renderProgressHub)", app_js[start:start + 180], marker)
+
+        # Отчёт, история и профиль живут в кабинете родителя и возвращаются в него.
+        parent_zone_back_screens = (
+            "async function renderParentReport",
+            "async function renderActivityHistory",
+            "async function renderProfile",
+        )
+        for marker in parent_zone_back_screens:
+            start = app_js.index(marker)
+            self.assertIn("setBack(renderParentZone)", app_js[start:start + 180], marker)
+
+        self.assertIn("function renderParentZone()", app_js)
+        self.assertIn("function renderParentGate()", app_js)
+        self.assertEqual(app_js.count('id="parentZone"'), 1)
 
         forbidden_server_routes = (
             'next_action = "chat"',
