@@ -18,6 +18,7 @@ import database
 from config import (
     ADMIN_USER_IDS,
     AGE_GROUPS,
+    AI_DAILY_MESSAGE_LIMIT,
     AI_RATE_LIMIT_PER_MINUTE,
     API_RATE_LIMIT_PER_MINUTE,
     APP_VERSION,
@@ -959,16 +960,36 @@ async def _read_audio_upload(request: web.Request) -> tuple[bytes, str, str]:
 
 def _chat_usage_payload(stats) -> dict:
     used = int(stats["requests"] if stats else 0)
+    limit = AI_DAILY_MESSAGE_LIMIT
+    unlimited = limit <= 0
+    remaining = None if unlimited else max(0, limit - used)
     return {
         "used_today": used,
-        "daily_limit": None,
-        "remaining_today": None,
-        "unlimited": True,
+        "daily_limit": None if unlimited else limit,
+        "remaining_today": remaining,
+        "unlimited": unlimited,
+        "limit_reached": (not unlimited) and used >= limit,
         "input_tokens_today": int(stats["input_tokens"] if stats else 0),
         "output_tokens_today": int(stats["output_tokens"] if stats else 0),
         "total_tokens_today": int(stats["total_tokens"] if stats else 0),
         "cost_usd_today": round(float(stats["cost_usd"] if stats else 0), 6),
     }
+
+
+def _ai_daily_limit_reached(stats) -> bool:
+    """True, если включён бесплатный лимит AI-уроков и он на сегодня исчерпан."""
+    limit = AI_DAILY_MESSAGE_LIMIT
+    if limit <= 0:
+        return False
+    return int(stats["requests"] if stats else 0) >= limit
+
+
+def _ai_limit_message() -> str:
+    return (
+        "На сегодня бесплатные занятия с репетитором закончились. "
+        "Возвращайся завтра! А пока можно учить слова, проходить тесты и "
+        "играть — это без ограничений."
+    )
 
 
 def _daily_lesson_payload(status, reward_points: int = 0, points: int | None = None) -> dict:
@@ -2979,6 +3000,13 @@ async def api_chat_send(request: web.Request):
         text = text[:1000]
 
     stats = await database.get_ai_usage_today(user_id)
+    if _ai_daily_limit_reached(stats):
+        return web.json_response({
+            "reply": _ai_limit_message(),
+            "usage": _chat_usage_payload(stats),
+            "lesson_state": {},
+            "limit_reached": True,
+        })
 
     user = await database.get_user(user_id)
     user_name = user["name"] if user else "друг"
@@ -3092,6 +3120,19 @@ async def api_audio_speech(request: web.Request):
 
 async def _voice_text_turn_payload(user_id: int, text: str) -> dict:
     stats = await database.get_ai_usage_today(user_id)
+    if _ai_daily_limit_reached(stats):
+        gate_user = await database.get_user(user_id)
+        lesson_state = await _ensure_voice_lesson_state(user_id, gate_user)
+        return {
+            "text": text,
+            "reply": _ai_limit_message(),
+            "audio_base64": "",
+            "audio_content_type": "",
+            "audio_error": "",
+            "usage": _chat_usage_payload(stats),
+            "lesson_state": public_lesson_state(lesson_state),
+            "limit_reached": True,
+        }
     user = await database.get_user(user_id)
     user_name = user["name"] if user else "друг"
 
@@ -3270,6 +3311,13 @@ def _realtime_prompt_context(user, history: list[dict], lesson_state: dict | Non
 async def api_realtime_token(request: web.Request):
     user_id = request["tg_user"]["id"]
     user = await _current_user_or_404(request)
+    gate_stats = await database.get_ai_usage_today(user_id)
+    if _ai_daily_limit_reached(gate_stats):
+        return web.json_response({
+            "limit_reached": True,
+            "error": _ai_limit_message(),
+            "usage": _chat_usage_payload(gate_stats),
+        }, status=403)
     rows = await database.get_recent_messages(user_id, limit=CHAT_HISTORY_LIMIT)
     history = [{"role": r["role"], "content": r["content"]} for r in rows]
     age_label = _age_label(user["age_group"]) if user else ""

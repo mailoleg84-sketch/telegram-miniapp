@@ -2147,7 +2147,12 @@ async function renderChat() {
           <h2 style="margin:0">Репетитор</h2>
           <button class="chat-reset" id="reset">Очистить</button>
         </div>
-        <div class="chat-meta">Сообщений сегодня: ${data.usage?.used_today ?? 0} · без лимита</div>
+        <div class="chat-meta">${(() => {
+          const u = data.usage || {};
+          if (u.unlimited || u.daily_limit == null) return `Сообщений сегодня: ${u.used_today ?? 0}`;
+          if (u.limit_reached) return `Бесплатные занятия на сегодня закончились (${u.daily_limit}/день)`;
+          return `Осталось бесплатных сегодня: ${u.remaining_today} из ${u.daily_limit}`;
+        })()}</div>
         <div class="tutor-stage">
           ${tutorAvatarHtml()}
           <div class="voice-status-card" id="voiceStatusCard" data-state="idle">
