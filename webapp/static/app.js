@@ -2241,11 +2241,18 @@ function tutorCharacterSvg() {
 }
 
 function tutorAvatarHtml() {
-  // Анимированный 3D-персонаж (девушка-репетитор) для всех возрастов:
-  // статичная картинка + свечение по состоянию + мягкое «дыхание» (CSS).
+  // Возрастное разделение аватара репетитора:
+  //  • 5-10 (CHARACTER_AGE_GROUPS) — милый 3D-мультяшный персонаж;
+  //  • 11-18 и остальные — реалистичная молодая учительница.
+  // Обе картинки: статичное фото + свечение по состоянию + мягкое «дыхание» (CSS).
+  const ageGroup = state.me?.user?.age_group || "";
+  const isKids = CHARACTER_AGE_GROUPS.includes(ageGroup);
+  const src = isKids
+    ? "/static/assets/tutor-kids-5_10.jpg?v=20260606-kids-v115"
+    : "/static/assets/tutor-teen-11_18.jpg?v=20260606-kids-v115";
   return `
     <div class="tutor-face idle is-photo" id="tutorFace" data-state="idle" aria-hidden="true">
-      <img class="tutor-avatar-img" src="/static/assets/tutor-girl-v1.jpg?v=20260606-kids-v113" alt="">
+      <img class="tutor-avatar-img" src="${src}" alt="">
       <span class="avatar-glow"></span>
     </div>`;
 }
