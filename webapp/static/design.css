@@ -150,6 +150,29 @@
   --r-control: 10px;
 }
 
+/* Возрастной масштаб: малышам — крупнее, просторнее, выше тап-цели;
+   подросткам — компактнее и взрослее. */
+:root[data-age="5_7"] .dashboard-hero h1 { font-size: 33px; }
+:root[data-age="5_7"] .action-tile b,
+:root[data-age="5_7"] .action-row b { font-size: 19px; }
+:root[data-age="5_7"] .action-tile,
+:root[data-age="5_7"] .action-row { min-height: 130px; }
+:root[data-age="5_7"] .btn,
+:root[data-age="5_7"] .chat-send,
+:root[data-age="5_7"] .voice-mode-toggle { min-height: 56px; font-size: 17px; }
+:root[data-age="5_7"] .word-main { font-size: 34px; }
+:root[data-age="5_7"] .points-orb b { font-size: 30px; }
+
+:root[data-age="8_10"] .dashboard-hero h1 { font-size: 31px; }
+:root[data-age="8_10"] .action-tile,
+:root[data-age="8_10"] .action-row { min-height: 126px; }
+
+:root[data-age="14_18"] .dashboard-hero h1 { font-size: 26px; }
+:root[data-age="14_18"] .action-tile,
+:root[data-age="14_18"] .action-row { min-height: 108px; }
+:root[data-age="14_18"] .btn,
+:root[data-age="14_18"] .chat-send { min-height: 48px; }
+
 /* ===================== ГЛОБАЛЬНЫЕ ПОВЕРХНОСТИ ===================== */
 html,
 body {
