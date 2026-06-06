@@ -3480,45 +3480,84 @@ h2 {
 }
 
 /* Voice tutor face MVP v99: premium stateful practice cockpit */
+.chat-wrap {
+  height: auto;
+  max-height: none;
+  min-height: calc(100dvh - 28px);
+  overflow: visible;
+}
+
 .chat-wrap .tutor-stage {
   position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
-  padding: 20px 14px 14px;
+  gap: 12px;
+  padding: 18px 14px 14px;
   border: 1px solid rgba(22, 135, 232, 0.14);
   background:
-    radial-gradient(circle at 50% 8%, rgba(255, 255, 255, 0.96) 0 24%, rgba(236, 248, 255, 0.80) 25% 48%, transparent 49%),
-    radial-gradient(circle at 8% 18%, rgba(44, 194, 180, 0.12), transparent 35%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 250, 255, 0.92));
+    linear-gradient(180deg, #eaf7fc 0%, #eef8fc 48%, #f8fbff 100%);
 }
 
 .chat-wrap .tutor-stage::before {
-  content: "";
-  position: absolute;
-  inset: -34% -22% auto;
-  height: 210px;
-  pointer-events: none;
-  background:
-    radial-gradient(circle at 50% 50%, rgba(22, 135, 232, 0.12), transparent 58%),
-    radial-gradient(circle at 68% 46%, rgba(52, 199, 89, 0.10), transparent 48%);
-  filter: blur(10px);
+  display: none;
 }
 
 .chat-wrap .tutor-face {
-  width: 168px;
-  height: 168px;
-  margin: 0 auto 10px;
-  border-radius: 46px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(235, 248, 255, 0.88));
-  box-shadow:
-    0 20px 44px rgba(22, 135, 232, 0.18),
-    0 10px 20px rgba(16, 24, 40, 0.10);
+  width: auto;
+  max-width: none;
+  min-width: 0;
+  height: 250px;
+  aspect-ratio: auto;
+  margin: -18px -14px -20px;
+  justify-self: stretch;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .chat-wrap .tutor-avatar-img {
-  transform: scale(1.035);
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  object-fit: cover;
+  object-position: center 18%;
+  transform: none;
   transform-origin: 50% 58%;
-  filter: saturate(1.04) contrast(1.02);
+  filter: saturate(1.02) contrast(1.01);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 78%, rgba(0, 0, 0, 0.88) 86%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 78%, rgba(0, 0, 0, 0.88) 86%, transparent 100%);
+}
+
+.chat-wrap .avatar-state-ring,
+.chat-wrap .avatar-breath,
+.chat-wrap .avatar-listen-wave,
+.chat-wrap .avatar-thinking-dot,
+.chat-wrap .avatar-speech-bars {
+  display: none !important;
+}
+
+.chat-wrap .avatar-mouth-motion {
+  top: 59%;
+}
+
+.chat-wrap .avatar-eyelid,
+.chat-wrap .avatar-brow {
+  width: 8%;
+}
+
+.chat-wrap .avatar-eyelid.left,
+.chat-wrap .avatar-brow.left {
+  left: 40%;
+}
+
+.chat-wrap .avatar-eyelid.right,
+.chat-wrap .avatar-brow.right {
+  right: 40%;
 }
 
 .voice-status-card {
@@ -3714,13 +3753,13 @@ h2 {
 }
 
 .chat-wrap .voice-mode-status {
-  color: var(--premium-muted);
+  display: none;
 }
 
 .chat-wrap .voice-actions {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  width: min(100%, 390px);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(100%, 360px);
 }
 
 .chat-wrap .voice-action {
@@ -3743,8 +3782,19 @@ h2 {
 }
 
 .tutor-face.error .avatar-state-ring {
-  border-color: rgba(255, 112, 88, 0.54);
-  box-shadow: 0 0 0 8px rgba(255, 112, 88, 0.11);
+  display: none;
+}
+
+.chat-wrap .chat-messages {
+  flex: 0 1 auto;
+  min-height: 84px;
+  max-height: 38dvh;
+  overflow-y: auto;
+}
+
+.chat-wrap .chat-input-row {
+  flex: 0 0 auto;
+  width: 100%;
 }
 
 .tutor-face.error .avatar-mouth-motion {

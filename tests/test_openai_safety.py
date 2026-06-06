@@ -252,7 +252,7 @@ class OpenAISafetyTests(unittest.TestCase):
             "let tutorSpeechBusy = false;",
             "let tutorSpeechId = 0;",
             "function tutorAvatarHtml()",
-            "tutor-avatar-v1.jpg",
+            "tutor-avatar-v2.jpg",
             "avatar-eyelid",
             "avatar-speech-bars",
             "voice-status-card",
@@ -277,6 +277,9 @@ class OpenAISafetyTests(unittest.TestCase):
         for marker in required_markers:
             self.assertIn(marker, app_js, marker)
 
+        self.assertNotIn('<span class="avatar-state-ring">', app_js)
+        self.assertNotIn('<span class="avatar-breath">', app_js)
+        self.assertNotIn('<span class="avatar-listen-wave">', app_js)
         self.assertIn("voiceUiState === \"listening\" || voiceUiState === \"ready\"", app_js)
         self.assertIn("!realtimeMicIsLive()", app_js)
 

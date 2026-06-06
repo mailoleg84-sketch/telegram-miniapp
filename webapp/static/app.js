@@ -2084,10 +2084,7 @@ async function renderDailyFinish(phraseWasCorrect = true, phrase = "") {
 function tutorAvatarHtml() {
   return `
     <div class="tutor-face idle" id="tutorFace" aria-hidden="true">
-      <img class="tutor-avatar-img" src="/static/assets/tutor-avatar-v1.jpg?v=20260606-kids-v99" alt="">
-      <span class="avatar-state-ring"></span>
-      <span class="avatar-breath"></span>
-      <span class="avatar-listen-wave"></span>
+      <img class="tutor-avatar-img" src="/static/assets/tutor-avatar-v2.jpg?v=20260606-kids-v100" alt="">
       <span class="avatar-eyelid left"></span>
       <span class="avatar-eyelid right"></span>
       <span class="avatar-brow left"></span>
@@ -2161,6 +2158,7 @@ async function renderChat() {
       </div>`;
     const box = document.getElementById("messages");
     const input = document.getElementById("msg");
+    const tutorStage = document.querySelector(".tutor-stage");
     const face = document.getElementById("tutorFace");
     const mic = document.getElementById("mic");
     const sendButton = document.getElementById("send");
@@ -2528,6 +2526,7 @@ async function renderChat() {
       voiceModeButton.classList.toggle("active", voiceModeActive);
       voiceModeButton.dataset.state = voiceUiState;
       voiceModeButton.disabled = ["listening", "processing", "thinking", "requesting_microphone", "reconnecting"].includes(voiceUiState);
+      tutorStage.dataset.state = voiceUiState;
       voiceStatus.dataset.state = voiceUiState;
       voiceModeText.textContent = voiceButtonLabel(voiceUiState);
       voiceStatus.textContent = status || VOICE_STATE_LABELS[voiceUiState] || (voiceModeActive ? "Слушаю..." : "Готова слушать");
