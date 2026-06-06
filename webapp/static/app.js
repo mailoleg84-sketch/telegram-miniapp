@@ -2245,18 +2245,6 @@ async function renderChat() {
               <button class="voice-action" id="voiceNext" type="button" disabled>Следующий вопрос</button>
             </div>
           </div>
-          <div class="voice-feedback-card" id="voiceFeedbackCard" hidden>
-            <div class="voice-feedback-head">
-              <span>Подсказка репетитора</span>
-              <b id="voiceFeedbackMood">Хорошая попытка</b>
-            </div>
-            <div class="voice-feedback-grid">
-              <div><span>You said</span><b id="feedbackYouSaid">—</b></div>
-              <div><span>Better</span><b id="feedbackBetter">—</b></div>
-              <div><span>Tip</span><b id="feedbackTip">Говори коротко: одно предложение за раз.</b></div>
-              <div><span>Try</span><b id="feedbackTry">Повтори за мной.</b></div>
-            </div>
-          </div>
           <div class="voice-lesson-strip" id="voiceLessonStrip">
             <div class="voice-lesson-copy">
               <span id="voiceLessonPhase">Начало урока</span>
@@ -2289,12 +2277,6 @@ async function renderChat() {
     const voiceSlowerButton = document.getElementById("voiceSlower");
     const voiceAgainButton = document.getElementById("voiceAgain");
     const voiceNextButton = document.getElementById("voiceNext");
-    const voiceFeedbackCard = document.getElementById("voiceFeedbackCard");
-    const voiceFeedbackMood = document.getElementById("voiceFeedbackMood");
-    const feedbackYouSaid = document.getElementById("feedbackYouSaid");
-    const feedbackBetter = document.getElementById("feedbackBetter");
-    const feedbackTip = document.getElementById("feedbackTip");
-    const feedbackTry = document.getElementById("feedbackTry");
     const voiceLessonPhase = document.getElementById("voiceLessonPhase");
     const voiceLessonTopic = document.getElementById("voiceLessonTopic");
     const voiceLessonProgress = document.getElementById("voiceLessonProgress");
@@ -2550,19 +2532,10 @@ async function renderChat() {
     }
 
     function showVoiceFeedback(userText, reply) {
-      const said = compactFeedbackText(userText, "Скажи короткую фразу.");
-      const better = compactFeedbackText(firstEnglishPhrase(reply), "Повтори лучшую фразу из ответа.");
+      // Карточка-подсказка убрана как лишняя; оставляем только живую реакцию
+      // аватара: похвала, мягкое исправление или поддержка по тону ответа.
       const isPraise = /great|excellent|well done|perfect|отлично|молодец|здорово|хорош/i.test(reply);
       const isCorrection = /say:|better|correct|исправ|лучше|правильно|ошиб/i.test(reply);
-      voiceFeedbackCard.hidden = false;
-      voiceFeedbackCard.dataset.tone = isPraise ? "praise" : isCorrection ? "correcting" : "coach";
-      voiceFeedbackMood.textContent = isPraise ? "Отличная попытка" : isCorrection ? "Мягкое исправление" : "Продолжаем урок";
-      feedbackYouSaid.textContent = said;
-      feedbackBetter.textContent = better;
-      feedbackTip.textContent = isCorrection
-        ? "Исправь только одну маленькую деталь и повтори."
-        : "Говори коротко: одно предложение за раз.";
-      feedbackTry.textContent = better.includes("Повтори") ? "Скажи ещё раз чуть увереннее." : `Repeat: ${better}`;
       setFace(isPraise ? "praising" : isCorrection ? "correcting" : "encouraging");
     }
 

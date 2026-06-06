@@ -19,7 +19,7 @@ services:
       - key: OPENAI_API_KEY
         sync: false        # ключ OpenAI API из platform.openai.com
       - key: OPENAI_MODEL
-        value: gpt-5.4-mini # оптимальный баланс качества и цены для репетитора
+        value: gpt-4o-mini # дёшево + быстро (без reasoning-паузы) + грамотно для коротких реплик
       - key: AI_DAILY_MESSAGE_LIMIT
         value: "0"         # 0 = без дневного лимита сообщений
       - key: API_RATE_LIMIT_PER_MINUTE

@@ -268,7 +268,6 @@ class OpenAISafetyTests(unittest.TestCase):
             "tutor-avatar-v2.jpg",
             "avatar-glow",
             "voice-status-card",
-            "voice-feedback-card",
             "voiceAgain",
             "voiceNext",
             "VOICE_STATUS_UI",
