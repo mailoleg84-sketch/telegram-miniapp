@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AI English Tutor Kids — новый дизайн (прототип)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1c2440; --ink-soft:#6b7394; --line:#eceef6;
+    --bg:#f4f6fd; --card:#ffffff;
+    --brand:#6c5ce7; --brand-2:#8b7bff; --brand-soft:#efecff;
+    --coral:#ff6b8b; --amber:#ffb23e; --mint:#22c8a8; --sky:#3aa0ff;
+    --shadow:0 14px 34px rgba(28,36,64,.10);
+    --shadow-sm:0 6px 16px rgba(28,36,64,.08);
+    --r:24px; --r-sm:16px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;font-family:'Nunito',system-ui,Segoe UI,Roboto,sans-serif;background:#e7ebf7;color:var(--ink);
+    min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:18px 0 40px}
+  .wrap{width:100%;max-width:430px;padding:0 6px}
+  .note{max-width:430px;color:#586089;font-size:13px;text-align:center;margin:0 auto 14px;line-height:1.5}
+  /* phone frame */
+  .phone{background:var(--bg);border-radius:34px;box-shadow:0 30px 70px rgba(28,36,64,.22);
+    overflow:hidden;border:1px solid #dfe4f3;min-height:760px;position:relative}
+  .statusbar{height:34px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#9aa2c2;
+    font-weight:800;letter-spacing:.5px}
+  .screen{padding:6px 18px 96px;display:none;animation:in .35s ease}
+  .screen.active{display:block}
+  @keyframes in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+  /* top tabs to switch mockups */
+  .tabs{display:flex;gap:6px;justify-content:center;margin:0 auto 16px;flex-wrap:wrap;max-width:430px}
+  .tabs button{border:0;background:#fff;color:var(--ink-soft);font-weight:800;font-family:inherit;
+    padding:9px 15px;border-radius:999px;cursor:pointer;font-size:13px;box-shadow:var(--shadow-sm);transition:.15s}
+  .tabs button.on{background:var(--brand);color:#fff;box-shadow:0 8px 20px rgba(108,92,231,.4)}
+
+  /* shared bits */
+  .h1{font-size:26px;font-weight:900;margin:4px 0 2px}
+  .sub{color:var(--ink-soft);font-weight:700;font-size:14px;margin:0 0 16px}
+  .card{background:var(--card);border-radius:var(--r);padding:18px;box-shadow:var(--shadow);margin-bottom:14px}
+  .pill{display:inline-flex;align-items:center;gap:6px;background:var(--brand-soft);color:var(--brand);
+    font-weight:800;font-size:12px;padding:6px 12px;border-radius:999px}
+  .btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;border:0;cursor:pointer;
+    font-family:inherit;font-weight:900;font-size:17px;color:#fff;padding:16px;border-radius:18px;
+    background:linear-gradient(135deg,var(--brand),var(--brand-2));box-shadow:0 12px 26px rgba(108,92,231,.42);transition:.12s}
+  .btn:active{transform:translateY(1px) scale(.99)}
+  .btn.coral{background:linear-gradient(135deg,var(--coral),#ff8aa3);box-shadow:0 12px 26px rgba(255,107,139,.4)}
+  .btn.ghost{background:#fff;color:var(--brand);box-shadow:var(--shadow-sm)}
+
+  /* HOME */
+  .hero{background:linear-gradient(135deg,#6c5ce7,#8b7bff 60%,#a78bff);border-radius:28px;padding:20px;color:#fff;
+    position:relative;overflow:hidden;box-shadow:0 18px 40px rgba(108,92,231,.4)}
+  .hero:after{content:"";position:absolute;right:-40px;top:-40px;width:160px;height:160px;border-radius:50%;
+    background:rgba(255,255,255,.14)}
+  .hero:before{content:"";position:absolute;right:34px;bottom:-50px;width:120px;height:120px;border-radius:50%;
+    background:rgba(255,255,255,.10)}
+  .hero .pill{background:rgba(255,255,255,.22);color:#fff}
+  .hero h2{font-size:27px;margin:10px 0 2px;font-weight:900}
+  .hero p{margin:0;opacity:.92;font-weight:700;font-size:14px}
+  .streak{display:flex;align-items:center;gap:14px;margin-top:16px}
+  .ring{--p:62;width:64px;height:64px;border-radius:50%;flex:0 0 64px;display:grid;place-items:center;
+    background:conic-gradient(#fff calc(var(--p)*1%),rgba(255,255,255,.25) 0);position:relative}
+  .ring i{width:50px;height:50px;border-radius:50%;background:#7a6bf0;display:grid;place-items:center;
+    font-style:normal;font-weight:900;font-size:18px}
+  .gems{margin-left:auto;text-align:right}
+  .gems b{font-size:22px;font-weight:900;display:block}
+  .gems span{font-size:12px;opacity:.85;font-weight:700}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .tile{background:var(--card);border-radius:22px;padding:16px;box-shadow:var(--shadow-sm);cursor:pointer;
+    border:1px solid var(--line);transition:.15s;position:relative;overflow:hidden}
+  .tile:active{transform:scale(.98)}
+  .tile .ic{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;font-size:26px;margin-bottom:10px}
+  .tile b{font-size:16px;font-weight:900;display:block}
+  .tile small{color:var(--ink-soft);font-weight:700;font-size:12px}
+  .ic.a{background:#efecff}.ic.b{background:#e3fbf4}.ic.c{background:#fff0e2}.ic.d{background:#ffe9ef}
+  .ic.e{background:#e6f2ff}.ic.f{background:#f3ecff}
+  .sect{font-weight:900;font-size:14px;color:var(--ink-soft);margin:18px 4px 10px;text-transform:uppercase;letter-spacing:.6px}
+
+  /* WORD CARD */
+  .wcard{text-align:center;padding-top:8px}
+  .wimg{width:188px;height:188px;border-radius:30px;margin:6px auto 16px;display:grid;place-items:center;font-size:104px;
+    background:radial-gradient(circle at 32% 26%,#fff,#eef0ff);box-shadow:inset 0 0 0 1px #ecebff,0 16px 30px rgba(28,36,64,.10)}
+  .word-en{font-size:38px;font-weight:900;letter-spacing:-.5px}
+  .word-tr{color:var(--brand);font-weight:800;font-size:17px;margin-top:2px}
+  .word-ru{font-size:19px;font-weight:800;margin-top:8px}
+  .example{background:#f6f7fd;border-radius:16px;padding:14px 16px;margin-top:16px;text-align:left;
+    display:flex;align-items:center;gap:12px;font-weight:800}
+  .speak{width:46px;height:46px;border-radius:50%;flex:0 0 46px;border:0;cursor:pointer;color:#fff;font-size:20px;
+    background:linear-gradient(135deg,var(--sky),#5bb0ff);box-shadow:0 8px 18px rgba(58,160,255,.4)}
+  .dots{display:flex;gap:7px;justify-content:center;margin:18px 0}
+  .dots i{width:9px;height:9px;border-radius:50%;background:#d8ddf0}
+  .dots i.on{background:var(--brand);width:24px;border-radius:999px}
+
+  /* TUTOR */
+  .tutor-stage{background:linear-gradient(160deg,#eef0ff,#e3fbf4);border-radius:28px;padding:24px;text-align:center;
+    box-shadow:var(--shadow);position:relative;overflow:hidden}
+  .avatar{width:150px;height:150px;border-radius:40px;margin:6px auto 4px;overflow:hidden;position:relative;
+    box-shadow:0 16px 30px rgba(28,36,64,.16);background:#fff}
+  .avatar .face{width:100%;height:100%;display:grid;place-items:center;font-size:96px}
+  .glow{position:absolute;inset:-6px;border-radius:46px;box-shadow:0 0 0 6px rgba(108,92,231,.18);animation:pulse 2s infinite}
+  @keyframes pulse{50%{box-shadow:0 0 0 12px rgba(108,92,231,.05)}}
+  .status{display:inline-flex;gap:8px;align-items:center;background:#fff;border-radius:999px;padding:8px 16px;
+    font-weight:900;margin-top:8px;box-shadow:var(--shadow-sm)}
+  .status .live{width:9px;height:9px;border-radius:50%;background:var(--mint);box-shadow:0 0 0 4px rgba(34,200,168,.25)}
+  .bubble{background:#fff;border-radius:18px 18px 18px 6px;padding:14px 16px;text-align:left;font-weight:700;
+    box-shadow:var(--shadow-sm);margin-top:16px}
+  .bubble b{color:var(--brand)}
+
+  /* QUIZ */
+  .q-prompt{text-align:center;padding:20px}
+  .q-word{font-size:34px;font-weight:900}
+  .opt{display:flex;align-items:center;gap:12px;background:#fff;border-radius:18px;padding:16px 18px;margin-bottom:11px;
+    font-weight:800;font-size:17px;box-shadow:var(--shadow-sm);border:2px solid transparent;cursor:pointer;transition:.12s}
+  .opt:active{transform:scale(.99)}
+  .opt .k{width:30px;height:30px;border-radius:9px;background:#f0f1fa;display:grid;place-items:center;font-size:14px;color:var(--ink-soft)}
+  .opt.ok{border-color:var(--mint);background:#eafff8}.opt.ok .k{background:var(--mint);color:#fff}
+  .opt.no{border-color:#ffd2dc;background:#fff2f5}
+  .qbar{display:flex;gap:5px;margin-bottom:18px}
+  .qbar i{flex:1;height:8px;border-radius:999px;background:#e2e6f4}
+  .qbar i.on{background:var(--brand)}.qbar i.cur{background:var(--brand-2)}
+
+  /* bottom nav */
+  .nav{position:absolute;left:0;right:0;bottom:0;background:rgba(255,255,255,.92);backdrop-filter:blur(10px);
+    border-top:1px solid var(--line);display:flex;justify-content:space-around;padding:10px 8px 16px}
+  .nav a{display:flex;flex-direction:column;align-items:center;gap:3px;color:#aab1cf;font-weight:800;font-size:11px;
+    text-decoration:none;cursor:pointer}
+  .nav a .ni{font-size:22px}
+  .nav a.on{color:var(--brand)}
+</style>
+</head>
+<body>
+  <div class="note">Прототип нового дизайна · кликай вкладки, чтобы переключать экраны. Это макет, прод не затронут.</div>
+  <div class="tabs">
+    <button class="on" data-s="home">🏠 Главная</button>
+    <button data-s="word">📚 Учим слова</button>
+    <button data-s="tutor">🎙 Репетитор</button>
+    <button data-s="quiz">✅ Тест</button>
+  </div>
+
+  <div class="wrap">
+  <div class="phone">
+    <div class="statusbar">9:41 · AI English Tutor Kids</div>
+
+    <!-- HOME -->
+    <section class="screen active" id="home">
+      <div class="hero">
+        <span class="pill">🔥 Серия 5 дней</span>
+        <h2>Привет, Мила!</h2>
+        <p>Beginner · A1 · сегодня учим 4 новых слова</p>
+        <div class="streak">
+          <div class="ring" style="--p:62"><i>62%</i></div>
+          <div><b style="font-weight:900">Маршрут дня</b><div style="opacity:.9;font-weight:700;font-size:13px">осталось 2 шага</div></div>
+          <div class="gems"><b>💎 240</b><span>баллов</span></div>
+        </div>
+      </div>
+
+      <button class="btn" style="margin:16px 0 6px">▶ Продолжить урок дня</button>
+
+      <div class="sect">Практика</div>
+      <div class="grid">
+        <div class="tile"><div class="ic a">📚</div><b>Учим слова</b><small>карточки + тест</small></div>
+        <div class="tile"><div class="ic b">🎙</div><b>Репетитор</b><small>говори вслух</small></div>
+        <div class="tile"><div class="ic c">🎮</div><b>Игры</b><small>закрепить слова</small></div>
+        <div class="tile"><div class="ic d">🔁</div><b>Работа над ошибками</b><small>повторить</small></div>
+        <div class="tile"><div class="ic e">📖</div><b>Словарь</b><small>озвучка</small></div>
+        <div class="tile"><div class="ic f">🏆</div><b>Достижения</b><small>прогресс</small></div>
+      </div>
+      <div class="nav">
+        <a class="on"><span class="ni">🏠</span>Учёба</a>
+        <a><span class="ni">🎙</span>Репетитор</a>
+        <a><span class="ni">📈</span>Прогресс</a>
+        <a><span class="ni">👨‍👩‍👧</span>Родителям</a>
+      </div>
+    </section>
+
+    <!-- WORD -->
+    <section class="screen" id="word">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:8px 2px 6px">
+        <span class="pill">Слово 2 из 4</span>
+        <span style="font-weight:800;color:var(--ink-soft)">⭐ +10</span>
+      </div>
+      <div class="card wcard">
+        <div class="wimg">🦋</div>
+        <div class="word-en">butterfly</div>
+        <div class="word-tr">/ˈbʌtərflaɪ/</div>
+        <div class="word-ru">бабочка</div>
+        <div class="example">
+          <button class="speak">🔊</button>
+          <div><small style="color:var(--ink-soft);font-weight:800">ПРИМЕР</small><br>The butterfly is beautiful.</div>
+        </div>
+      </div>
+      <div class="dots"><i></i><i class="on"></i><i></i><i></i></div>
+      <button class="btn">Дальше →</button>
+      <button class="btn ghost" style="margin-top:10px">Пройти тест по словам</button>
+      <div class="nav">
+        <a class="on"><span class="ni">🏠</span>Учёба</a>
+        <a><span class="ni">🎙</span>Репетитор</a>
+        <a><span class="ni">📈</span>Прогресс</a>
+        <a><span class="ni">👨‍👩‍👧</span>Родителям</a>
+      </div>
+    </section>
+
+    <!-- TUTOR -->
+    <section class="screen" id="tutor">
+      <div class="h1" style="margin:8px 2px 2px">Репетитор</div>
+      <div class="sub">Говори вслух — я слушаю и помогаю</div>
+      <div class="tutor-stage">
+        <div class="avatar"><span class="glow"></span><div class="face">👩‍🏫</div></div>
+        <div class="status"><span class="live"></span>Слушаю...</div>
+        <div class="bubble"><b>Tutor:</b> Hi Mila! Let's talk about animals. What is your favourite animal? 🐱</div>
+      </div>
+      <button class="btn coral" style="margin-top:18px">🎙 Говорить</button>
+      <div style="display:flex;gap:10px;margin-top:10px">
+        <button class="btn ghost" style="font-size:15px">🐢 Медленнее</button>
+        <button class="btn ghost" style="font-size:15px">🔁 Повторить</button>
+      </div>
+      <div class="nav">
+        <a><span class="ni">🏠</span>Учёба</a>
+        <a class="on"><span class="ni">🎙</span>Репетитор</a>
+        <a><span class="ni">📈</span>Прогресс</a>
+        <a><span class="ni">👨‍👩‍👧</span>Родителям</a>
+      </div>
+    </section>
+
+    <!-- QUIZ -->
+    <section class="screen" id="quiz">
+      <div class="h1" style="margin:8px 2px 2px">Тест по словам</div>
+      <div class="sub">Выбери перевод</div>
+      <div class="qbar"><i class="on"></i><i class="cur"></i><i></i><i></i></div>
+      <div class="card q-prompt">
+        <div class="q-word">rainbow</div>
+        <div class="word-tr" style="margin-top:4px">/ˈreɪnboʊ/</div>
+      </div>
+      <div class="opt no"><span class="k">A</span>облако</div>
+      <div class="opt ok"><span class="k">B</span>радуга</div>
+      <div class="opt"><span class="k">C</span>дождь</div>
+      <div class="opt"><span class="k">D</span>солнце</div>
+      <div class="nav">
+        <a class="on"><span class="ni">🏠</span>Учёба</a>
+        <a><span class="ni">🎙</span>Репетитор</a>
+        <a><span class="ni">📈</span>Прогресс</a>
+        <a><span class="ni">👨‍👩‍👧</span>Родителям</a>
+      </div>
+    </section>
+
+  </div>
+  </div>
+
+<script>
+  const tabs=[...document.querySelectorAll('.tabs button')];
+  const screens=[...document.querySelectorAll('.screen')];
+  function show(id){
+    screens.forEach(s=>s.classList.toggle('active',s.id===id));
+    tabs.forEach(t=>t.classList.toggle('on',t.dataset.s===id));
+  }
+  tabs.forEach(t=>t.onclick=()=>show(t.dataset.s));
+  document.querySelectorAll('.nav a').forEach((a,i)=>a.onclick=()=>show(['home','tutor','home','home'][i]||'home'));
+</script>
+</body>
+</html>
