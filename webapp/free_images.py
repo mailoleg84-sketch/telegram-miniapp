@@ -3,7 +3,8 @@
 Pixabay is a curated stock library, so results are clean and relevant for
 vocabulary (unlike a raw CC aggregator). Safety choices for a kids product:
 - ``safesearch=true`` so Pixabay excludes adult content.
-- Prefer ``image_type=illustration`` (kid-friendly clipart), fall back to photos.
+- Prefer ``image_type=photo`` (universal, age-neutral for 5-18), fall back to
+  illustrations (cartoon clipart skews childish for older learners).
 - The caller skips a blocklist of words we never fetch imagery for.
 - We only download from URLs Pixabay returns on the trusted ``pixabay.com`` host;
   the user word influences only the search query, never a download URL.
@@ -59,7 +60,9 @@ async def fetch_word_illustration(word: str) -> tuple[bytes, str] | None:
     headers = {"User-Agent": _USER_AGENT, "Accept": "application/json"}
     try:
         async with aiohttp.ClientSession(headers=headers) as session:
-            for image_type in ("illustration", "photo"):
+            # Фото — универсальный «взрослый» стиль для всех возрастов (5–18);
+            # illustration оставляем фолбэком (мультяшный стиль детскее).
+            for image_type in ("photo", "illustration"):
                 params = {
                     "key": PIXABAY_API_KEY,
                     "q": clean,
