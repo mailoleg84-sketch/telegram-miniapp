@@ -777,6 +777,7 @@ function loading() {
 
 function renderError(message) {
   setBack(null);
+  removeBottomNav();
   app.innerHTML = `
     <div class="screen">
       <div class="error-box"><b>Что-то пошло не так</b><div class="mt-8">${esc(message)}</div></div>
@@ -1010,7 +1011,7 @@ function ensureBottomNav(activeKey = "learn") {
     document.body.appendChild(nav);
     nav.querySelectorAll(".nav-item").forEach(btn => {
       const item = NAV_ITEMS.find(i => i.key === btn.dataset.nav);
-      btn.onclick = () => { haptic(); ensureBottomNav(item.key); item.go(); };
+      btn.onclick = () => { haptic(); item.go(); };
     });
   }
   document.body.classList.add("has-bottom-nav");
@@ -1151,10 +1152,12 @@ function renderProgressHub() {
 
       <div class="hub-grid">
         <button class="action-tile progress" id="motivation">
+          <i class="tile-ic ic-progress">🏆</i>
           <b>Достижения</b>
           <small>серии, бейджи, следующий шаг</small>
         </button>
         <button class="action-tile leaderboard-tile" id="leaderboard">
+          <i class="tile-ic ic-game">🏅</i>
           <b>Рейтинг</b>
           <small>место среди учеников</small>
         </button>
@@ -1229,10 +1232,12 @@ function renderParentZone() {
       <div class="section-label">Прогресс ребёнка</div>
       <div class="hub-grid">
         <button class="action-tile report" id="pzReport">
+          <i class="tile-ic ic-review">📋</i>
           <b>Отчёт</b>
           <small>что получается и что повторить</small>
         </button>
         <button class="action-tile history" id="pzHistory">
+          <i class="tile-ic ic-dict">📅</i>
           <b>История занятий</b>
           <small>уроки, слова, тесты</small>
         </button>
@@ -1241,9 +1246,11 @@ function renderParentZone() {
       <div class="section-label">Аккаунт</div>
       <div class="action-list">
         <button class="action-row profile" id="pzProfile">
-          <span>Аккаунт</span>
-          <b>Профиль и данные</b>
-          <small>уровень, сброс результатов, выход</small>
+          <i class="tile-ic ic-parent">👤</i>
+          <div class="action-row-text">
+            <b>Профиль и данные</b>
+            <small>уровень, сброс результатов, выход</small>
+          </div>
         </button>
       </div>
 
