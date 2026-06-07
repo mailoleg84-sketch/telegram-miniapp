@@ -252,10 +252,23 @@ async def init_db() -> None:
         await _seed_words(conn)
 
 
+# Защита в глубину: ни одно из этих слов не попадёт в детский банк, даже если
+# просочится в data-файл. Слова не в этом списке также удаляются из БД сидером.
+BLOCKED_SEED_WORDS = frozenset({
+    "fuck", "fucking", "fucked", "fuckin", "fucker", "motherfucker", "shit", "shitty",
+    "bullshit", "crap", "ass", "asshole", "arse", "bitch", "bastard", "dick", "cock",
+    "prick", "pussy", "cunt", "slut", "whore", "hoe", "piss", "pissed", "sex", "sexy",
+    "sexual", "porn", "porno", "nude", "naked", "penis", "vagina", "boobs", "boob",
+    "tits", "nipple", "orgasm", "masturbate", "horny", "erotic", "condom", "rape",
+    "rapist", "damn", "goddamn", "nigger", "faggot", "retard",
+})
+
+
 async def _seed_words(conn) -> None:
-    active_words = [item[0] for item in LEARNING_WORDS]
+    source = [item for item in LEARNING_WORDS if item[0].strip().lower() not in BLOCKED_SEED_WORDS]
+    active_words = [item[0] for item in source]
     seed_rows = []
-    for word, translation, example, topic, age_group, transcription in LEARNING_WORDS:
+    for word, translation, example, topic, age_group, transcription in source:
         visual = build_vocabulary_visual(
             word=word,
             translation=translation,
@@ -672,10 +685,11 @@ async def get_random_words(
             """
             SELECT * FROM words
             WHERE id != ALL($1::INTEGER[])
+              AND age_group = $3
             ORDER BY RANDOM()
             LIMIT $2
             """,
-            excluded_ids, count - len(rows),
+            excluded_ids, count - len(rows), age_group,
         )
         rows.extend(fallback_rows)
         return rows
@@ -724,9 +738,10 @@ async def get_words_for_age(age_group: str, count: int, topic: str | None = None
     fallback_rows = await pool.fetch("""
         SELECT * FROM words
         WHERE id != ALL($1::INTEGER[])
+          AND age_group = $3
         ORDER BY RANDOM()
         LIMIT $2
-    """, list(seen_ids), count - len(rows))
+    """, list(seen_ids), count - len(rows), age_group)
     rows.extend(fallback_rows)
     return rows
 
@@ -747,9 +762,10 @@ async def get_word_options(word_id: int, age_group: str, count: int = 3):
     fallback_rows = await pool.fetch("""
         SELECT id, translation FROM words
         WHERE id != ALL($1::INTEGER[])
+          AND age_group = $3
         ORDER BY RANDOM()
         LIMIT $2
-    """, excluded_ids, count - len(rows))
+    """, excluded_ids, count - len(rows), age_group)
     rows.extend(fallback_rows)
     return rows
 

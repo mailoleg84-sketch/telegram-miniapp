@@ -37,7 +37,8 @@ async def _download_image(session: aiohttp.ClientSession, url: str) -> tuple[byt
             if resp.status != 200:
                 return None
             ctype = (resp.headers.get("Content-Type") or "").split(";")[0].strip().lower()
-            if not ctype.startswith("image/"):
+            # SVG отклоняем (вектор XSS): нам нужны только растровые картинки.
+            if not ctype.startswith("image/") or ctype == "image/svg+xml":
                 return None
             clen = resp.headers.get("Content-Length")
             if clen and clen.isdigit() and int(clen) > _MAX_BYTES:

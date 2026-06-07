@@ -1441,8 +1441,9 @@ async def chat_reply(
             "model": OPENAI_MODEL,
             "input": model_history,
             "max_output_tokens": max_output_tokens,
-            "instructions": runtime_instructions,
         }
+        # instructions ставится ниже только в inline-ветке; при stored-prompt
+        # передаём только prompt, иначе уходят оба ключа сразу.
         if use_stored_prompt:
             request["prompt"] = {
                 "id": OPENAI_PROMPT_ID,

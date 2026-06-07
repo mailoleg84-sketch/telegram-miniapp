@@ -716,10 +716,18 @@ class OpenAISafetyTests(unittest.TestCase):
             "tax", "legal", "government", "lawyer", "democrats", "ruined",
             "unions", "legally",
         }
+        # Никакой ненормативной лексики в детском банке слов.
+        profanity = {
+            "fuck", "fucking", "fucked", "fuckin", "fucker", "shit", "shitty",
+            "bullshit", "crap", "ass", "asshole", "bitch", "bastard", "dick",
+            "cock", "prick", "pussy", "cunt", "slut", "whore", "piss", "porn",
+            "nude", "naked", "penis", "vagina", "boobs", "tits", "rape", "damn",
+        }
 
         self.assertEqual(len(LEARNING_WORDS), 5000)
         self.assertEqual(by_age, {"5_7": 1250, "8_10": 1250, "11_13": 1250, "14_18": 1250})
         self.assertFalse(forbidden_words & words)
+        self.assertFalse(profanity & words, f"profanity in word bank: {sorted(profanity & words)}")
         self.assertIn("moon", words)
         self.assertIn("amazing", words)
         self.assertIn("rainbow", words)

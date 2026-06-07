@@ -81,7 +81,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 GENERATED_VOCAB_DIR = STATIC_DIR / "generated" / "vocabulary"
 AUDIO_CACHE_DIR = STATIC_DIR / "generated" / "audio"
 VOCAB_PHOTO_CACHE_DIR = STATIC_DIR / "generated" / "vocab_photos"
-VOCAB_PHOTO_CACHE_MAX_FILES = int(os.getenv("VOCAB_PHOTO_CACHE_MAX_FILES", "3000"))
+VOCAB_PHOTO_CACHE_MAX_FILES = int(os.getenv("VOCAB_PHOTO_CACHE_MAX_FILES", "800"))
 MAX_AUDIO_BYTES = 8 * 1024 * 1024
 MAX_SDP_BYTES = 16 * 1024  # реальный WebRTC SDP < 4 КБ; жёсткий предел тела
 # Кэши на эфемерном диске Render не должны расти бесконечно (QA-аудит).
@@ -99,6 +99,25 @@ AI_API_PATHS = {
     "/api/realtime/call",
 }
 _rate_buckets: dict[tuple[int, str], deque[float]] = defaultdict(deque)
+
+# Публичный /vocabulary-photo не проходит auth-middleware, поэтому защищаем его
+# отдельным IP-лимитом, чтобы нельзя было выжечь квоту Pixabay и забить диск.
+_photo_ip_buckets: dict[str, deque[float]] = defaultdict(deque)
+_PHOTO_IP_LIMIT = 30  # запросов в минуту с одного IP
+
+
+def _photo_rate_limit_ok(ip: str) -> bool:
+    now = time.monotonic()
+    if len(_photo_ip_buckets) > 5000:
+        for k in [k for k, b in _photo_ip_buckets.items() if not b or now - b[-1] > 60]:
+            _photo_ip_buckets.pop(k, None)
+    bucket = _photo_ip_buckets[ip]
+    while bucket and now - bucket[0] > 60:
+        bucket.popleft()
+    if len(bucket) >= _PHOTO_IP_LIMIT:
+        return False
+    bucket.append(now)
+    return True
 
 
 def _rate_limit_key(path: str) -> str:
@@ -141,7 +160,9 @@ def _evict_cache_dir(directory: Path, max_files: int) -> None:
     if max_files <= 0:
         return
     try:
-        files = [p for p in directory.glob("*") if p.is_file()]
+        # .none-маркеры (слово без картинки) не выселяем: они крошечные и не дают
+        # повторно жечь квоту Pixabay. Лимит считаем только по реальным картинкам.
+        files = [p for p in directory.glob("*") if p.is_file() and not p.name.endswith(".none")]
         if len(files) <= max_files:
             return
         files.sort(key=lambda p: p.stat().st_mtime)
@@ -351,14 +372,13 @@ def _sniff_image_type(body: bytes) -> str:
         return "image/gif"
     if body[:4] == b"RIFF" and body[8:12] == b"WEBP":
         return "image/webp"
-    head = body[:64].lstrip()
-    if head[:5] == b"<?xml" or head[:4] == b"<svg":
-        return "image/svg+xml"
+    # Намеренно НЕ распознаём SVG: отдавать image/svg+xml с этого эндпоинта —
+    # вектор XSS. Любой не-растровый ответ трактуем как jpeg (и не пройдёт <img>).
     return "image/jpeg"
 
 
 async def vocabulary_photo_handler(request: web.Request):
-    """Public: a free child-safe Openverse illustration for a word (cached bytes),
+    """Public: a free child-safe Pixabay illustration for a word (cached bytes),
     or 302 -> the SVG scene when there is none. The client also falls back to SVG on error."""
     raw = (request.query.get("w") or "").strip().lower()
     word = "".join(ch for ch in raw if ch.isalpha() or ch in " '-").strip()[:40].strip()
@@ -374,10 +394,14 @@ async def vocabulary_photo_handler(request: web.Request):
         return web.Response(body=body, content_type=_sniff_image_type(body), headers={
             "Cache-Control": "public, max-age=604800",
             "X-Vocab-Photo": cache_state,
+            "X-Content-Type-Options": "nosniff",
         })
 
     if not VOCAB_FREE_PHOTOS or not word or is_sensitive_word(word):
         return svg_fallback()
+
+    if not _photo_rate_limit_ok(request.remote or ""):
+        return web.Response(status=429, text="Too Many Requests")
 
     cache_path = _vocab_photo_cache_path(word)
     none_marker = cache_path.with_name(cache_path.name + ".none")
@@ -2848,6 +2872,18 @@ async def api_vocab_finish(request: web.Request):
     wrong_count = 0
     total_delta = 0
 
+    # Защита от накрутки очков: не больше одного ответа на слово, и только слова
+    # этой сессии. Иначе клиент мог слать дубли и фармить очки без ограничений.
+    answers_by_word: dict[int, dict] = {}
+    for raw in (answers if isinstance(answers, list) else []):
+        try:
+            wid = int(raw.get("word_id"))
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if wid in words_by_id:
+            answers_by_word[wid] = raw
+    answers = list(answers_by_word.values())
+
     for raw in answers:
         try:
             word_id = int(raw.get("word_id"))
@@ -3320,16 +3356,11 @@ async def api_audio_speech(request: web.Request):
     try:
         first_chunk = await gen.__anext__()
     except StopAsyncIteration:
-        first_chunk = b""
+        log.error("TTS generator yielded no audio for text len=%d", len(text))
+        return web.json_response({"error": "Не удалось озвучить ответ: пустой ответ от TTS."}, status=502)
     except Exception as e:
         log.exception("Speech synthesis failed")
         return web.json_response({"error": f"Не удалось озвучить ответ. {public_openai_error(e)}"}, status=502)
-
-    await _record_ai_cost(
-        request["tg_user"]["id"],
-        OPENAI_TTS_MODEL,
-        len(text) / 1000 * OPENAI_TTS_COST_PER_1K_CHARS,
-    )
 
     response = web.StreamResponse(headers={
         "Content-Type": "audio/mpeg",
@@ -3352,6 +3383,13 @@ async def api_audio_speech(request: web.Request):
         return response
 
     await response.write_eof()
+
+    # Стоимость списываем только после полностью успешного стрима (не при пустом/обрыве).
+    await _record_ai_cost(
+        request["tg_user"]["id"],
+        OPENAI_TTS_MODEL,
+        len(text) / 1000 * OPENAI_TTS_COST_PER_1K_CHARS,
+    )
 
     # Persist to cache only after a full, successful stream.
     if cache_path and buffer:
@@ -3675,8 +3713,12 @@ async def hardening_middleware(request: web.Request, handler):
     except Exception:
         log.exception("Необработанная ошибка на %s %s", request.method, request.path)
         response = web.json_response({"error": "Внутренняя ошибка сервера"}, status=500)
-    if request.path.startswith("/api/"):
-        response.headers["X-Content-Type-Options"] = "nosniff"
+    # Заголовки безопасности на ВСЕ ответы (не только /api/). X-Frame-Options НЕ
+    # ставим — Mini App должен грузиться внутри iframe Telegram. Уже отправленные
+    # StreamResponse (стриминг аудио/фото) не трогаем.
+    if not getattr(response, "prepared", False):
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     _log_slow_or_failed_api(request, response.status, started)
     return response
 

@@ -10,7 +10,10 @@ from config import BOT_TOKEN
 
 def _fallback_signature(params: dict[str, str]) -> str:
     data = "\n".join(f"{key}={value}" for key, value in sorted(params.items()))
-    return hmac.new(BOT_TOKEN.encode(), data.encode(), hashlib.sha256).hexdigest()
+    # Доменное разделение ключа (как у verify_init_data): подписываем не сырым
+    # BOT_TOKEN, а производным под-ключом, чтобы утечка подписи не вела к подделке.
+    sub_key = hmac.new(b"fallback-auth", BOT_TOKEN.encode(), hashlib.sha256).digest()
+    return hmac.new(sub_key, data.encode(), hashlib.sha256).hexdigest()
 
 
 def make_fallback_auth_params(user_id: int, first_name: str = "") -> dict[str, str]:

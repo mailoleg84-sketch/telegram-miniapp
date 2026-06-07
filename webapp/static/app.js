@@ -715,6 +715,11 @@ function clearAccountLocalState() {
   state.learningPath = null;
   state.motivation = null;
   state.levelTest = null;
+  state.quizSession = null;
+  state.dailyVocab = null;
+  state.dailyQuiz = null;
+  state.dailyResult = null;
+  state.dailyAnswers = [];
   state.dictionaryFilter = "all";
   try {
     localStorage.removeItem("stableVoiceUntil");
@@ -2607,7 +2612,10 @@ async function renderChat() {
 
     function setFace(mode) {
       const faceMode = faceModeForVoiceState(mode);
-      face.className = `tutor-face ${faceMode}`;
+      // Сохраняем вариант аватара (is-photo / is-character), иначе теряется
+      // баннер-раскладка и «дыхание» после первой же смены состояния.
+      const variant = (face.className.match(/\bis-photo\b|\bis-character\b/) || [""])[0];
+      face.className = ["tutor-face", faceMode, variant].filter(Boolean).join(" ");
       face.dataset.state = faceMode;
     }
 
@@ -2923,9 +2931,6 @@ async function renderChat() {
         setRealtimeMicEnabled(false);
         updateVoiceModeUi(VOICE_STATE_LABELS.thinking, "thinking");
         setFace("thinking");
-        return;
-        updateVoiceModeUi("Слушаю...", "listening");
-        setFace("listening");
         return;
       }
       if (type === "input_audio_buffer.speech_started") {
