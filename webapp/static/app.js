@@ -721,6 +721,7 @@ function clearAccountLocalState() {
   state.dailyResult = null;
   state.dailyAnswers = [];
   state.dictionaryFilter = "all";
+  removeBottomNav();
   try {
     localStorage.removeItem("stableVoiceUntil");
     localStorage.removeItem("stableVoiceReason");
@@ -907,6 +908,7 @@ async function loadMotivationPreview() {
 function renderRegistration() {
   setBack(null);
   tg.MainButton.hide();
+  removeBottomNav();
 
   const firstName = state.me.tg_user?.first_name || "";
   app.innerHTML = `
@@ -984,9 +986,41 @@ function renderRegistration() {
   };
 }
 
+const NAV_ITEMS = [
+  { key: "learn", icon: "🏠", label: "Учёба", go: () => renderMenu() },
+  { key: "tutor", icon: "🎙", label: "Репетитор", go: () => renderChat() },
+  { key: "progress", icon: "📈", label: "Прогресс", go: () => renderProgressHub() },
+  { key: "parent", icon: "👨‍👩‍👧", label: "Родителям", go: () => renderParentZone() },
+];
+
+function removeBottomNav() {
+  document.getElementById("bottomNav")?.remove();
+  document.body.classList.remove("has-bottom-nav");
+}
+
+function ensureBottomNav(activeKey = "learn") {
+  if (!state.me || !state.me.registered) { removeBottomNav(); return; }
+  let nav = document.getElementById("bottomNav");
+  if (!nav) {
+    nav = document.createElement("nav");
+    nav.id = "bottomNav";
+    nav.innerHTML = NAV_ITEMS.map(it =>
+      `<button class="nav-item" data-nav="${it.key}"><span class="nav-ic">${it.icon}</span>${it.label}</button>`
+    ).join("");
+    document.body.appendChild(nav);
+    nav.querySelectorAll(".nav-item").forEach(btn => {
+      const item = NAV_ITEMS.find(i => i.key === btn.dataset.nav);
+      btn.onclick = () => { haptic(); ensureBottomNav(item.key); item.go(); };
+    });
+  }
+  document.body.classList.add("has-bottom-nav");
+  nav.querySelectorAll(".nav-item").forEach(b => b.classList.toggle("on", b.dataset.nav === activeKey));
+}
+
 function renderMenu() {
   setBack(null);
   tg.MainButton.hide();
+  ensureBottomNav("learn");
   const u = state.me.user;
   app.innerHTML = `
     <div class="screen dashboard">
@@ -1052,6 +1086,7 @@ function renderMenu() {
 function renderLearningHub() {
   setBack(renderMenu);
   tg.MainButton.hide();
+  ensureBottomNav("learn");
   const u = state.me.user;
   app.innerHTML = `
     <div class="screen">
@@ -1106,6 +1141,7 @@ function renderLearningHub() {
 function renderProgressHub() {
   setBack(renderMenu);
   tg.MainButton.hide();
+  ensureBottomNav("progress");
   app.innerHTML = `
     <div class="screen">
       <h1>Прогресс</h1>
@@ -1174,6 +1210,7 @@ function renderParentGate() {
 function renderParentZone() {
   setBack(renderMenu);
   tg.MainButton.hide();
+  ensureBottomNav("parent");
   if (!parentZoneUnlocked) {
     renderParentGate();
     return;
@@ -2291,6 +2328,7 @@ function tutorAvatarHtml() {
 
 async function renderChat() {
   loading();
+  ensureBottomNav("tutor");
   try {
     const data = await api("/api/chat/history", "GET");
     app.innerHTML = `
