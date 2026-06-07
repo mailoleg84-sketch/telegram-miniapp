@@ -256,6 +256,56 @@ h1, h2 { color: var(--c-ink); font-weight: 900; letter-spacing: -0.4px; }
   --tile-tint: var(--accent-soft);
 }
 
+/* ===================== ПЛИТКИ В СТИЛЕ НОВОГО ДИЗАЙНА ===================== */
+/* Иконка-квадрат сверху + название + подпись (как в прототипе). */
+.tile-ic {
+  width: 50px;
+  height: 50px;
+  border-radius: 15px;
+  display: grid;
+  place-items: center;
+  font-size: 27px;
+  line-height: 1;
+  font-style: normal;
+  margin-bottom: 4px;
+  background: var(--accent-soft);
+}
+.ic-mic { background: #e3fbf4; }
+.ic-learn { background: #efeaff; }
+.ic-review { background: #ffe9ef; }
+.ic-dict { background: #e6f1ff; }
+.ic-game { background: #fff0e2; }
+.ic-progress { background: #fff4d6; }
+.ic-parent { background: #f3ecff; }
+.ic-admin { background: #eceffb; }
+
+.action-tile,
+.action-row {
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-card);
+  background:
+    radial-gradient(circle at 100% 0%, var(--accent-soft), transparent 46%),
+    var(--c-card);
+  box-shadow: var(--sh-soft);
+}
+/* Старая угловая точка-индикатор больше не нужна. */
+.action-tile::before,
+.action-row::before { content: none !important; }
+.action-tile b,
+.action-row b { max-width: 100%; font-size: 17px; font-weight: 900; }
+.action-tile small,
+.action-row small { color: var(--c-muted); font-weight: 700; line-height: 1.32; }
+
+/* Полноширинные ряды (Урок дня / Админ) — иконка слева, текст справа. */
+.action-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.action-row .tile-ic { margin-bottom: 0; flex: 0 0 50px; }
+.action-row-text { display: grid; gap: 3px; }
+.action-row-text b { font-size: 17px; font-weight: 900; }
+
 .word-card {
   border-top-color: var(--accent);
 }

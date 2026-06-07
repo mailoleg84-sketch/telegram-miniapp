@@ -1008,31 +1008,33 @@ function renderMenu() {
 
       <div class="action-grid main-actions">
         <button class="action-tile primary" id="chat">
-          <span>Репетитор</span>
+          <i class="tile-ic ic-mic">🎙</i>
           <b>Разговорная практика</b>
           <small>говорить, слушать, задавать вопросы</small>
         </button>
         <button class="action-tile learn" id="learnHub">
-          <span>Учеба</span>
+          <i class="tile-ic ic-learn">📚</i>
           <b>Практические занятия</b>
           <small>урок, тренировки, словарь, игры</small>
         </button>
         <button class="action-tile progress" id="progressHub">
-          <span>Прогресс</span>
+          <i class="tile-ic ic-progress">🏆</i>
           <b>Достижения</b>
           <small>серии, бейджи, рейтинг</small>
         </button>
         <button class="action-tile profile" id="parentZone">
-          <span>Родителям</span>
+          <i class="tile-ic ic-parent">👨‍👩‍👧</i>
           <b>Кабинет родителя</b>
           <small>отчёт, история, аккаунт</small>
         </button>
       </div>
       ${state.me.is_admin ? `
         <button class="action-row admin-entry" id="adminPanel">
-          <span>Админ</span>
-          <b>Управление приложением</b>
-          <small>пользователи, словарь, картинки, диагностика</small>
+          <i class="tile-ic ic-admin">⚙️</i>
+          <div class="action-row-text">
+            <b>Управление приложением</b>
+            <small>пользователи, словарь, картинки, диагностика</small>
+          </div>
         </button>
       ` : ""}
 
@@ -1057,27 +1059,33 @@ function renderLearningHub() {
       <div class="section-label">Сегодня</div>
       <div class="action-list">
         <button class="action-row primary" id="daily">
-          <span>Урок дня</span>
-          <b>Короткий маршрут</b>
-          <small>слова, мини-тест и простая фраза</small>
+          <i class="tile-ic ic-mic">⭐</i>
+          <div class="action-row-text">
+            <b>Короткий маршрут</b>
+            <small>слова, мини-тест и простая фраза</small>
+          </div>
         </button>
       </div>
 
       <div class="section-label">Практика</div>
       <div class="hub-grid">
         <button class="action-tile learn" id="vocab">
+          <i class="tile-ic ic-learn">📚</i>
           <b>Учим слова</b>
           <small>карточки и короткий тест</small>
         </button>
         <button class="action-tile review" id="training">
+          <i class="tile-ic ic-review">🔁</i>
           <b>Работа над ошибками</b>
           <small>ошибки и закрепление</small>
         </button>
         <button class="action-tile dictionary" id="dictionary">
+          <i class="tile-ic ic-dict">📖</i>
           <b>Словарь</b>
           <small>транскрипция и озвучка</small>
         </button>
         <button class="action-tile game" id="games">
+          <i class="tile-ic ic-game">🎮</i>
           <b>Игровая практика</b>
           <small>закрепить слова в игре</small>
         </button>
