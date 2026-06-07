@@ -212,7 +212,7 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertIn(".btn-secondary", styles_css)
         self.assertIn("background: var(--button);", styles_css)
         self.assertIn("color: var(--button-text);", styles_css)
-        self.assertIn("background: linear-gradient(180deg, rgba(47, 157, 244, 0.13), rgba(47, 157, 244, 0.06));", styles_css)
+        self.assertIn("background: linear-gradient(180deg, rgba(139, 123, 255, 0.13), rgba(139, 123, 255, 0.06));", styles_css)
         self.assertIn("color: var(--text);", styles_css)
         self.assertIn(".btn-danger { background: var(--red) !important; color: #fff !important; }", styles_css)
 

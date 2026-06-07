@@ -7,39 +7,40 @@
      5-7 крупнее/ярче → 14-18 строже/спокойнее.
    Старые слои в styles.css постепенно мигрируют сюда и удаляются.
    ===================================================================== */
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap');
 
 :root {
   /* — поверхности и текст (светлая тема) — */
-  --c-bg-1: #fbfdff;
-  --c-bg-2: #eef3f9;
-  --c-ink: #14213a;
-  --c-muted: #586577;
+  --c-bg-1: #fbfcff;
+  --c-bg-2: #f1f3fc;
+  --c-ink: #1c2440;
+  --c-muted: #6b7394;
   --c-card: #ffffff;
-  --c-line: rgba(16, 24, 40, 0.10);
-  --c-line-strong: rgba(16, 24, 40, 0.16);
-  --c-tint: rgba(16, 24, 40, 0.04);
+  --c-line: rgba(28, 36, 64, 0.09);
+  --c-line-strong: rgba(28, 36, 64, 0.15);
+  --c-tint: rgba(108, 92, 231, 0.05);
 
-  /* — акцент (значения по умолчанию = 8-10 лет; переопределяется [data-age]) — */
-  --accent-hi: #1d9bf0;
-  --accent-lo: #0b78d4;
-  --accent: #1380e0;
+  /* — фиолетовый бренд (значения по умолчанию = 8-10 лет; переопределяется [data-age]) — */
+  --accent-hi: #8b7bff;
+  --accent-lo: #5a48d6;
+  --accent: #6c5ce7;
   --accent-ink: #ffffff;
-  --accent-soft: rgba(22, 135, 232, 0.12);
+  --accent-soft: rgba(108, 92, 231, 0.12);
 
-  /* — семантика — */
-  --c-green: #1ca64c;
-  --c-amber: #e0890a;
-  --c-red: #e5463c;
-  --c-teal: #12a594;
-  --c-violet: #7b5cf0;
-  --c-rose: #e95f83;
+  /* — семантика / акценты палитры — */
+  --c-green: #22c8a8;
+  --c-amber: #ffae33;
+  --c-red: #ff5470;
+  --c-teal: #22c8a8;
+  --c-violet: #8b7bff;
+  --c-rose: #ff6b8b;
 
-  /* — форма и тени (часть переопределяется по возрасту) — */
-  --r-card: 18px;
-  --r-control: 15px;
-  --sh-card: 0 6px 18px rgba(16, 24, 40, 0.07);
-  --sh-soft: 0 4px 14px rgba(16, 24, 40, 0.06);
-  --sh-accent: 0 8px 18px var(--accent-soft);
+  /* — форма и тени (крупнее/мягче; часть переопределяется по возрасту) — */
+  --r-card: 24px;
+  --r-control: 16px;
+  --sh-card: 0 14px 30px rgba(28, 36, 64, 0.10);
+  --sh-soft: 0 6px 16px rgba(28, 36, 64, 0.07);
+  --sh-accent: 0 12px 24px var(--accent-soft);
 }
 
 /* ── Прокидываем канонические токены в старые наборы переменных,
@@ -99,7 +100,7 @@
     --c-line: rgba(255, 255, 255, 0.10);
     --c-line-strong: rgba(255, 255, 255, 0.18);
     --c-tint: rgba(255, 255, 255, 0.05);
-    --accent-soft: rgba(60, 160, 255, 0.18);
+    --accent-soft: rgba(139, 123, 255, 0.20);
     --sh-card: 0 8px 22px rgba(0, 0, 0, 0.34);
     --sh-soft: 0 4px 14px rgba(0, 0, 0, 0.28);
   }
@@ -114,7 +115,7 @@
   --c-line: rgba(255, 255, 255, 0.10);
   --c-line-strong: rgba(255, 255, 255, 0.18);
   --c-tint: rgba(255, 255, 255, 0.05);
-  --accent-soft: rgba(60, 160, 255, 0.18);
+  --accent-soft: rgba(139, 123, 255, 0.20);
   --sh-card: 0 8px 22px rgba(0, 0, 0, 0.34);
   --sh-soft: 0 4px 14px rgba(0, 0, 0, 0.28);
 }
@@ -122,32 +123,32 @@
 /* ===================== АДАПТАЦИЯ ПО ВОЗРАСТУ ===================== */
 /* Малыши — ярче и круглее; подростки — спокойнее, строже, индиго. */
 :root[data-age="5_7"] {
-  --accent-hi: #37b6ff;
-  --accent-lo: #0e8ee8;
-  --accent: #1597ef;
-  --r-card: 22px;
+  --accent-hi: #9b8cff;
+  --accent-lo: #6655e0;
+  --accent: #7c6cf0;
+  --r-card: 26px;
   --r-control: 18px;
 }
 :root[data-age="8_10"] {
-  --accent-hi: #1d9bf0;
-  --accent-lo: #0b78d4;
-  --accent: #1380e0;
-  --r-card: 18px;
-  --r-control: 15px;
+  --accent-hi: #8b7bff;
+  --accent-lo: #5a48d6;
+  --accent: #6c5ce7;
+  --r-card: 24px;
+  --r-control: 16px;
 }
 :root[data-age="11_13"] {
-  --accent-hi: #2f7ff0;
-  --accent-lo: #1559cf;
-  --accent: #1d63d8;
-  --r-card: 14px;
-  --r-control: 12px;
+  --accent-hi: #7d6df0;
+  --accent-lo: #5040c8;
+  --accent: #6253e0;
+  --r-card: 20px;
+  --r-control: 14px;
 }
 :root[data-age="14_18"] {
-  --accent-hi: #5566f0;
-  --accent-lo: #3340d4;
-  --accent: #3f4fe0;
-  --r-card: 12px;
-  --r-control: 10px;
+  --accent-hi: #6f63e8;
+  --accent-lo: #4636bd;
+  --accent: #5849d4;
+  --r-card: 18px;
+  --r-control: 12px;
 }
 
 /* Возрастной масштаб: малышам — крупнее, просторнее, выше тап-цели;
@@ -179,29 +180,37 @@ body {
   background: linear-gradient(180deg, var(--c-bg-1) 0%, var(--c-bg-2) 58%, var(--c-bg-1) 100%);
   color: var(--c-ink);
   min-height: 100vh;
+  font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
+:root { --font-display: 'Nunito', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
 
-h1,
-h2 {
-  color: var(--c-ink);
+h1, h2, h3, .btn, .word-main, .word-en, b, strong {
+  font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
+h1, h2 { color: var(--c-ink); font-weight: 900; letter-spacing: -0.4px; }
 
-/* ===================== АКЦЕНТ: прокидываем захардкоженные хексы ===================== */
+/* ===================== АКЦЕНТ: фиолетовые кнопки в стиле нового дизайна ===================== */
 .btn,
 .chat-send {
-  background: linear-gradient(180deg, var(--accent-hi), var(--accent-lo));
+  background: linear-gradient(135deg, var(--accent-hi), var(--accent));
   color: var(--accent-ink);
-  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.14), 0 8px 16px var(--accent-soft);
+  border-radius: 18px;
+  font-weight: 900;
+  box-shadow: 0 12px 26px var(--accent-soft);
+  transition: transform .12s ease, box-shadow .12s ease;
 }
 .btn:active,
 .chat-send:active {
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.14);
+  transform: translateY(1px) scale(.99);
+  box-shadow: 0 6px 16px var(--accent-soft);
 }
 
 .btn-secondary {
   background: var(--c-card);
   color: var(--accent);
-  border: 1px solid var(--c-line-strong);
+  border: 1px solid var(--c-line);
+  border-radius: 18px;
+  font-weight: 900;
   box-shadow: var(--sh-soft);
 }
 
@@ -216,11 +225,24 @@ h2 {
 }
 
 .dashboard-hero {
-  border-color: color-mix(in srgb, var(--accent) 22%, transparent);
+  border: 0;
+  color: #fff;
+  overflow: hidden;
   background:
-    linear-gradient(135deg, var(--accent-soft), transparent 58%),
-    var(--c-card);
+    radial-gradient(circle at 88% -12%, rgba(255, 255, 255, 0.18), transparent 44%),
+    radial-gradient(circle at 10% 130%, rgba(255, 255, 255, 0.12), transparent 42%),
+    linear-gradient(135deg, var(--accent-hi), var(--accent) 58%, var(--accent-lo));
+  box-shadow: 0 18px 40px var(--accent-soft);
 }
+.dashboard-hero h1 { color: #fff; }
+.dashboard-hero p,
+.dashboard-hero .hint { color: rgba(255, 255, 255, 0.92); }
+.dashboard-hero .daily-badge {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+.dashboard-hero .points-orb b { color: #6b4a00; }
+.dashboard-hero .points-orb span { color: #7a5600; }
 
 .action-tile,
 .action-row {

@@ -11,7 +11,7 @@
   --green: #34c759;
   --red:   #ff3b30;
   --yellow: #ffb703;
-  --sky: #2f9df4;
+  --sky: #8b7bff;
   --mint: #2ec4b6;
   --violet: #7c5cff;
   --ink-soft: rgba(24, 39, 75, 0.12);
@@ -27,7 +27,7 @@ html, body {
                "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background-color: var(--bg);
   background-image:
-    linear-gradient(180deg, rgba(47, 157, 244, 0.08) 0%, rgba(46, 196, 182, 0.05) 210px, transparent 420px);
+    linear-gradient(180deg, rgba(139, 123, 255, 0.08) 0%, rgba(46, 196, 182, 0.05) 210px, transparent 420px);
   color: var(--text);
   min-height: 100vh;
 }
@@ -170,7 +170,7 @@ h2 { font-size: 18px; margin: 0 0 12px; font-weight: 600; }
   opacity: 0.6;
 }
 .pronounce-btn.speaking {
-  box-shadow: 0 0 0 4px rgba(47, 157, 244, 0.14);
+  box-shadow: 0 0 0 4px rgba(139, 123, 255, 0.14);
   transform: scale(0.97);
 }
 .word-review-row {
@@ -345,9 +345,9 @@ input[type="text"]:focus { border-color: var(--button); }
   width: 100%;
   min-height: 118px;
   padding: 16px;
-  border: 1.5px solid rgba(47, 157, 244, 0.35);
+  border: 1.5px solid rgba(139, 123, 255, 0.35);
   border-radius: 14px;
-  background: linear-gradient(180deg, rgba(47, 157, 244, 0.13), rgba(47, 157, 244, 0.06));
+  background: linear-gradient(180deg, rgba(139, 123, 255, 0.13), rgba(139, 123, 255, 0.06));
   color: var(--text);
   box-shadow: var(--shadow-soft);
   font-family: inherit;
@@ -407,7 +407,7 @@ input[type="text"]:focus { border-color: var(--button); }
 .admin-entry {
   margin-top: 10px;
   border-color: rgba(124, 92, 255, 0.32);
-  background: linear-gradient(180deg, rgba(124, 92, 255, 0.12), rgba(47, 157, 244, 0.06));
+  background: linear-gradient(180deg, rgba(124, 92, 255, 0.12), rgba(139, 123, 255, 0.06));
 }
 
 @media (max-width: 380px) {
@@ -517,7 +517,7 @@ input[type="text"]:focus { border-color: var(--button); }
   flex: 0 0 auto;
   padding: 7px 10px;
   border-radius: 999px;
-  background: rgba(47, 157, 244, 0.1);
+  background: rgba(139, 123, 255, 0.1);
   color: var(--button);
   font-size: 12px;
   line-height: 1;
@@ -852,7 +852,7 @@ input[type="text"]:focus { border-color: var(--button); }
 }
 .target-btn.active {
   border-color: var(--button);
-  background: rgba(47, 157, 244, 0.13);
+  background: rgba(139, 123, 255, 0.13);
   color: var(--button);
 }
 .training-progress {
@@ -1367,7 +1367,7 @@ code {
   height: 9px;
   border-radius: 50%;
   background: var(--button);
-  box-shadow: 0 0 0 4px rgba(36, 129, 204, 0.12);
+  box-shadow: 0 0 0 4px rgba(108, 92, 231, 0.12);
 }
 
 .voice-mode-toggle.active .voice-mode-dot {
@@ -1570,7 +1570,7 @@ code {
   --line: rgba(24, 39, 75, 0.11);
   --line-strong: rgba(24, 39, 75, 0.18);
   --shadow-card: 0 4px 16px rgba(24, 39, 75, 0.07);
-  --shadow-control: 0 2px 8px rgba(36, 129, 204, 0.16);
+  --shadow-control: 0 2px 8px rgba(108, 92, 231, 0.16);
   --radius-card: 8px;
   --radius-control: 8px;
 }
@@ -1815,15 +1815,15 @@ input[type="text"] {
 
 input[type="text"]:focus {
   border-color: var(--button);
-  box-shadow: 0 0 0 3px rgba(36, 129, 204, 0.14);
+  box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.14);
 }
 
 .daily-badge {
   min-height: 26px;
   padding: 5px 9px;
-  border: 1px solid rgba(36, 129, 204, 0.2);
+  border: 1px solid rgba(108, 92, 231, 0.2);
   border-radius: 999px;
-  background: rgba(36, 129, 204, 0.09);
+  background: rgba(108, 92, 231, 0.09);
   color: var(--button);
   font-size: 12px;
 }
@@ -1903,7 +1903,7 @@ input[type="text"]:focus {
   padding-right: 10px;
   padding-left: 10px;
   border-radius: var(--radius-card);
-  background: rgba(36, 129, 204, 0.08);
+  background: rgba(108, 92, 231, 0.08);
   box-shadow: inset 3px 0 0 var(--button);
 }
 
@@ -2008,7 +2008,7 @@ input[type="text"]:focus {
   content: "";
   width: 24px;
   height: 24px;
-  border: 3px solid rgba(36, 129, 204, 0.18);
+  border: 3px solid rgba(108, 92, 231, 0.18);
   border-top-color: var(--button);
   border-radius: 50%;
   animation: loadingSpin 0.8s linear infinite;
@@ -2114,7 +2114,7 @@ input[type="text"]:focus {
 
 button:focus-visible,
 input:focus-visible {
-  outline: 3px solid rgba(36, 129, 204, 0.22);
+  outline: 3px solid rgba(108, 92, 231, 0.22);
   outline-offset: 2px;
 }
 
@@ -2226,7 +2226,7 @@ input:focus-visible {
 
   .daily-badge,
   .leader-row.me {
-    background: rgba(36, 129, 204, 0.16);
+    background: rgba(108, 92, 231, 0.16);
   }
 
   .error-box {
@@ -2322,7 +2322,7 @@ h1::after {
 
 .action-tile,
 .action-row {
-  --tile-tint: rgba(47, 157, 244, 0.08);
+  --tile-tint: rgba(139, 123, 255, 0.08);
   min-height: 118px;
   padding: 17px;
   border-color: color-mix(in srgb, var(--tile-accent) 25%, transparent);
@@ -2336,8 +2336,8 @@ h1::after {
 
 .action-tile.primary,
 .action-row.primary {
-  --tile-accent: #2f9df4;
-  --tile-tint: rgba(47, 157, 244, 0.09);
+  --tile-accent: #8b7bff;
+  --tile-tint: rgba(139, 123, 255, 0.09);
 }
 
 .action-tile.learn {
@@ -2415,7 +2415,7 @@ h1::after {
 
 .btn,
 .btn-secondary {
-  box-shadow: 0 3px 0 rgba(20, 91, 148, 0.28), 0 6px 13px rgba(36, 129, 204, 0.13);
+  box-shadow: 0 3px 0 rgba(20, 91, 148, 0.28), 0 6px 13px rgba(108, 92, 231, 0.13);
 }
 
 .btn:active,
@@ -2439,8 +2439,8 @@ h1::after {
   border-radius: var(--radius-card);
   overflow: hidden;
   background:
-    radial-gradient(circle at 22% 18%, rgba(47, 157, 244, 0.16), transparent 38%),
-    linear-gradient(145deg, rgba(255, 255, 255, 0.86), rgba(47, 157, 244, 0.08));
+    radial-gradient(circle at 22% 18%, rgba(139, 123, 255, 0.16), transparent 38%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.86), rgba(139, 123, 255, 0.08));
   border: 1px solid var(--line);
   box-shadow: var(--shadow-card);
 }
@@ -2466,8 +2466,8 @@ h1::after {
 
 .word-emoji-box {
   background:
-    radial-gradient(circle at 30% 22%, rgba(47, 157, 244, 0.18), transparent 46%),
-    linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(47, 157, 244, 0.10));
+    radial-gradient(circle at 30% 22%, rgba(139, 123, 255, 0.18), transparent 46%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(139, 123, 255, 0.10));
 }
 .word-emoji {
   font-size: clamp(64px, 26vw, 120px);
@@ -2505,7 +2505,7 @@ h1::after {
 }
 
 .word-visual.generating {
-  border-color: rgba(47, 157, 244, 0.42);
+  border-color: rgba(139, 123, 255, 0.42);
 }
 
 .word-visual.generating .word-image {
@@ -2624,7 +2624,7 @@ h1::after {
 }
 
 .word-explain {
-  background: rgba(47, 157, 244, 0.08);
+  background: rgba(139, 123, 255, 0.08);
   color: var(--text);
 }
 
@@ -2638,7 +2638,7 @@ h1::after {
   top: 8px;
   z-index: 5;
   padding: 10px;
-  border-color: rgba(47, 157, 244, 0.24);
+  border-color: rgba(139, 123, 255, 0.24);
   background: var(--surface);
   box-shadow: 0 7px 20px rgba(24, 39, 75, 0.12);
 }
@@ -2653,7 +2653,7 @@ h1::after {
 }
 
 .dictionary-row:nth-child(even) {
-  background: rgba(47, 157, 244, 0.035);
+  background: rgba(139, 123, 255, 0.035);
 }
 
 .dictionary-main b {
@@ -2675,7 +2675,7 @@ h1::after {
   --premium-card: rgba(255, 255, 255, 0.94);
   --premium-ink: #101828;
   --premium-muted: #667085;
-  --premium-blue: #1687e8;
+  --premium-blue: #6c5ce7;
   --premium-teal: #12a594;
   --premium-amber: #f5a524;
   --premium-violet: #8064e9;
@@ -2741,9 +2741,9 @@ h2 {
   min-height: 156px;
   padding: 22px;
   overflow: hidden;
-  border-color: rgba(22, 135, 232, 0.18);
+  border-color: rgba(108, 92, 231, 0.18);
   background:
-    linear-gradient(135deg, rgba(22, 135, 232, 0.10), rgba(18, 165, 148, 0.08) 48%, rgba(245, 165, 36, 0.08)),
+    linear-gradient(135deg, rgba(108, 92, 231, 0.10), rgba(18, 165, 148, 0.08) 48%, rgba(245, 165, 36, 0.08)),
     var(--premium-card);
   box-shadow: var(--shadow-premium);
 }
@@ -2769,8 +2769,8 @@ h2 {
 }
 
 .daily-badge {
-  border-color: rgba(22, 135, 232, 0.18);
-  background: rgba(22, 135, 232, 0.10);
+  border-color: rgba(108, 92, 231, 0.18);
+  background: rgba(108, 92, 231, 0.10);
   color: #126bb8;
 }
 
@@ -2857,7 +2857,7 @@ h2 {
 .action-tile.primary,
 .action-row.primary {
   --tile-accent: var(--premium-blue);
-  --tile-tint: rgba(22, 135, 232, 0.08);
+  --tile-tint: rgba(108, 92, 231, 0.08);
 }
 
 .action-tile.learn {
@@ -2886,10 +2886,10 @@ h2 {
 
 .btn,
 .chat-send {
-  background: linear-gradient(180deg, #1d9bf0, #0878d8);
+  background: linear-gradient(180deg, #8b7bff, #5a48d6);
   box-shadow:
     0 3px 0 rgba(9, 83, 148, 0.30),
-    0 10px 18px rgba(22, 135, 232, 0.20);
+    0 10px 18px rgba(108, 92, 231, 0.20);
 }
 
 .btn-secondary {
@@ -2925,7 +2925,7 @@ h2 {
   min-height: 294px;
   margin-bottom: 12px;
   padding: 18px 16px 14px;
-  border: 1px solid rgba(22, 135, 232, 0.14);
+  border: 1px solid rgba(108, 92, 231, 0.14);
   border-radius: var(--radius-card);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(238, 247, 245, 0.80));
@@ -2973,9 +2973,9 @@ h2 {
 .avatar-state-ring {
   z-index: 2;
   inset: -7px;
-  border: 2px solid rgba(22, 135, 232, 0.24);
+  border: 2px solid rgba(108, 92, 231, 0.24);
   border-radius: 50%;
-  box-shadow: 0 0 0 7px rgba(22, 135, 232, 0.06);
+  box-shadow: 0 0 0 7px rgba(108, 92, 231, 0.06);
   transition: border-color 0.22s ease, box-shadow 0.22s ease;
 }
 
@@ -3178,8 +3178,8 @@ h2 {
 }
 
 .tutor-face.speaking .avatar-state-ring {
-  border-color: rgba(22, 135, 232, 0.58);
-  box-shadow: 0 0 0 8px rgba(22, 135, 232, 0.12);
+  border-color: rgba(108, 92, 231, 0.58);
+  box-shadow: 0 0 0 8px rgba(108, 92, 231, 0.12);
 }
 
 .tutor-face.speaking .avatar-mouth-motion {
@@ -3255,7 +3255,7 @@ h2 {
 .voice-mode-toggle {
   min-height: 42px;
   padding: 9px 16px;
-  border-color: rgba(22, 135, 232, 0.18);
+  border-color: rgba(108, 92, 231, 0.18);
   background: #fff;
   box-shadow: 0 5px 16px rgba(16, 24, 40, 0.08);
   font-size: 15px;
@@ -3285,7 +3285,7 @@ h2 {
 .voice-action {
   min-height: 34px;
   padding: 8px 12px;
-  border-color: rgba(22, 135, 232, 0.16);
+  border-color: rgba(108, 92, 231, 0.16);
   background: rgba(255, 255, 255, 0.78);
   box-shadow: 0 3px 10px rgba(16, 24, 40, 0.06);
 }
@@ -3299,7 +3299,7 @@ h2 {
 
 .voice-lesson-progress {
   height: 5px;
-  background: rgba(22, 135, 232, 0.11);
+  background: rgba(108, 92, 231, 0.11);
 }
 
 .voice-lesson-progress span {
@@ -3323,7 +3323,7 @@ h2 {
 }
 
 .bubble.user {
-  background: linear-gradient(180deg, #1d9bf0, #0878d8);
+  background: linear-gradient(180deg, #8b7bff, #5a48d6);
 }
 
 .chat-input-row {
@@ -3344,7 +3344,7 @@ h2 {
 .chat-mic {
   background: #fff;
   color: var(--premium-blue);
-  border: 1px solid rgba(22, 135, 232, 0.18);
+  border: 1px solid rgba(108, 92, 231, 0.18);
   box-shadow: 0 5px 14px rgba(16, 24, 40, 0.08);
 }
 
@@ -3364,7 +3364,7 @@ h2 {
 }
 
 .word-visual {
-  border-color: rgba(22, 135, 232, 0.14);
+  border-color: rgba(108, 92, 231, 0.14);
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(238, 247, 245, 0.80));
 }
@@ -3394,7 +3394,7 @@ h2 {
   overflow: hidden;
   gap: 12px;
   padding: 18px 14px 14px;
-  border: 1px solid rgba(22, 135, 232, 0.14);
+  border: 1px solid rgba(108, 92, 231, 0.14);
   background:
     linear-gradient(180deg, #eaf7fc 0%, #eef8fc 48%, #f8fbff 100%);
 }
@@ -3466,7 +3466,7 @@ h2 {
   display: grid;
   gap: 4px;
   padding: 12px 14px;
-  border: 1px solid rgba(22, 135, 232, 0.14);
+  border: 1px solid rgba(108, 92, 231, 0.14);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.86);
   box-shadow: 0 8px 24px rgba(16, 24, 40, 0.08);
@@ -3501,8 +3501,8 @@ h2 {
 }
 
 .voice-status-card[data-state="speaking"] {
-  border-color: rgba(22, 135, 232, 0.32);
-  box-shadow: 0 10px 28px rgba(22, 135, 232, 0.14);
+  border-color: rgba(108, 92, 231, 0.32);
+  box-shadow: 0 10px 28px rgba(108, 92, 231, 0.14);
 }
 
 .voice-status-card[data-state="thinking"],
@@ -3610,8 +3610,8 @@ h2 {
   border: 0;
   border-radius: 999px;
   color: #fff;
-  background: linear-gradient(180deg, #1d9bf0, #0878d8);
-  box-shadow: 0 12px 24px rgba(22, 135, 232, 0.24);
+  background: linear-gradient(180deg, #8b7bff, #5a48d6);
+  box-shadow: 0 12px 24px rgba(108, 92, 231, 0.24);
   transform: translateZ(0);
 }
 
@@ -3626,7 +3626,7 @@ h2 {
 }
 
 .chat-wrap .voice-mode-toggle.active {
-  background: linear-gradient(180deg, #1d9bf0, #0878d8);
+  background: linear-gradient(180deg, #8b7bff, #5a48d6);
 }
 
 .chat-wrap .voice-mode-toggle[data-state="listening"] {
