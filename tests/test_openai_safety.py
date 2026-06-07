@@ -741,7 +741,13 @@ class OpenAISafetyTests(unittest.TestCase):
             ("suitable", "everyday"),
         ):
             with self.subTest(word=word):
-                self.assertTrue(_word_image_url(word, topic).startswith("/vocabulary-visual.svg?"))
+                # Слова без иконки/эмодзи идут на бесплатный фото-эндпоинт
+                # (который сам редиректит на SVG-сцену, если иллюстрации нет).
+                self.assertTrue(
+                    _word_image_url(word, topic).startswith(
+                        ("/vocabulary-photo?", "/vocabulary-visual.svg?")
+                    )
+                )
 
     def test_word_image_svg_contains_only_picture(self):
         svg = _word_image_svg("apple", "food")

@@ -42,7 +42,7 @@ DATABASE_URL = _env("DATABASE_URL", "")
 
 # --- Mini App (Telegram WebApp) ---
 WEBAPP_URL = _env("WEBAPP_URL", "https://telegram-miniapp-1-r0sj.onrender.com")
-APP_VERSION = _env("APP_VERSION", "20260606-kids-v118")
+APP_VERSION = _env("APP_VERSION", "20260606-kids-v119")
 
 WEBAPP_HOST = os.getenv("WEBAPP_HOST", "0.0.0.0")
 # Render задаёт порт через переменную PORT — читаем её, иначе 8080.
@@ -73,6 +73,12 @@ OPENAI_IMAGE_MAX_RETRIES = int(os.getenv("OPENAI_IMAGE_MAX_RETRIES", "1"))
 # Авто-генерация платных gpt-image-1 картинок для слов. По умолчанию ВЫКЛ:
 # карточки используют бесплатные эмодзи + SVG-сцены. Включить = "1"/"true".
 VOCAB_AI_IMAGES = _env("VOCAB_AI_IMAGES", "0").lower() in {"1", "true", "yes", "on"}
+# Бесплатные картинки для слов без эмодзи (Pixabay, safesearch, illustration->photo,
+# сенситив-слова исключены). По умолчанию ВКЛ, но работает только при заданном
+# PIXABAY_API_KEY — иначе мягкий откат на SVG-сцену. Выключить совсем = "0".
+VOCAB_FREE_PHOTOS = _env("VOCAB_FREE_PHOTOS", "1").lower() in {"1", "true", "yes", "on"}
+# Бесплатный ключ Pixabay (https://pixabay.com/api/docs/). Задаётся в Render env.
+PIXABAY_API_KEY = _env("PIXABAY_API_KEY", "")
 OPENAI_REASONING_EFFORT = _env("OPENAI_REASONING_EFFORT", "medium")
 OPENAI_VOICE_REASONING_EFFORT = _env("OPENAI_VOICE_REASONING_EFFORT", "low")
 OPENAI_REALTIME_REASONING_EFFORT = _env("OPENAI_REALTIME_REASONING_EFFORT", "low")

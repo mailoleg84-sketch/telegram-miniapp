@@ -339,6 +339,25 @@ def emoji_for(word: str) -> str:
     return ""
 
 
+# Слова, для которых НЕ тянем внешние фото (детская безопасность): даже при
+# mature=false стоковое фото может оказаться неуместным. Они получают SVG-сцену.
+PHOTO_BLOCKLIST = {
+    "dating", "date", "kiss", "kissing", "romance", "romantic", "love",
+    "beer", "wine", "alcohol", "drunk", "vodka", "cocktail", "bar",
+    "cigarette", "cigarettes", "smoking", "smoke", "tobacco",
+    "drug", "drugs", "gun", "guns", "weapon", "weapons", "knife", "rifle",
+    "blood", "bloody", "war", "death", "dead", "kill", "killing", "fight",
+    "gambling", "casino", "bikini", "underwear", "lingerie", "naked", "nude",
+    "pregnant", "divorce", "funeral", "grave", "violence",
+}
+
+
+def is_sensitive_word(word: str) -> bool:
+    """True for words we never want to fetch external imagery for (kids safety)."""
+    w = _clean(word).lower()
+    return w in SENSITIVE_WORDS or w in PHOTO_BLOCKLIST
+
+
 def is_complex_visual_type(visual_type: str) -> bool:
     return visual_type in COMPLEX_VISUAL_TYPES
 

@@ -41,6 +41,8 @@ from config import (
     WEBAPP_URL,
     OPENAI_IMAGE_MODEL,
     VOCAB_AI_IMAGES,
+    VOCAB_FREE_PHOTOS,
+    PIXABAY_API_KEY,
     OPENAI_TTS_MODEL,
     OPENAI_REALTIME_MODEL,
     OPENAI_TTS_COST_PER_1K_CHARS,
@@ -66,12 +68,20 @@ from webapp.openai_service import (
     synthesize_speech_stream,
     transcribe_audio,
 )
-from webapp.vocabulary_visualizer import build_vocabulary_visual, vocabulary_image_url
+from webapp.vocabulary_visualizer import (
+    build_vocabulary_visual,
+    vocabulary_image_url,
+    emoji_for,
+    is_sensitive_word,
+)
+from webapp.free_images import fetch_word_illustration
 
 log = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
 GENERATED_VOCAB_DIR = STATIC_DIR / "generated" / "vocabulary"
 AUDIO_CACHE_DIR = STATIC_DIR / "generated" / "audio"
+VOCAB_PHOTO_CACHE_DIR = STATIC_DIR / "generated" / "vocab_photos"
+VOCAB_PHOTO_CACHE_MAX_FILES = int(os.getenv("VOCAB_PHOTO_CACHE_MAX_FILES", "3000"))
 MAX_AUDIO_BYTES = 8 * 1024 * 1024
 MAX_SDP_BYTES = 16 * 1024  # реальный WebRTC SDP < 4 КБ; жёсткий предел тела
 # Кэши на эфемерном диске Render не должны расти бесконечно (QA-аудит).
@@ -314,7 +324,97 @@ def _word_image_url(word: str, topic: str = "") -> str:
         example_sentence="",
         topic=clean_topic,
     )
-    return visual.get("image_url") or vocabulary_image_url(clean_word, visual.get("visual_type", "no_good_visual"), clean_topic)
+    svg_url = visual.get("image_url") or vocabulary_image_url(clean_word, visual.get("visual_type", "no_good_visual"), clean_topic)
+    return _vocab_card_image_url(clean_word, svg_url, visual.get("emoji", ""))
+
+
+def _vocab_card_image_url(word: str, fallback_url: str, emoji: str = "") -> str:
+    """Free Openverse illustration for concrete words without an emoji; SVG otherwise.
+    Emoji words render a glyph client-side, so image_url just keeps the SVG fallback."""
+    w = " ".join(str(word or "").split()).lower()
+    if VOCAB_FREE_PHOTOS and w and not emoji and not is_sensitive_word(w):
+        return "/vocabulary-photo?" + urlencode({"w": w[:40]})
+    return fallback_url
+
+
+def _vocab_photo_cache_path(word: str):
+    raw = " ".join(str(word or "").split()).lower()
+    return VOCAB_PHOTO_CACHE_DIR / hashlib.sha1(raw.encode("utf-8")).hexdigest()
+
+
+def _sniff_image_type(body: bytes) -> str:
+    if body[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if body[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if body[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if body[:4] == b"RIFF" and body[8:12] == b"WEBP":
+        return "image/webp"
+    head = body[:64].lstrip()
+    if head[:5] == b"<?xml" or head[:4] == b"<svg":
+        return "image/svg+xml"
+    return "image/jpeg"
+
+
+async def vocabulary_photo_handler(request: web.Request):
+    """Public: a free child-safe Openverse illustration for a word (cached bytes),
+    or 302 -> the SVG scene when there is none. The client also falls back to SVG on error."""
+    raw = (request.query.get("w") or "").strip().lower()
+    word = "".join(ch for ch in raw if ch.isalpha() or ch in " '-").strip()[:40].strip()
+    topic = " ".join((request.query.get("t") or "").split()).lower()[:32]
+
+    def svg_fallback():
+        safe = word or "word"
+        visual = build_vocabulary_visual(word=safe, translation="", topic=topic)
+        url = visual.get("image_url") or vocabulary_image_url(safe, "no_good_visual", topic)
+        return web.HTTPFound(location=url)
+
+    def serve(body: bytes, cache_state: str):
+        return web.Response(body=body, content_type=_sniff_image_type(body), headers={
+            "Cache-Control": "public, max-age=604800",
+            "X-Vocab-Photo": cache_state,
+        })
+
+    if not VOCAB_FREE_PHOTOS or not word or is_sensitive_word(word):
+        return svg_fallback()
+
+    cache_path = _vocab_photo_cache_path(word)
+    none_marker = cache_path.with_name(cache_path.name + ".none")
+    if cache_path.is_file():
+        try:
+            return serve(cache_path.read_bytes(), "hit")
+        except OSError:
+            pass
+    if none_marker.is_file():
+        return svg_fallback()
+
+    try:
+        result = await fetch_word_illustration(word)
+    except Exception:
+        log.exception("Vocab illustration fetch crashed")
+        result = None
+
+    if not result:
+        # Запоминаем «картинки нет» только если реально искали (ключ задан) —
+        # иначе после установки PIXABAY_API_KEY слова застряли бы на SVG.
+        if PIXABAY_API_KEY:
+            try:
+                VOCAB_PHOTO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                none_marker.write_bytes(b"1")
+                _evict_cache_dir(VOCAB_PHOTO_CACHE_DIR, VOCAB_PHOTO_CACHE_MAX_FILES)
+            except OSError:
+                pass
+        return svg_fallback()
+
+    body, _ctype = result
+    try:
+        VOCAB_PHOTO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        cache_path.write_bytes(body)
+        _evict_cache_dir(VOCAB_PHOTO_CACHE_DIR, VOCAB_PHOTO_CACHE_MAX_FILES)
+    except OSError:
+        log.exception("Failed to store vocab photo cache")
+    return serve(body, "miss")
 
 
 def _word_image_style(word: str, topic: str, seed: str):
@@ -869,6 +969,7 @@ def _word_dict(word, learner_level: str = "beginner") -> dict:
         "word": value("word", ""),
         "translation": value("translation", ""),
     })
+    emoji = visual.get("emoji", "")
     fallback_image_url = visual["image_url"]
     image_prompt_hash = _vocabulary_image_prompt_hash(visual)
     generated_image_url = value("generated_image_url", "")
@@ -882,7 +983,7 @@ def _word_dict(word, learner_level: str = "beginner") -> dict:
     ):
         image_url = generated_image_url
     else:
-        image_url = fallback_image_url
+        image_url = _vocab_card_image_url(value("word", ""), fallback_image_url, emoji)
         if generated_image_status in {"generated", "needs_review"}:
             generated_image_status = "missing"
 
@@ -3600,6 +3701,7 @@ def create_app(
     app.router.add_get("/",        index_handler)
     app.router.add_get("/word-image.svg", word_image_handler)
     app.router.add_get("/vocabulary-visual.svg", vocabulary_visual_handler)
+    app.router.add_get("/vocabulary-photo", vocabulary_photo_handler)
     app.router.add_get("/api/me",  api_me)
     app.router.add_get("/api/admin/overview",           api_admin_overview)
     app.router.add_get("/api/admin/users",              api_admin_users)

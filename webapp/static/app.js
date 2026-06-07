@@ -433,7 +433,18 @@ function bindWordImageStates(root = document) {
     };
     if (image.complete && image.naturalWidth > 0) markLoaded();
     image.onload = markLoaded;
-    image.onerror = markFailed;
+    image.onerror = () => {
+      // Бесплатное фото не загрузилось (источник лёг) — мягко падаем на SVG-сцену.
+      const fb = box.dataset.fallbackSrc || "";
+      if (fb && !image.dataset.triedFallback && image.src.indexOf(fb) === -1) {
+        image.dataset.triedFallback = "1";
+        box.classList.remove("failed");
+        box.classList.add("loading");
+        image.src = fb;
+        return;
+      }
+      markFailed();
+    };
     if (retry) {
       retry.onclick = async () => {
         haptic();
