@@ -1086,6 +1086,8 @@ async def _safe_json(request: web.Request) -> dict:
         try:
             return await request.json()
         except Exception:
+            log.warning("Не удалось разобрать JSON тела запроса на %s %s",
+                        request.method, request.path)
             return {}
     return {}
 
@@ -3701,11 +3703,23 @@ async def api_chat_reset(request: web.Request):
 
 # ---------- Static ----------
 
-async def index_handler(request: web.Request):
+_INDEX_HTML_CACHE: str | None = None
+
+
+def _render_index_html() -> str:
     text = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    text = text.replace("__APP_VERSION__", APP_VERSION)
+    return text.replace("__APP_VERSION__", APP_VERSION)
+
+
+async def index_handler(request: web.Request):
+    # index.html кэшируется в памяти (читать с диска на каждый запрос — это
+    # блокирующий I/O в event loop). Для dev кэш можно отключить переменной
+    # окружения INDEX_HTML_NO_CACHE=1, чтобы видеть правки без рестарта.
+    global _INDEX_HTML_CACHE
+    if _INDEX_HTML_CACHE is None or os.getenv("INDEX_HTML_NO_CACHE"):
+        _INDEX_HTML_CACHE = _render_index_html()
     return web.Response(
-        text=text,
+        text=_INDEX_HTML_CACHE,
         content_type="text/html",
         headers={
             "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
@@ -3786,6 +3800,15 @@ async def hardening_middleware(request: web.Request, handler):
             "object-src 'none'; "
             "base-uri 'self'",
         )
+        # Статика: долгий кэш (ассеты версионируются через ?v=APP_VERSION) и
+        # gzip для текстовых файлов — ускоряет загрузку app.js/css на мобильном.
+        if request.path.startswith("/static/"):
+            response.headers.setdefault("Cache-Control", "public, max-age=86400")
+            if request.path.endswith((".js", ".css", ".svg", ".json", ".map")):
+                try:
+                    response.enable_compression()
+                except (AttributeError, RuntimeError):
+                    pass
     _log_slow_or_failed_api(request, response.status, started)
     return response
 
