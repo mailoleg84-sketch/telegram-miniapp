@@ -55,6 +55,14 @@ async def main() -> None:
         mode = "webhook"
 
     if mode == "webhook":
+        if not TELEGRAM_WEBHOOK_SECRET:
+            print(
+                "TELEGRAM_WEBHOOK_SECRET не задан, а режим webhook требует секрет: "
+                "без него любой может слать поддельные апдейты на webhook. "
+                "Задайте TELEGRAM_WEBHOOK_SECRET в окружении.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
         runner = await run_webapp(
             bot=bot,
             dispatcher=dp,

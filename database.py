@@ -249,6 +249,24 @@ async def init_db() -> None:
             CREATE INDEX IF NOT EXISTS training_attempts_user_created_idx
             ON training_attempts (user_id, created_at DESC)
         """)
+        # Индексы на горячих путях: история чата, прогресс, дневной урок и
+        # выборка слов по возрастной группе (без них — seq scan при росте данных).
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS conversations_user_id_idx
+            ON conversations (user_id, id DESC)
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS user_progress_user_id_idx
+            ON user_progress (user_id)
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS daily_lessons_user_id_idx
+            ON daily_lessons (user_id)
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS words_age_group_idx
+            ON words (age_group)
+        """)
         await _seed_words(conn)
 
 
@@ -1415,6 +1433,23 @@ async def get_ai_usage_today(user_id: int):
         WHERE user_id = $1
           AND created_at >= DATE_TRUNC('day', NOW())
     """, user_id)
+
+
+async def get_model_requests_today(user_id: int, model: str) -> int:
+    """Сколько раз за сегодня учтён расход по конкретной модели (per-user).
+
+    Используется для суточного лимита дорогих Realtime-сессий: каждая сессия
+    учитывается в ai_usage с model = OPENAI_REALTIME_MODEL.
+    """
+    pool = await _get_pool()
+    count = await pool.fetchval("""
+        SELECT COUNT(*)::INTEGER
+        FROM ai_usage
+        WHERE user_id = $1
+          AND model = $2
+          AND created_at >= DATE_TRUNC('day', NOW())
+    """, user_id, model)
+    return int(count or 0)
 
 
 # ---------- Ежедневный урок ----------

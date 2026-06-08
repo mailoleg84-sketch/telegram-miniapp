@@ -86,6 +86,9 @@ CHAT_HISTORY_LIMIT = int(os.getenv("CHAT_HISTORY_LIMIT", "8"))
 CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "240"))
 VOICE_MAX_TOKENS = int(os.getenv("VOICE_MAX_TOKENS", "400"))
 AI_DAILY_MESSAGE_LIMIT = int(os.getenv("AI_DAILY_MESSAGE_LIMIT", "0"))
+# Отдельный жёсткий суточный лимит на старт дорогих Realtime-сессий (per-user).
+# Защищает от cost-amplification: ~$0.05 за сессию. 0 = выключено.
+REALTIME_DAILY_SESSION_LIMIT = int(os.getenv("REALTIME_DAILY_SESSION_LIMIT", "40"))
 API_RATE_LIMIT_PER_MINUTE = int(os.getenv("API_RATE_LIMIT_PER_MINUTE", "120"))
 AI_RATE_LIMIT_PER_MINUTE = int(os.getenv("AI_RATE_LIMIT_PER_MINUTE", "30"))
 OPENAI_INPUT_COST_PER_1M = float(os.getenv("OPENAI_INPUT_COST_PER_1M", "0.75"))

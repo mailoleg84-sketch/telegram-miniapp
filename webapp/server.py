@@ -22,6 +22,7 @@ from config import (
     AGE_GROUPS,
     AI_DAILY_MESSAGE_LIMIT,
     AI_RATE_LIMIT_PER_MINUTE,
+    REALTIME_DAILY_SESSION_LIMIT,
     API_RATE_LIMIT_PER_MINUTE,
     APP_VERSION,
     BOT_RUN_MODE,
@@ -1089,6 +1090,34 @@ async def _safe_json(request: web.Request) -> dict:
     return {}
 
 
+def _looks_like_audio(buf: bytes) -> bool:
+    """Проверка magic-bytes: отсекаем заведомо не-аудио до отправки в Whisper.
+
+    Поддержанные контейнеры: WebM/Matroska, OGG/Opus, MP3 (ID3 или frame sync),
+    WAV/RIFF, MP4/M4A (ftyp), AIFF, FLAC. Защищает от cost-amplification.
+    """
+    if len(buf) < 12:
+        return False
+    head = buf[:12]
+    if head[:4] == b"\x1a\x45\xdf\xa3":          # WebM / Matroska (EBML)
+        return True
+    if head[:4] == b"OggS":                       # OGG (Opus/Vorbis)
+        return True
+    if head[:3] == b"ID3":                         # MP3 с ID3-тегом
+        return True
+    if head[0] == 0xFF and (head[1] & 0xE0) == 0xE0:  # MP3 frame sync
+        return True
+    if head[:4] == b"RIFF" and buf[8:12] == b"WAVE":  # WAV
+        return True
+    if head[4:8] == b"ftyp":                       # MP4 / M4A
+        return True
+    if head[:4] == b"FORM":                         # AIFF
+        return True
+    if head[:4] == b"fLaC":                         # FLAC
+        return True
+    return False
+
+
 async def _read_audio_upload(request: web.Request) -> tuple[bytes, str, str]:
     try:
         reader = await request.multipart()
@@ -1117,6 +1146,8 @@ async def _read_audio_upload(request: web.Request) -> tuple[bytes, str, str]:
     audio = b"".join(chunks)
     if not audio:
         raise web.HTTPBadRequest(text="Пустое голосовое сообщение")
+    if not _looks_like_audio(audio):
+        raise web.HTTPBadRequest(text="Неподдерживаемый формат аудио")
 
     return (
         audio,
@@ -3596,6 +3627,21 @@ async def api_realtime_token(request: web.Request):
             "error": _ai_limit_message(),
             "usage": _chat_usage_payload(gate_stats),
         }, status=403)
+    # Отдельный жёсткий суточный лимит именно на дорогие Realtime-сессии:
+    # защита от cost-amplification, не зависит от общего AI_DAILY_MESSAGE_LIMIT.
+    if REALTIME_DAILY_SESSION_LIMIT > 0:
+        realtime_today = await database.get_model_requests_today(
+            user_id, OPENAI_REALTIME_MODEL
+        )
+        if realtime_today >= REALTIME_DAILY_SESSION_LIMIT:
+            return web.json_response({
+                "limit_reached": True,
+                "error": (
+                    "На сегодня голосовые занятия закончились. Возвращайся завтра! "
+                    "А пока можно учить слова, проходить тесты и играть."
+                ),
+                "usage": _chat_usage_payload(gate_stats),
+            }, status=429)
     rows = await database.get_recent_messages(user_id, limit=CHAT_HISTORY_LIMIT)
     history = [{"role": r["role"], "content": r["content"]} for r in rows]
     age_label = _age_label(user["age_group"]) if user else ""
@@ -3719,6 +3765,19 @@ async def hardening_middleware(request: web.Request, handler):
     if not getattr(response, "prepared", False):
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        # CSP: мягкая, не ломающая Telegram WebView (инлайн-стили нужны фронту,
+        # картинки/фото грузятся с https и data:, голос — по wss).
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; "
+            "img-src 'self' data: https:; "
+            "style-src 'self' 'unsafe-inline'; "
+            "script-src 'self'; "
+            "connect-src 'self' https: wss:; "
+            "media-src 'self' data: https: blob:; "
+            "object-src 'none'; "
+            "base-uri 'self'",
+        )
     _log_slow_or_failed_api(request, response.status, started)
     return response
 
