@@ -926,11 +926,7 @@ function renderRegistration() {
         <h2>Ребенок</h2>
         <input id="childName" type="text" placeholder="Имя ребенка" maxlength="30">
         <input id="childAge" type="text" inputmode="numeric" placeholder="Возраст от 5 до 18" maxlength="2">
-      </div>
-
-      <div class="card">
-        <h2>Возрастная группа</h2>
-        <div id="ageGroups">${optionButtons(state.me.age_groups || [], "age")}</div>
+        <p class="hint">Программа автоматически подстроится под возраст ребёнка.</p>
       </div>
 
       <div class="card">
@@ -941,7 +937,6 @@ function renderRegistration() {
       <button class="btn" id="register">Создать профиль</button>
     </div>`;
 
-  let ageGroup = "";
   let goal = "";
 
   function choose(selector, button, setter) {
@@ -951,20 +946,8 @@ function renderRegistration() {
     haptic();
   }
 
-  function chooseByValue(selector, value, setter) {
-    const button = document.querySelector(`${selector}[data-value="${value}"]`);
-    if (button) choose(selector, button, setter);
-  }
-
-  document.querySelectorAll(".age").forEach(btn => {
-    btn.onclick = () => choose(".age", btn, value => { ageGroup = value; });
-  });
   document.querySelectorAll(".goal").forEach(btn => {
     btn.onclick = () => choose(".goal", btn, value => { goal = value; });
-  });
-  document.getElementById("childAge").addEventListener("input", event => {
-    const suggestedGroup = ageToGroup(Number(event.target.value));
-    if (suggestedGroup) chooseByValue(".age", suggestedGroup, value => { ageGroup = value; });
   });
 
   document.getElementById("register").onclick = async () => {
@@ -973,10 +956,10 @@ function renderRegistration() {
     const child_age = document.getElementById("childAge").value.trim();
     if (child_name.length < 2) return tg.showAlert("Введите имя ребенка");
     if (!child_age || Number(child_age) < 5 || Number(child_age) > 18) return tg.showAlert("Возраст должен быть от 5 до 18");
-    if (!ageGroup) return tg.showAlert("Выберите возрастную группу");
     if (!goal) return tg.showAlert("Выберите цель обучения");
     try {
-      await api("/api/register", "POST", { parent_name, child_name, child_age, age_group: ageGroup, goal });
+      // Возрастную группу больше не выбираем вручную — сервер выведет её из возраста.
+      await api("/api/register", "POST", { parent_name, child_name, child_age, goal });
       state.me = await api("/api/me", "GET");
       applyAppearance();
       haptic("success");

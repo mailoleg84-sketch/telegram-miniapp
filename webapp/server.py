@@ -1597,22 +1597,30 @@ def _topics_for_user(user) -> str:
     return "школа, игры, спорт, путешествия, хобби, истории, повседневные ситуации"
 
 
+def _age_group_from_age(age: int) -> str:
+    """Возрастная группа из точного возраста ребёнка. "" если вне 5-18."""
+    if 5 <= age <= 7:
+        return "5_7"
+    if 8 <= age <= 10:
+        return "8_10"
+    if 11 <= age <= 13:
+        return "11_13"
+    if 14 <= age <= 18:
+        return "14_18"
+    return ""
+
+
 def _normalized_age_group_for_user(user) -> str:
     age_group = user["age_group"] if user else ""
+    if age_group in {"5_7", "8_10", "11_13", "14_18"}:
+        return age_group
     try:
         child_age = int(user["child_age"] or 0) if user else 0
     except (TypeError, ValueError):
         child_age = 0
-    if age_group in {"5_7", "8_10", "11_13", "14_18"}:
-        return age_group
-    if 5 <= child_age <= 7:
-        return "5_7"
-    if 8 <= child_age <= 10:
-        return "8_10"
-    if 11 <= child_age <= 13:
-        return "11_13"
-    if 14 <= child_age <= 18:
-        return "14_18"
+    derived = _age_group_from_age(child_age)
+    if derived:
+        return derived
     if age_group in {"under_12", "under12", "under_10"}:
         return "8_10"
     return "8_10"
@@ -2450,7 +2458,6 @@ async def api_register(request: web.Request):
     body = await _safe_json(request)
     name = (body.get("child_name") or body.get("name") or "").strip()
     parent_name = (body.get("parent_name") or "").strip()
-    age_group = body.get("age_group", "")
     goal = body.get("goal", "")
     try:
         child_age = int(body.get("child_age") or 0)
@@ -2461,19 +2468,20 @@ async def api_register(request: web.Request):
         return web.json_response({"error": "Имя ребенка должно быть от 2 до 30 символов"}, status=400)
     if parent_name and (len(parent_name) < 2 or len(parent_name) > 30):
         return web.json_response({"error": "Имя родителя должно быть от 2 до 30 символов"}, status=400)
-    if age_group not in {v for _, v in AGE_GROUPS}:
-        return web.json_response({"error": "Некорректная возрастная группа"}, status=400)
+    if child_age < 5 or child_age > 18:
+        return web.json_response({"error": "Возраст ребенка должен быть от 5 до 18 лет"}, status=400)
     if goal and goal not in {v for _, v in LEARNING_GOALS}:
         return web.json_response({"error": "Некорректная цель обучения"}, status=400)
-    if child_age and (child_age < 5 or child_age > 18):
-        return web.json_response({"error": "Возраст ребенка должен быть от 5 до 18 лет"}, status=400)
+
+    # Возрастную группу больше не выбирают вручную — выводим из точного возраста.
+    age_group = _age_group_from_age(child_age)
 
     await database.add_user(
         tg_user["id"],
         name,
         age_group,
         parent_name=parent_name or tg_user.get("first_name", ""),
-        child_age=child_age or None,
+        child_age=child_age,
         goal=goal or None,
         english_level=_level_from_score(age_group, 0, 0),
     )
