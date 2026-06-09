@@ -186,5 +186,32 @@ class MiscQueryTests(unittest.TestCase):
         self.assertEqual(args, (7, "Маша", "8_10", "Олег", 9, "speaking", "beginner"))
 
 
+class TrainingTokenSqlTests(unittest.TestCase):
+    def test_issue_cleans_then_inserts_with_ttl(self):
+        fake = FakePool()
+        run_with(fake, database.issue_training_token("tok", 7, 42, 600))
+        self.assertEqual([c[0] for c in fake.calls], ["execute", "execute"])
+        self.assertIn("DELETE FROM training_tokens WHERE expires_at", fake.calls[0][1])
+        _, sql, args = fake.calls[1]
+        self.assertIn("INSERT INTO training_tokens", sql)
+        self.assertIn("make_interval(secs => $4)", sql)
+        self.assertEqual(args, ("tok", 7, 42, 600))
+
+    def test_consume_true_when_row_deleted(self):
+        fake = FakePool()
+        fake.fetchrow_return = {"token": "tok"}
+        out = run_with(fake, database.consume_training_token("tok", 7, 42))
+        self.assertTrue(out)
+        _, sql, args = fake.calls[0]
+        self.assertIn("DELETE FROM training_tokens", sql)
+        self.assertIn("RETURNING token", sql)
+        self.assertEqual(args, ("tok", 7, 42))
+
+    def test_consume_false_when_no_row(self):
+        fake = FakePool()
+        fake.fetchrow_return = None
+        self.assertFalse(run_with(fake, database.consume_training_token("tok", 7, 42)))
+
+
 if __name__ == "__main__":
     unittest.main()

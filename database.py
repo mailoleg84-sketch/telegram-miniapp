@@ -267,6 +267,20 @@ async def init_db() -> None:
             CREATE INDEX IF NOT EXISTS words_age_group_idx
             ON words (age_group)
         """)
+        # Одноразовые токены тренировок (анти-накрутка прогресса). Раньше жили
+        # in-memory и терялись при рестарте/масштабе; теперь — в Neon.
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS training_tokens (
+                token       TEXT PRIMARY KEY,
+                user_id     BIGINT NOT NULL,
+                word_id     INTEGER NOT NULL,
+                expires_at  TIMESTAMP NOT NULL
+            )
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS training_tokens_expires_idx
+            ON training_tokens (expires_at)
+        """)
         await _seed_words(conn)
 
 
@@ -1496,6 +1510,31 @@ async def get_model_requests_today(user_id: int, model: str) -> int:
           AND created_at >= DATE_TRUNC('day', NOW())
     """, user_id, model)
     return int(count or 0)
+
+
+async def issue_training_token(token: str, user_id: int, word_id: int, ttl_seconds: int) -> None:
+    """Сохраняет одноразовый токен тренировки (переживает рестарт, в отличие от
+    in-memory). Заодно чистит протухшие (таблица крошечная, индекс по expires_at)."""
+    pool = await _get_pool()
+    await pool.execute("DELETE FROM training_tokens WHERE expires_at < NOW()")
+    await pool.execute("""
+        INSERT INTO training_tokens (token, user_id, word_id, expires_at)
+        VALUES ($1, $2, $3, NOW() + make_interval(secs => $4))
+        ON CONFLICT (token) DO NOTHING
+    """, token, user_id, word_id, ttl_seconds)
+
+
+async def consume_training_token(token: str, user_id: int, word_id: int) -> bool:
+    """Атомарно гасит токен (одноразово): удаляет ТОЛЬКО при полном совпадении
+    user_id/word_id и непросроченности. True, если строка удалена (засчитываем).
+    Повтор или чужой/просроченный токен ничего не удаляет и даёт False."""
+    pool = await _get_pool()
+    row = await pool.fetchrow("""
+        DELETE FROM training_tokens
+        WHERE token = $1 AND user_id = $2 AND word_id = $3 AND expires_at >= NOW()
+        RETURNING token
+    """, token, user_id, word_id)
+    return row is not None
 
 
 # ---------- Ежедневный урок ----------

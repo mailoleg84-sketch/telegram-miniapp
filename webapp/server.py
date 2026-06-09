@@ -2329,6 +2329,8 @@ def _prune_training_attempts() -> None:
 
 
 async def _issue_training_attempt(user_id: int, word_id: int) -> str:
+    """Выдаёт одноразовый токен. Бэкенд: Redis (если задан) → Postgres/Neon (по
+    умолчанию, переживает рестарт) → in-memory (фолбэк при сбое)."""
     token = secrets.token_urlsafe(16)
     payload = {"user_id": user_id, "word_id": word_id}
     if redis_store.redis_enabled():
@@ -2336,14 +2338,20 @@ async def _issue_training_attempt(user_id: int, word_id: int) -> str:
             await redis_store.issue_token(token, payload, _TRAINING_ATTEMPT_TTL)
             return token
         except Exception:  # noqa: BLE001
-            log.warning("Redis issue_token недоступен, фолбэк на in-memory", exc_info=True)
+            log.warning("Redis issue_token недоступен, фолбэк дальше", exc_info=True)
+    try:
+        await database.issue_training_token(token, user_id, word_id, _TRAINING_ATTEMPT_TTL)
+        return token
+    except Exception:  # noqa: BLE001
+        log.warning("Postgres issue_token недоступен, фолбэк на in-memory", exc_info=True)
     _prune_training_attempts()
     _training_attempts[token] = {**payload, "expires_at": time.time() + _TRAINING_ATTEMPT_TTL}
     return token
 
 
 async def _consume_training_attempt(token: str, user_id: int, word_id: int) -> bool:
-    """Гасит токен (одноразово). True только если валиден, не истёк, не использован."""
+    """Гасит токен (одноразово). True только если валиден, не истёк, не использован.
+    Бэкенд: Redis → Postgres/Neon → in-memory (тот же порядок, что у выдачи)."""
     token = str(token or "")
     if not token:
         return False
@@ -2354,7 +2362,11 @@ async def _consume_training_attempt(token: str, user_id: int, word_id: int) -> b
                 return False
             return record.get("user_id") == user_id and record.get("word_id") == word_id
         except Exception:  # noqa: BLE001
-            log.warning("Redis consume_token недоступен, фолбэк на in-memory", exc_info=True)
+            log.warning("Redis consume_token недоступен, фолбэк дальше", exc_info=True)
+    try:
+        return await database.consume_training_token(token, user_id, word_id)
+    except Exception:  # noqa: BLE001
+        log.warning("Postgres consume_token недоступен, фолбэк на in-memory", exc_info=True)
     _prune_training_attempts()
     record = _training_attempts.pop(token, None)
     if not record:

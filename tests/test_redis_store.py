@@ -115,12 +115,15 @@ class TrainingTokenDispatchTests(unittest.IsolatedAsyncioTestCase):
             ok = await server._consume_training_attempt("t", 7, 42)
         self.assertFalse(ok)
 
-    async def test_consume_redis_error_falls_back_to_inmemory(self):
+    async def test_consume_redis_and_pg_error_falls_back_to_inmemory(self):
         from webapp import server
+        # Redis и Postgres «падают» -> доходим до in-memory (токена нет -> False),
+        # не падаем и не стучимся в боевой Neon.
         with patch("webapp.redis_store.redis_enabled", return_value=True), \
-             patch("webapp.redis_store.consume_token", AsyncMock(side_effect=RuntimeError("down"))):
+             patch("webapp.redis_store.consume_token", AsyncMock(side_effect=RuntimeError("down"))), \
+             patch("database.consume_training_token", AsyncMock(side_effect=RuntimeError("db down"))):
             ok = await server._consume_training_attempt("missing", 7, 42)
-        self.assertFalse(ok)  # фолбэк на in-memory: токена нет, но не падает
+        self.assertFalse(ok)
 
 
 if __name__ == "__main__":

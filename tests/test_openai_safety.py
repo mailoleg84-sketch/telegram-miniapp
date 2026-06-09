@@ -352,14 +352,18 @@ class OpenAISafetyTests(unittest.TestCase):
 
     def test_training_attempt_token_is_single_use(self):
         import asyncio
+        from unittest.mock import patch, AsyncMock
         from webapp.server import _issue_training_attempt, _consume_training_attempt
 
-        token = asyncio.run(_issue_training_attempt(123, 45))
-        self.assertTrue(asyncio.run(_consume_training_attempt(token, 123, 45)))   # засчитываем один раз
-        self.assertFalse(asyncio.run(_consume_training_attempt(token, 123, 45)))  # повтор не проходит
-        wrong_word = asyncio.run(_issue_training_attempt(123, 45))
-        self.assertFalse(asyncio.run(_consume_training_attempt(wrong_word, 123, 99)))
-        self.assertFalse(asyncio.run(_consume_training_attempt("unknown-token", 123, 45)))
+        # Форсируем in-memory путь (БД-функции «падают») — не пишем в боевой Neon.
+        with patch("database.issue_training_token", AsyncMock(side_effect=RuntimeError)), \
+             patch("database.consume_training_token", AsyncMock(side_effect=RuntimeError)):
+            token = asyncio.run(_issue_training_attempt(123, 45))
+            self.assertTrue(asyncio.run(_consume_training_attempt(token, 123, 45)))   # засчитываем один раз
+            self.assertFalse(asyncio.run(_consume_training_attempt(token, 123, 45)))  # повтор не проходит
+            wrong_word = asyncio.run(_issue_training_attempt(123, 45))
+            self.assertFalse(asyncio.run(_consume_training_attempt(wrong_word, 123, 99)))
+            self.assertFalse(asyncio.run(_consume_training_attempt("unknown-token", 123, 45)))
 
     def test_training_answer_only_awards_with_valid_attempt(self):
         root = Path(__file__).resolve().parents[1]
