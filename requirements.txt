@@ -6,3 +6,6 @@ pronouncing==0.2.0
 # Облачное хранилище кэшей (Cloudflare R2 / S3). Импортируется лениво — нужен
 # только когда заданы R2_* (см. webapp/storage.py). Без R2 не используется.
 aioboto3>=12,<14
+# Redis для rate-limit и токенов тренировок. Ленивый импорт — нужен только при
+# REDIS_URL (см. webapp/redis_store.py). Без Redis не используется.
+redis>=5,<6

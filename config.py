@@ -40,6 +40,11 @@ ADMIN_USER_IDS = {
 # Строка подключения вида: postgresql://user:pass@host/dbname?sslmode=require
 DATABASE_URL = _env("DATABASE_URL", "")
 
+# --- Redis (опционально: rate-limit и токены тренировок) ---
+# Если задан (например Upstash rediss://...) — лимиты и одноразовые токены живут
+# в Redis (переживают рестарт, общие для инстансов). Иначе — in-memory в процессе.
+REDIS_URL = _env("REDIS_URL", "")
+
 # --- Mini App (Telegram WebApp) ---
 WEBAPP_URL = _env("WEBAPP_URL", "https://telegram-miniapp-1-r0sj.onrender.com")
 APP_VERSION = _env("APP_VERSION", "20260609-kids-v129")

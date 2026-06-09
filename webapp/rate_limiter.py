@@ -1,12 +1,16 @@
 """Лимитирование запросов (вынесено из webapp/server.py).
 
-In-memory счётчики per-user и per-IP (deque). Состояние в памяти процесса:
-при горизонтальном масштабировании переносится в Redis (см. план).
+In-memory счётчики per-user и per-IP (deque) по умолчанию. Если задан REDIS_URL —
+async-точки `rate_limit_ok`/`photo_rate_limit_ok` используют общий Redis-лимит
+(переживает рестарт, общий для инстансов); при ошибке Redis — фолбэк на in-memory.
 """
+import logging
 import time
 from collections import defaultdict, deque
 
 from config import AI_RATE_LIMIT_PER_MINUTE, API_RATE_LIMIT_PER_MINUTE
+
+log = logging.getLogger(__name__)
 
 
 AI_API_PATHS = {
@@ -74,3 +78,28 @@ def _rate_limit_ok(user_id: int, key: str) -> bool:
         return False
     bucket.append(now)
     return True
+
+
+# ── Async-точки для хендлеров: Redis при REDIS_URL, иначе in-memory (фолбэк) ────
+
+async def rate_limit_ok(user_id: int, key: str) -> bool:
+    """Лимит per-user. Redis (общий) если включён, иначе in-memory. Ошибка Redis
+    не блокирует пользователя — фолбэк на in-memory."""
+    from webapp import redis_store
+    if redis_store.redis_enabled():
+        try:
+            return await redis_store.rate_limit_ok(user_id, key, _rate_limit_for_key(key))
+        except Exception:  # noqa: BLE001
+            log.warning("Redis rate-limit недоступен, фолбэк на in-memory", exc_info=True)
+    return _rate_limit_ok(user_id, key)
+
+
+async def photo_rate_limit_ok(ip: str) -> bool:
+    """Лимит per-IP для публичного /vocabulary-photo. Redis если включён, иначе in-memory."""
+    from webapp import redis_store
+    if redis_store.redis_enabled():
+        try:
+            return await redis_store.rate_limit_ok(ip or "?", "photo", _PHOTO_IP_LIMIT)
+        except Exception:  # noqa: BLE001
+            log.warning("Redis photo-rate-limit недоступен, фолбэк на in-memory", exc_info=True)
+    return _photo_rate_limit_ok(ip)
