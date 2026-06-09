@@ -28,6 +28,30 @@ _TRUSTED_HOST = "pixabay.com"
 _USER_AGENT = "AIEnglishTutorKids/1.0 (educational vocabulary app)"
 _MAX_BYTES = 2_000_000
 
+# Топик слова -> допустимая Pixabay-категория. Категория сильно повышает
+# релевантность и снимает омонимию (например "bat" в animals vs sports),
+# потому что фильтрует выдачу по теме. Неотображённые топики -> без категории.
+_TOPIC_CATEGORY = {
+    "animals": "animals",
+    "food": "food",
+    "music": "music",
+    "nature": "nature",
+    "places": "places",
+    "sports": "sports",
+    "transport": "transportation",
+    "travel": "travel",
+    "people": "people",
+    "family": "people",
+    "friends": "people",
+    "body": "people",
+    "clothes": "fashion",
+    "technology": "computer",
+    "school": "education",
+    "reading": "education",
+    "jobs": "business",
+    "home": "buildings",
+}
+
 
 async def _download_image(session: aiohttp.ClientSession, url: str) -> tuple[bytes, str] | None:
     if _TRUSTED_HOST not in url:
@@ -51,13 +75,18 @@ async def _download_image(session: aiohttp.ClientSession, url: str) -> tuple[byt
         return None
 
 
-async def fetch_word_illustration(word: str) -> tuple[bytes, str] | None:
-    """Returns (image_bytes, content_type) for a clean child-safe image, or None."""
+async def fetch_word_illustration(word: str, topic: str = "") -> tuple[bytes, str] | None:
+    """Returns (image_bytes, content_type) for a clean child-safe image, or None.
+
+    `topic` (если задан) маппится на Pixabay-категорию: это резко повышает
+    релевантность и снимает омонимию для конкретных слов.
+    """
     if not PIXABAY_API_KEY:
         return None
     clean = " ".join(str(word or "").split()).strip()
     if not clean:
         return None
+    category = _TOPIC_CATEGORY.get(" ".join(str(topic or "").split()).strip().lower(), "")
     headers = {"User-Agent": _USER_AGENT, "Accept": "application/json"}
     try:
         async with aiohttp.ClientSession(headers=headers) as session:
@@ -72,6 +101,8 @@ async def fetch_word_illustration(word: str) -> tuple[bytes, str] | None:
                     "order": "popular",
                     "per_page": "6",
                 }
+                if category:
+                    params["category"] = category
                 try:
                     async with session.get(
                         _PIXABAY_API, params=params, timeout=aiohttp.ClientTimeout(total=6)

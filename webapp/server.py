@@ -347,15 +347,41 @@ def _word_image_url(word: str, topic: str = "") -> str:
         topic=clean_topic,
     )
     svg_url = visual.get("image_url") or vocabulary_image_url(clean_word, visual.get("visual_type", "no_good_visual"), clean_topic)
-    return _vocab_card_image_url(clean_word, svg_url, visual.get("emoji", ""))
+    return _vocab_card_image_url(
+        clean_word, svg_url, visual.get("emoji", ""),
+        visual.get("visual_type", ""), clean_topic,
+    )
 
 
-def _vocab_card_image_url(word: str, fallback_url: str, emoji: str = "") -> str:
-    """Free Openverse illustration for concrete words without an emoji; SVG otherwise.
-    Emoji words render a glyph client-side, so image_url just keeps the SVG fallback."""
+# Бесплатное фото Pixabay уместно только для КОНКРЕТНЫХ, фотографируемых слов
+# (предмет/действие). Для абстрактных/грамматических типов остаётся осмысленная
+# SVG-сцена — это логичнее, чем случайное стоковое фото по голому слову.
+PHOTO_VISUAL_TYPES = {"object", "action"}
+
+
+def _vocab_card_image_url(
+    word: str,
+    fallback_url: str,
+    emoji: str = "",
+    visual_type: str = "",
+    topic: str = "",
+) -> str:
+    """Free Pixabay photo for concrete words (object/action) without an emoji;
+    otherwise the contextual SVG scene. Emoji words render a glyph client-side, so
+    image_url just keeps the SVG fallback. Topic narrows the photo search."""
     w = " ".join(str(word or "").split()).lower()
-    if VOCAB_FREE_PHOTOS and w and not emoji and not is_sensitive_word(w):
-        return "/vocabulary-photo?" + urlencode({"w": w[:40]})
+    if (
+        VOCAB_FREE_PHOTOS
+        and w
+        and not emoji
+        and not is_sensitive_word(w)
+        and visual_type in PHOTO_VISUAL_TYPES
+    ):
+        params = {"w": w[:40]}
+        t = " ".join(str(topic or "").split()).lower()[:32]
+        if t:
+            params["t"] = t
+        return "/vocabulary-photo?" + urlencode(params)
     return fallback_url
 
 
@@ -415,7 +441,7 @@ async def vocabulary_photo_handler(request: web.Request):
         return svg_fallback()
 
     try:
-        result = await fetch_word_illustration(word)
+        result = await fetch_word_illustration(word, topic)
     except Exception:
         log.exception("Vocab illustration fetch crashed")
         result = None
@@ -1008,7 +1034,10 @@ def _word_dict(word, learner_level: str = "beginner") -> dict:
     ):
         image_url = generated_image_url
     else:
-        image_url = _vocab_card_image_url(value("word", ""), fallback_image_url, emoji)
+        image_url = _vocab_card_image_url(
+            value("word", ""), fallback_image_url, emoji,
+            visual.get("visual_type", ""), value("topic", ""),
+        )
         if generated_image_status in {"generated", "needs_review"}:
             generated_image_status = "missing"
 
