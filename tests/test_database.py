@@ -138,6 +138,28 @@ class GetRandomWordsBranchTests(unittest.TestCase):
         self.assertNotIn("age_group", sql)
 
 
+class AddMessageRetentionTests(unittest.TestCase):
+    def test_insert_then_prune_when_retention_on(self):
+        fake = FakePool()
+        with patch("database.CHAT_RETENTION_PER_USER", 50):
+            run_with(fake, database.add_message(7, "user", "hi"))
+        self.assertEqual(len(fake.calls), 2)
+        m0, sql0, args0 = fake.calls[0]
+        self.assertEqual((m0, args0), ("execute", (7, "user", "hi")))
+        self.assertIn("INSERT INTO conversations", sql0)
+        m1, sql1, args1 = fake.calls[1]
+        self.assertEqual(m1, "execute")
+        self.assertIn("DELETE FROM conversations", sql1)
+        self.assertEqual(args1, (7, 50))
+
+    def test_no_prune_when_retention_disabled(self):
+        fake = FakePool()
+        with patch("database.CHAT_RETENTION_PER_USER", 0):
+            run_with(fake, database.add_message(7, "user", "hi"))
+        self.assertEqual(len(fake.calls), 1)  # только INSERT
+        self.assertIn("INSERT INTO conversations", fake.calls[0][1])
+
+
 class MiscQueryTests(unittest.TestCase):
     def test_get_words_by_ids_empty_skips_db(self):
         fake = FakePool()

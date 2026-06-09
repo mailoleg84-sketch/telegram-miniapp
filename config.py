@@ -83,6 +83,10 @@ OPENAI_REASONING_EFFORT = _env("OPENAI_REASONING_EFFORT", "medium")
 OPENAI_VOICE_REASONING_EFFORT = _env("OPENAI_VOICE_REASONING_EFFORT", "low")
 OPENAI_REALTIME_REASONING_EFFORT = _env("OPENAI_REALTIME_REASONING_EFFORT", "low")
 CHAT_HISTORY_LIMIT = int(os.getenv("CHAT_HISTORY_LIMIT", "8"))
+# Ретенция истории чата: храним последние N сообщений на пользователя, старше —
+# чистим при записи (таблица conversations иначе растёт без предела). Приложение
+# читает максимум CHAT_HISTORY_LIMIT*2, так что 50 — с большим запасом. 0 = выкл.
+CHAT_RETENTION_PER_USER = int(os.getenv("CHAT_RETENTION_PER_USER", "50"))
 CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "240"))
 VOICE_MAX_TOKENS = int(os.getenv("VOICE_MAX_TOKENS", "400"))
 AI_DAILY_MESSAGE_LIMIT = int(os.getenv("AI_DAILY_MESSAGE_LIMIT", "0"))

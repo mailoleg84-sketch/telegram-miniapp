@@ -9,7 +9,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import asyncpg
 
-from config import DATABASE_URL
+from config import DATABASE_URL, CHAT_RETENTION_PER_USER
 from data.words import LEARNING_WORDS
 from webapp.vocabulary_visualizer import build_vocabulary_visual
 
@@ -1304,6 +1304,22 @@ async def add_message(user_id: int, role: str, content: str) -> None:
         "INSERT INTO conversations (user_id, role, content) VALUES ($1, $2, $3)",
         user_id, role, content,
     )
+    # Ретенция: оставляем последние N сообщений пользователя, старше — чистим
+    # (иначе таблица растёт без предела). DELETE опирается на индекс
+    # conversations(user_id, id DESC); при count <= N удаляется 0 строк.
+    if CHAT_RETENTION_PER_USER > 0:
+        await pool.execute("""
+            DELETE FROM conversations
+            WHERE user_id = $1
+              AND id < (
+                  SELECT MIN(id) FROM (
+                      SELECT id FROM conversations
+                      WHERE user_id = $1
+                      ORDER BY id DESC
+                      LIMIT $2
+                  ) keep
+              )
+        """, user_id, CHAT_RETENTION_PER_USER)
 
 
 async def get_recent_messages(user_id: int, limit: int = 20):
