@@ -126,6 +126,26 @@ from webapp.svg_renderer import (
     _word_image_svg,
     _vocabulary_visual_svg,
 )
+# Чистые форматтеры/метки/логика уровня вынесены в webapp/formatters.py
+# (шаг рефакторинга 3a). Реэкспорт — чтобы существующие импорты и вызовы внутри
+# server.py продолжали работать без изменений.
+from webapp.formatters import (
+    _record_value,
+    _safe_int,
+    _safe_float,
+    _date_text,
+    _age_label,
+    _goal_label,
+    _level_label,
+    _estimated_level_for_user,
+    _level_for_user,
+    _level_from_score,
+    _level_result_message,
+    _level_questions_for_age,
+    _public_level_question,
+    _path_step,
+    _game_title,
+)
 
 def _word_image_url(word: str, topic: str = "") -> str:
     clean_word = " ".join(str(word or "").split())[:48]
@@ -625,14 +645,6 @@ def _daily_lesson_payload(status, reward_points: int = 0, points: int | None = N
     }
 
 
-def _date_text(value) -> str:
-    if not value:
-        return ""
-    if hasattr(value, "isoformat"):
-        return value.isoformat()
-    return str(value)
-
-
 def _is_admin_user_id(user_id) -> bool:
     try:
         return int(user_id) in ADMIN_USER_IDS
@@ -654,20 +666,6 @@ def _file_cache_summary(path: Path) -> dict:
         "files": len(files),
         "size_mb": round(sum(item.stat().st_size for item in files) / 1024 / 1024, 2),
     }
-
-
-def _safe_int(row, key: str, default: int = 0) -> int:
-    try:
-        return int(_record_value(row, key, default) or 0)
-    except (TypeError, ValueError):
-        return default
-
-
-def _safe_float(row, key: str, default: float = 0.0) -> float:
-    try:
-        return float(_record_value(row, key, default) or 0)
-    except (TypeError, ValueError):
-        return default
 
 
 def _admin_overview_payload(overview: dict) -> dict:
@@ -886,13 +884,6 @@ def _activity_event_dict(row) -> dict:
     }
 
 
-def _game_title(game_type: str) -> str:
-    titles = {
-        "word_hunt": "Словесная охота",
-    }
-    return titles.get(game_type, "Игра со словами")
-
-
 def _parent_recommendations(report: dict, dictionary_summary: dict, problem_words: list[dict]) -> list[dict]:
     words_learned = int(report.get("words_learned") or 0)
     completed_lessons = int(report.get("completed_lessons") or 0)
@@ -940,42 +931,6 @@ def _parent_recommendations(report: dict, dictionary_summary: dict, problem_word
             "action": "daily",
         })
     return recommendations[:4]
-
-
-def _age_label(age_group: str) -> str:
-    return next((label for label, value in AGE_GROUPS if value == age_group), age_group)
-
-
-def _goal_label(goal: str | None) -> str:
-    return next((label for label, value in LEARNING_GOALS if value == goal), goal or "")
-
-
-def _record_value(row, key: str, default=None):
-    if not row:
-        return default
-    try:
-        value = row[key]
-    except (KeyError, IndexError, TypeError):
-        return default
-    return value if value not in (None, "") else default
-
-
-def _level_label(level: str | None) -> str:
-    return next((label for label, value in ENGLISH_LEVELS if value == level), level or "Не определен")
-
-
-def _estimated_level_for_user(user) -> str:
-    goal = _record_value(user, "goal", "")
-    age_group = _record_value(user, "age_group", "")
-    if goal in {"exams", "travel"} or age_group == "14_18":
-        return "elementary"
-    if age_group in {"5_7", "8_10"} or goal == "first_steps":
-        return "beginner"
-    return "beginner"
-
-
-def _level_for_user(user) -> str:
-    return _record_value(user, "english_level") or _estimated_level_for_user(user) or TUTOR_DEFAULT_LEVEL
 
 
 def _style_for_user(user) -> str:
@@ -1295,64 +1250,6 @@ async def _build_word_hunt_round(word, age_group: str, pool=None) -> dict:
         "image_url": _word_image_url(word["word"], word["topic"] or "basic"),
         "prompt": f"Поймай английское слово для: {word['translation']}",
         "options": options,
-    }
-
-
-# LEVEL_TESTS вынесены в data/level_tests.py (чистые данные).
-from data.level_tests import LEVEL_TESTS
-
-
-def _level_questions_for_age(age_group: str) -> list[dict]:
-    return LEVEL_TESTS.get(age_group) or LEVEL_TESTS["8_10"]
-
-
-def _public_level_question(question: dict) -> dict:
-    return {
-        "id": question["id"],
-        "prompt": question["prompt"],
-        "options": [
-            {"id": option_id, "text": text}
-            for option_id, text in question["options"]
-        ],
-    }
-
-
-def _level_from_score(age_group: str, correct_count: int, total: int) -> str:
-    if total <= 0:
-        return _estimated_level_for_user({"age_group": age_group})
-    score = correct_count / total
-    if age_group == "5_7":
-        return "beginner" if score >= 0.65 else "starter"
-    if age_group == "8_10":
-        if score < 0.35:
-            return "starter"
-        if score < 0.75:
-            return "beginner"
-        return "elementary"
-    if score < 0.35:
-        return "beginner"
-    if score < 0.75:
-        return "elementary"
-    return "pre_intermediate"
-
-
-def _level_result_message(level: str) -> str:
-    messages = {
-        "starter": "Начнем очень мягко: первые слова, короткие фразы и много поддержки.",
-        "beginner": "Хорошая база для простых диалогов. Будем уверенно строить фразы.",
-        "elementary": "Можно добавлять больше грамматики, мини-диалоги и школьные темы.",
-        "pre_intermediate": "Отлично, можно тренировать живую речь, объяснения и более длинные ответы.",
-    }
-    return messages.get(level, "Репетитор подстроит задания под этот уровень.")
-
-
-def _path_step(step_id: str, title: str, text: str, action: str, status: str) -> dict:
-    return {
-        "id": step_id,
-        "title": title,
-        "text": text,
-        "action": action,
-        "status": status,
     }
 
 
