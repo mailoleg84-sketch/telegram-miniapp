@@ -36,6 +36,7 @@ from config import (
     OPENAI_VOICE_REASONING_EFFORT,
     OPENAI_VOICE_TTS_VOICE,
     REALTIME_AGE_PROFILES,
+    age_group_from_age,
     TUTOR_CORRECTION_MODE,
     TUTOR_DEFAULT_LEVEL,
     TUTOR_DEFAULT_STYLE,
@@ -963,19 +964,16 @@ def _get_realtime_profile(prompt_context: dict | None) -> dict:
 
 
 def _normalize_realtime_age_group(age_group: str | None, age: str | int | None = None) -> str:
+    # Voice/Realtime: приоритет у точного возраста (отличается от learning-режима,
+    # где приоритет у сохранённой группы). «Лестница» возраст→группа — из config.
     raw = str(age_group or "").strip()
     try:
         child_age = int(str(age or "").split()[0])
     except (TypeError, ValueError, IndexError):
         child_age = 0
-    if 5 <= child_age <= 7:
-        return "5_7"
-    if 8 <= child_age <= 10:
-        return "8_10"
-    if 11 <= child_age <= 13:
-        return "11_13"
-    if 14 <= child_age <= 18:
-        return "14_18"
+    derived = age_group_from_age(child_age)
+    if derived:
+        return derived
     if raw in {"under_12", "under12", "under_10", "до_12", "child", "kids", "default", ""}:
         return "8_10"
     if raw in {"5_7", "8_10", "11_13", "14_18"}:

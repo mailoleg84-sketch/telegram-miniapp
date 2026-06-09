@@ -20,6 +20,7 @@ import database
 from config import (
     ADMIN_USER_IDS,
     AGE_GROUPS,
+    age_group_from_age,
     AI_DAILY_MESSAGE_LIMIT,
     AI_RATE_LIMIT_PER_MINUTE,
     REALTIME_DAILY_SESSION_LIMIT,
@@ -1599,16 +1600,9 @@ def _topics_for_user(user) -> str:
 
 
 def _age_group_from_age(age: int) -> str:
-    """Возрастная группа из точного возраста ребёнка. "" если вне 5-18."""
-    if 5 <= age <= 7:
-        return "5_7"
-    if 8 <= age <= 10:
-        return "8_10"
-    if 11 <= age <= 13:
-        return "11_13"
-    if 14 <= age <= 18:
-        return "14_18"
-    return ""
+    """Возрастная группа из точного возраста (делегирует в config — единый
+    источник «лестницы» возраст→группа). "" если вне 5-18."""
+    return age_group_from_age(age)
 
 
 def _normalized_age_group_for_user(user) -> str:

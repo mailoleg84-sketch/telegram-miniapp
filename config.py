@@ -122,6 +122,31 @@ AGE_GROUPS = [
     ("14-18 лет", "14_18"),
 ]
 
+# Канонические ключи возрастных групп (единый источник истины).
+AGE_GROUP_KEYS = frozenset(value for _, value in AGE_GROUPS)
+
+
+def age_group_from_age(age) -> str:
+    """Каноническая возрастная группа из точного возраста ребёнка.
+
+    Возвращает "" если возраст вне 5–18 (вызывающий сам решает, что делать
+    дальше). Это единственная «лестница» возраст→группа в проекте — её НЕ
+    дублируют в server.py / openai_service.py, а делегируют сюда.
+    """
+    try:
+        years = int(age)
+    except (TypeError, ValueError):
+        return ""
+    if 5 <= years <= 7:
+        return "5_7"
+    if 8 <= years <= 10:
+        return "8_10"
+    if 11 <= years <= 13:
+        return "11_13"
+    if 14 <= years <= 18:
+        return "14_18"
+    return ""
+
 LEARNING_GOALS = [
     ("Первый английский", "first_steps"),
     ("Школьная программа", "school"),
