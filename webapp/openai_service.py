@@ -522,23 +522,79 @@ def _needs_russian_repair(last_user_text: str, reply_text: str) -> bool:
     return bool(repair_flags & {"mixed_russian_grammar", "russian_turn_ends_in_english"})
 
 
+_GUARD_LEET = str.maketrans(
+    {"0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s"}
+)
+
+# Структурные маркеры ролевой инъекции (служебные токены чат-форматов).
+_INJECTION_TOKEN_RE = re.compile(
+    r"<\|.*?\|>"                          # <|system|>, <|im_start|>
+    r"|<<\s*/?\s*sys\s*>>"                # <<SYS>>, <</SYS>>
+    r"|\[/?inst\]"                        # [INST], [/INST]
+    r"|\[/?(?:system|assistant|user)\]"   # [system], [/system]
+    r"|#{2,}\s*(?:system|instruction)",   # ## system
+    re.IGNORECASE,
+)
+
+# Компактные маркеры (после lower + leet + удаления пробелов/дефисов) — ловят
+# обходы вида "а-п-и ключ", "0penai key", "i g n o r e previous instructions".
+_GUARD_SECRET_MARKERS = (
+    "apikey", "openaikey", "openaiapi", "secretkey", "accesstoken", "openaitoken",
+    "апиключ", "ключапи", "секретныйключ",
+)
+_GUARD_PROMPT_MARKERS = (
+    "systemprompt", "системныйпромпт", "твоиинструкции", "покажипромпт",
+    "покажисистемный", "ignoreprevious", "ignoreallprevious", "ignoreinstructions",
+    "disregardprevious", "forgetprevious", "forgetyourinstructions",
+    "revealyourprompt", "showsystemprompt", "yoursystemprompt",
+    "забудьинструкции", "игнорируйинструкции", "jailbreak", "developermode",
+)
+
+
+def _guard_squeeze(text: str) -> str:
+    """lower + leet-подмены + удаление всех неалфанумерик-разделителей."""
+    lowered = (text or "").lower().translate(_GUARD_LEET)
+    return re.sub(r"[^a-zа-яё0-9]", "", lowered)
+
+
+def neutralize_injection(text: str) -> str:
+    """Обезвреживает служебные токены ролевой инъекции (<|system|>, [/INST],
+    <<SYS>>, [system] и т.п.) перед отправкой модели/сохранением. Обычный
+    детский текст не трогает."""
+    if not text:
+        return text
+    return _INJECTION_TOKEN_RE.sub("[фильтр]", text)
+
+
+def _sanitize_history_for_model(history: list[dict]) -> list[dict]:
+    """Копия истории с обезвреженными токенами инъекции в content."""
+    return [
+        {"role": m.get("role"), "content": neutralize_injection(str(m.get("content") or ""))}
+        for m in history
+    ]
+
+
 def _safety_guard_reply(last_user_text: str) -> str | None:
     text = " ".join((last_user_text or "").split())
     normalized = text.lower()
     if not normalized:
         return None
+    squeezed = _guard_squeeze(text)
 
     wants_secret = (
         ("api" in normalized and ("ключ" in normalized or "key" in normalized))
         or "openai key" in normalized
         or "секрет" in normalized and ("ключ" in normalized or "токен" in normalized)
         or "token" in normalized and "openai" in normalized
+        or any(marker in squeezed for marker in _GUARD_SECRET_MARKERS)
     )
     wants_prompt = (
         "system prompt" in normalized
         or "системн" in normalized and "пром" in normalized
         or "ignore previous instructions" in normalized
         or "предыдущ" in normalized and "инструкц" in normalized
+        or bool(_INJECTION_TOKEN_RE.search(text))
+        or any(marker in squeezed for marker in _GUARD_PROMPT_MARKERS)
     )
     shares_personal_data = (
         "мой адрес" in normalized
@@ -1429,7 +1485,7 @@ async def chat_reply(
         last_user_text = _last_user_text(history)
         mode = _interaction_mode(prompt_context)
         max_output_tokens = VOICE_MAX_TOKENS if mode == "voice" else CHAT_MAX_TOKENS
-        model_history = _clean_history_for_mode(history, mode)
+        model_history = _sanitize_history_for_model(_clean_history_for_mode(history, mode))
         runtime_instructions = _runtime_instructions(user_name, age_label, prompt_context, last_user_text)
         safety_reply = _safety_guard_reply(last_user_text)
         if safety_reply:
