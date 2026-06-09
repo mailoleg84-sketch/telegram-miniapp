@@ -88,7 +88,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 # вынести их на постоянный диск Render, чтобы кэши переживали деплой.
 # Для локального backend — каталог (Path); для S3/R2 — None (нет локального пути).
 GENERATED_VOCAB_DIR = getattr(storage.vocab_image_storage, "base_dir", None)
-AUDIO_CACHE_DIR = storage.word_audio_storage.base_dir
+AUDIO_CACHE_DIR = getattr(storage.word_audio_storage, "base_dir", None)
 VOCAB_PHOTO_CACHE_DIR = storage.vocab_photo_storage.base_dir
 VOCAB_PHOTO_CACHE_MAX_FILES = int(os.getenv("VOCAB_PHOTO_CACHE_MAX_FILES", "800"))
 MAX_AUDIO_BYTES = 8 * 1024 * 1024
@@ -340,7 +340,10 @@ def _cacheable_word_audio(text: str, mode: str) -> bool:
     return mode == "word" and 0 < len(clean_text) <= 120
 
 
-def _word_audio_cache_path(text: str, mode: str, speed) -> Path | None:
+def _word_audio_cache_name(text: str, mode: str, speed) -> str | None:
+    """Имя файла кэша озвучки (``<sha1>.mp3``) или None, если текст не кэшируем.
+    Каталог/префикс добавляет слой хранилища (storage.word_audio_storage), поэтому
+    одинаково работает и для локального диска, и для S3/R2."""
     if not _cacheable_word_audio(text, mode):
         return None
     clean_text = " ".join(str(text or "").split()).lower()
@@ -352,7 +355,7 @@ def _word_audio_cache_path(text: str, mode: str, speed) -> Path | None:
         "format": "mp3",
         "v": 1,
     }, ensure_ascii=False, sort_keys=True)
-    return AUDIO_CACHE_DIR / f"{hashlib.sha1(raw.encode('utf-8')).hexdigest()}.mp3"
+    return f"{hashlib.sha1(raw.encode('utf-8')).hexdigest()}.mp3"
 
 
 def _word_dict(word, learner_level: str = "beginner") -> dict:
@@ -728,7 +731,7 @@ def _admin_overview_payload(overview: dict) -> dict:
         },
         "cache": {
             "generated_images": _file_cache_summary(GENERATED_VOCAB_DIR) if GENERATED_VOCAB_DIR else {"backend": "r2"},
-            "word_audio": _file_cache_summary(AUDIO_CACHE_DIR),
+            "word_audio": _file_cache_summary(AUDIO_CACHE_DIR) if AUDIO_CACHE_DIR else {"backend": "r2"},
         },
         "config": {
             "app_version": APP_VERSION,
@@ -2651,16 +2654,21 @@ async def api_audio_speech(request: web.Request):
     if len(text) > 1200:
         text = text[:1200]
 
-    cache_path = _word_audio_cache_path(text, mode, speed)
-    if cache_path and cache_path.is_file():
-        return web.Response(
-            body=cache_path.read_bytes(),
-            content_type="audio/mpeg",
-            headers={
-                "Cache-Control": "public, max-age=31536000, immutable",
-                "X-Audio-Cache": "hit",
-            },
-        )
+    cache_name = _word_audio_cache_name(text, mode, speed)
+    if cache_name:
+        try:
+            cached = await storage.word_audio_storage.read(cache_name)
+        except Exception:  # noqa: BLE001 — нет объекта/файла -> промах кэша
+            cached = None
+        if cached:
+            return web.Response(
+                body=cached,
+                content_type="audio/mpeg",
+                headers={
+                    "Cache-Control": "public, max-age=31536000, immutable",
+                    "X-Audio-Cache": "hit",
+                },
+            )
 
     # Cache miss → stream from OpenAI and tee chunks into the disk cache.
     # Pull the first chunk before prepare() so an immediate failure still returns JSON.
@@ -2704,12 +2712,12 @@ async def api_audio_speech(request: web.Request):
     )
 
     # Persist to cache only after a full, successful stream.
-    if cache_path and buffer:
+    if cache_name and buffer:
         try:
-            AUDIO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-            cache_path.write_bytes(bytes(buffer))
-            _evict_cache_dir(AUDIO_CACHE_DIR, AUDIO_CACHE_MAX_FILES)
-        except OSError:
+            await storage.word_audio_storage.write(cache_name, bytes(buffer))
+            if AUDIO_CACHE_DIR is not None:  # eviction только локально (S3 — lifecycle)
+                _evict_cache_dir(AUDIO_CACHE_DIR, AUDIO_CACHE_MAX_FILES)
+        except Exception:  # noqa: BLE001 — сбой кэша не должен ронять уже отданный ответ
             log.exception("Failed to store word audio cache")
 
     return response
