@@ -662,6 +662,7 @@ class OpenAISafetyTests(unittest.TestCase):
 
         self.assertEqual(payload["next_action"], "review")
         self.assertIn("Повторить", payload["next_title"])
+        self.assertEqual(payload["review_words"], 3)  # для фронт-нуджа «N готово к повторению»
         self.assertTrue(any(step["id"] == "review" and step["status"] == "current" for step in payload["steps"]))
         self.assertFalse(any(step["id"] == "game" for step in payload["steps"]))
 

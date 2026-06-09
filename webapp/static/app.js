@@ -875,6 +875,33 @@ async function loadLearningPath() {
   }
 }
 
+// SRS-нудж: сколько слов «пора повторить» сегодня (из payload /api/learning/path).
+function reviewDueCount() {
+  const n = Number(state.learningPath && state.learningPath.review_words);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+// Подтягивает learning path в кэш без рендера (для экранов, куда пришли не с главной).
+async function ensureLearningPath() {
+  if (!state.learningPath) {
+    try { state.learningPath = await api("/api/learning/path", "GET"); } catch (_) {}
+  }
+  return state.learningPath;
+}
+
+// Обновляет видимые нуджи повторения: бейдж на тайле и строку в меню повторения.
+function updateReviewNudges() {
+  const n = reviewDueCount();
+  const badge = document.getElementById("reviewTileBadge");
+  if (badge) { badge.textContent = String(n); badge.hidden = n <= 0; }
+  const line = document.getElementById("reviewDueLine");
+  if (line) {
+    const slot = document.getElementById("reviewDueCount");
+    if (slot) slot.textContent = String(n);
+    line.hidden = n <= 0;
+  }
+}
+
 function motivationPreviewHtml(data) {
   const summary = data.summary || {};
   const streak = data.streak || {};
@@ -1103,6 +1130,7 @@ function renderLearningHub() {
           <small>карточки и короткий тест</small>
         </button>
         <button class="action-tile review" id="training">
+          <span class="tile-badge" id="reviewTileBadge" hidden>0</span>
           <i class="tile-ic ic-review">🔁</i>
           <b>Работа над ошибками</b>
           <small>ошибки и закрепление</small>
@@ -1129,6 +1157,8 @@ function renderLearningHub() {
   document.getElementById("dictionary").onclick = () => { haptic(); renderDictionary(); };
   document.getElementById("games").onclick = () => { haptic(); renderGamesMenu(); };
   document.getElementById("levelTest").onclick = () => { haptic(); renderLevelTestIntro(); };
+  updateReviewNudges();
+  ensureLearningPath().then(updateReviewNudges);
 }
 
 function renderProgressHub() {
@@ -1742,6 +1772,7 @@ async function renderTrainingMenu(focus = "all") {
         <p class="hint">${reviewMode
           ? "Сейчас будут слова, в которых были ошибки или которые пора освежить."
           : "Короткая практика без длинного теста: выбери перевод или напиши слово по-английски."}</p>
+        ${reviewMode ? `<p class="hint review-due-line" id="reviewDueLine" hidden>Готово к повторению: <b id="reviewDueCount">0</b></p>` : ""}
         ${trainingTargetControlHtml()}
       </div>
       <button class="btn" id="choiceTraining">Выбрать перевод</button>
@@ -1752,6 +1783,10 @@ async function renderTrainingMenu(focus = "all") {
   document.getElementById("inputTraining").onclick = () => { haptic(); renderInputTraining(focus); };
   document.getElementById("trainingHome").onclick = () => { haptic(); renderLearningHub(); };
   bindTrainingTargetButtons();
+  if (reviewMode) {
+    updateReviewNudges();
+    ensureLearningPath().then(updateReviewNudges);
+  }
 }
 
 async function renderChoiceTraining(focus = "all") {

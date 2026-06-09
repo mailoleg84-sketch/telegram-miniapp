@@ -1420,6 +1420,7 @@ def _learning_path_payload(user, daily_status, stats, dictionary_summary, report
         "next_action": next_action,
         "next_title": next_title,
         "next_text": next_text,
+        "review_words": review_words,  # SRS: сколько слов готово к повторению сегодня (для нуджа на фронте)
         "progress_percent": round(done_count / len(steps) * 100),
         "steps": steps,
     }
