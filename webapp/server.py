@@ -89,7 +89,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 # Для локального backend — каталог (Path); для S3/R2 — None (нет локального пути).
 GENERATED_VOCAB_DIR = getattr(storage.vocab_image_storage, "base_dir", None)
 AUDIO_CACHE_DIR = getattr(storage.word_audio_storage, "base_dir", None)
-VOCAB_PHOTO_CACHE_DIR = storage.vocab_photo_storage.base_dir
+VOCAB_PHOTO_CACHE_DIR = getattr(storage.vocab_photo_storage, "base_dir", None)
 VOCAB_PHOTO_CACHE_MAX_FILES = int(os.getenv("VOCAB_PHOTO_CACHE_MAX_FILES", "800"))
 MAX_AUDIO_BYTES = 8 * 1024 * 1024
 MAX_SDP_BYTES = 16 * 1024  # реальный WebRTC SDP < 4 КБ; жёсткий предел тела
@@ -181,9 +181,12 @@ def _vocab_card_image_url(
     return fallback_url
 
 
-def _vocab_photo_cache_path(word: str):
+def _vocab_photo_cache_name(word: str) -> str:
+    """Имя файла кэша фото (sha1 от нормализованного слова, без расширения).
+    Каталог/префикс и `.none`-маркер добавляются поверх; работает и для диска, и
+    для S3/R2 через storage.vocab_photo_storage."""
     raw = " ".join(str(word or "").split()).lower()
-    return VOCAB_PHOTO_CACHE_DIR / hashlib.sha1(raw.encode("utf-8")).hexdigest()
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
 
 def _sniff_image_type(body: bytes) -> str:
@@ -226,14 +229,19 @@ async def vocabulary_photo_handler(request: web.Request):
     if not await photo_rate_limit_ok(request.remote or ""):
         return web.Response(status=429, text="Too Many Requests")
 
-    cache_path = _vocab_photo_cache_path(word)
-    none_marker = cache_path.with_name(cache_path.name + ".none")
-    if cache_path.is_file():
-        try:
-            return serve(cache_path.read_bytes(), "hit")
-        except OSError:
-            pass
-    if none_marker.is_file():
+    cache_name = _vocab_photo_cache_name(word)
+    none_name = cache_name + ".none"
+    try:
+        cached = await storage.vocab_photo_storage.read(cache_name)
+    except Exception:  # noqa: BLE001 — нет объекта/файла -> промах кэша
+        cached = None
+    if cached:
+        return serve(cached, "hit")
+    try:
+        has_none = await storage.vocab_photo_storage.exists(none_name)
+    except Exception:  # noqa: BLE001
+        has_none = False
+    if has_none:
         return svg_fallback()
 
     try:
@@ -247,19 +255,19 @@ async def vocabulary_photo_handler(request: web.Request):
         # иначе после установки PIXABAY_API_KEY слова застряли бы на SVG.
         if PIXABAY_API_KEY:
             try:
-                VOCAB_PHOTO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-                none_marker.write_bytes(b"1")
-                _evict_cache_dir(VOCAB_PHOTO_CACHE_DIR, VOCAB_PHOTO_CACHE_MAX_FILES)
-            except OSError:
+                await storage.vocab_photo_storage.write(none_name, b"1")
+                if VOCAB_PHOTO_CACHE_DIR is not None:  # eviction только локально (S3 — lifecycle)
+                    _evict_cache_dir(VOCAB_PHOTO_CACHE_DIR, VOCAB_PHOTO_CACHE_MAX_FILES)
+            except Exception:  # noqa: BLE001
                 pass
         return svg_fallback()
 
     body, _ctype = result
     try:
-        VOCAB_PHOTO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        cache_path.write_bytes(body)
-        _evict_cache_dir(VOCAB_PHOTO_CACHE_DIR, VOCAB_PHOTO_CACHE_MAX_FILES)
-    except OSError:
+        await storage.vocab_photo_storage.write(cache_name, body)
+        if VOCAB_PHOTO_CACHE_DIR is not None:  # eviction только локально (S3 — lifecycle)
+            _evict_cache_dir(VOCAB_PHOTO_CACHE_DIR, VOCAB_PHOTO_CACHE_MAX_FILES)
+    except Exception:  # noqa: BLE001
         log.exception("Failed to store vocab photo cache")
     return serve(body, "miss")
 

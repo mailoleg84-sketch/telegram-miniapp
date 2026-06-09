@@ -170,11 +170,10 @@ def make_storage(subdir: str):
     return LocalDiskStorage(CACHE_ROOT / subdir)
 
 
-# Готовые хранилища под три кэша. Картинки слов и озвучка — через фабрику (R2,
-# если задан; переживают деплой). Картинки — самый дорогой кэш (повторная
-# генерация = деньги OpenAI); озвучка экономит latency на первом проигрывании
-# после деплоя. Фото пока локальные (дёшево пересоздать) — провести через R2
-# можно тем же способом.
+# Все три файловых кэша — через фабрику: S3/R2 если задан (переживают деплой),
+# иначе локальный диск. Картинки слов — самый дорогой кэш (повторная генерация =
+# деньги OpenAI); озвучка экономит latency на первом проигрывании после деплоя;
+# фото Pixabay экономит квоту запросов и тоже грузится мгновенно из кэша.
 vocab_image_storage = make_storage("vocabulary")
 word_audio_storage = make_storage("audio")
-vocab_photo_storage = LocalDiskStorage(CACHE_ROOT / "vocab_photos")
+vocab_photo_storage = make_storage("vocab_photos")
