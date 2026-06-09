@@ -87,12 +87,18 @@ async def fetch_word_illustration(word: str, topic: str = "") -> tuple[bytes, st
     if not clean:
         return None
     category = _TOPIC_CATEGORY.get(" ".join(str(topic or "").split()).strip().lower(), "")
+    # Порядок проб: сначала с категорией (релевантность и снятие омонимии),
+    # затем без неё (шире — возвращаем покрытие, которое фильтр категории мог
+    # сузить). Доп. запросы делаются ТОЛЬКО если категорийный вариант пуст.
+    # Безопасность не ослабляем: всегда тот же curated Pixabay + safesearch.
+    variants = [("photo", category), ("illustration", category)] if category else []
+    variants += [("photo", ""), ("illustration", "")]
     headers = {"User-Agent": _USER_AGENT, "Accept": "application/json"}
     try:
         async with aiohttp.ClientSession(headers=headers) as session:
             # Фото — универсальный «взрослый» стиль для всех возрастов (5–18);
             # illustration оставляем фолбэком (мультяшный стиль детскее).
-            for image_type in ("photo", "illustration"):
+            for image_type, cat in variants:
                 params = {
                     "key": PIXABAY_API_KEY,
                     "q": clean,
@@ -101,8 +107,8 @@ async def fetch_word_illustration(word: str, topic: str = "") -> tuple[bytes, st
                     "order": "popular",
                     "per_page": "6",
                 }
-                if category:
-                    params["category"] = category
+                if cat:
+                    params["category"] = cat
                 try:
                     async with session.get(
                         _PIXABAY_API, params=params, timeout=aiohttp.ClientTimeout(total=6)

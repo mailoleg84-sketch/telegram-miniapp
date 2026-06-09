@@ -72,6 +72,63 @@ class TopicCategoryTests(unittest.TestCase):
         self.assertIsNone(result)
 
 
+class _FakeResp:
+    def __init__(self, status=200, payload=None, body=b""):
+        self.status = status
+        self._payload = payload or {}
+        self._body = body
+        self.headers = {"Content-Type": "image/jpeg", "Content-Length": str(len(body) or 1000)}
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def json(self):
+        return self._payload
+
+    async def read(self):
+        return self._body
+
+
+class _FakeSession:
+    """Имитация aiohttp-сессии: API-вызовы отдают заранее заданные payload'ы по
+    очереди, запрос картинки — валидный jpeg."""
+    def __init__(self, api_payloads, image_body):
+        self.api_payloads = list(api_payloads)
+        self.image_body = image_body
+        self.api_calls = 0
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    def get(self, url, **kw):
+        if "pixabay.com/api" in url:
+            payload = self.api_payloads[self.api_calls] if self.api_calls < len(self.api_payloads) else {"hits": []}
+            self.api_calls += 1
+            return _FakeResp(200, payload)
+        return _FakeResp(200, body=self.image_body)
+
+
+class PixabayFallbackTests(unittest.TestCase):
+    def test_falls_back_to_no_category_when_category_empty(self):
+        import webapp.free_images as fi
+        # Первые два варианта (с категорией) пустые, третий (без категории) — хит.
+        hit = {"hits": [{"webformatURL": "https://pixabay.com/get/photo.jpg"}]}
+        fake = _FakeSession([{"hits": []}, {"hits": []}, hit], b"\xff\xd8\xff" + b"x" * 500)
+        with patch("webapp.free_images.PIXABAY_API_KEY", "fake-key"), \
+             patch("webapp.free_images.aiohttp.ClientSession", return_value=fake):
+            result = asyncio.run(fi.fetch_word_illustration("table", "home"))  # home->buildings
+        self.assertIsNotNone(result)
+        self.assertEqual(result[1], "image/jpeg")
+        # Дошли до 3-го запроса => fallback без категории сработал.
+        self.assertEqual(fake.api_calls, 3)
+
+
 class StopwordClassificationTests(unittest.TestCase):
     """Служебные/сравнительные/временные слова не должны быть object (→ нет фото),
     но настоящие '-er'-существительные обязаны остаться object."""
