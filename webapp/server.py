@@ -447,12 +447,15 @@ def _dictionary_word_dict(word) -> dict:
     wrong_count = int(word["wrong_count"] or 0)
     mastered = bool(word["mastered"])
     needs_review = bool(word["needs_review"])
-    if mastered:
-        status = "mastered"
-        status_label = "выучено"
-    elif needs_review:
+    # SRS: «пора повторить» важнее «выучено». Освоенное слово, у которого подошёл
+    # интервал (needs_review=due), показываем как «повторить» — иначе оно с ярлыком
+    # «выучено» молча выпадало бы из визуального потока повторения (и из фильтра).
+    if needs_review:
         status = "review"
         status_label = "повторить"
+    elif mastered:
+        status = "mastered"
+        status_label = "выучено"
     else:
         status = "learning"
         status_label = "учим"
@@ -913,8 +916,8 @@ def _parent_recommendations(report: dict, dictionary_summary: dict, problem_word
         })
     if review_words > 0:
         recommendations.append({
-            "title": "Повторить слабые слова",
-            "text": f"В словаре есть {review_words} слов на повторение. Лучше закрепить их до новых тем.",
+            "title": "Повторить слова по расписанию",
+            "text": f"{review_words} слов сегодня готовы к повторению — у них подошёл интервал. Короткая тренировка освежит их в памяти.",
             "action": "review",
         })
     if completed_word_tests > 0 and avg_score < 70:
@@ -1367,7 +1370,7 @@ def _learning_path_payload(user, daily_status, stats, dictionary_summary, report
     elif not daily_done:
         next_action = "daily"
         next_title = f"Продолжить урок: шаг {min(daily_steps + 1, DAILY_LESSON_STEPS)} из {DAILY_LESSON_STEPS}"
-        next_text = "Сегодняшний маршрут: слова, мини-тест, фраза и награда."
+        next_text = "Сегодняшний план: слова, мини-тест, фраза и награда."
     elif words_learned == 0:
         next_action = "vocab"
         next_title = "Добавить первые слова"
@@ -1375,11 +1378,11 @@ def _learning_path_payload(user, daily_status, stats, dictionary_summary, report
     elif review_words > 0:
         next_action = "review"
         next_title = f"Повторить {review_words} слов"
-        next_text = "Лучше закрепить ошибки короткой тренировкой, пока они свежие."
+        next_text = "Сегодня подошёл интервал повторения — короткая тренировка освежит эти слова."
     else:
         next_action = "learn"
         next_title = "Выбрать следующую тренировку"
-        next_text = "Маршрут дня готов. Можно взять новые слова или повторить сложные."
+        next_text = "Дневной план готов. Можно взять новые слова или повторить сложные."
 
     steps = [
         _path_step(
@@ -1406,14 +1409,14 @@ def _learning_path_payload(user, daily_status, stats, dictionary_summary, report
         _path_step(
             "review",
             "Повторение",
-            f"{review_words} слов ждут",
+            f"{review_words} готовы сегодня",
             "review",
             "current" if review_words > 0 else ("done" if words_learned > 0 else "ready"),
         ),
     ]
     done_count = sum(1 for step in steps if step["status"] == "done")
     return {
-        "title": "Маршрут дня",
+        "title": "Дневной план",
         "next_action": next_action,
         "next_title": next_title,
         "next_text": next_text,
@@ -1476,7 +1479,7 @@ def _motivation_payload(user, stats, dictionary_summary, report, streak) -> dict
     elif review_words > 0:
         next_action = "review"
         next_title = f"Повторить {review_words} слов"
-        next_text = "Лучше закрепить свежие ошибки сразу, пока они хорошо помнятся."
+        next_text = "Подошёл интервал повторения — повтори эти слова, чтобы они закрепились надолго."
     elif words_learned < 10:
         next_action = "vocab"
         next_title = "Собрать первые 10 слов"

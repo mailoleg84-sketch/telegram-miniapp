@@ -842,7 +842,7 @@ function learningPathHtml(data) {
   return `
     <div class="learning-path-head">
       <div>
-        <div class="daily-badge">${esc(data.title || "Маршрут дня")}</div>
+        <div class="daily-badge">${esc(data.title || "Дневной план")}</div>
         <h2>${esc(data.next_title || "Продолжить обучение")}</h2>
       </div>
       <strong>${data.progress_percent || 0}%</strong>
@@ -865,11 +865,11 @@ async function loadLearningPath() {
     box.innerHTML = `
       <div class="learning-path-head">
         <div>
-          <div class="daily-badge">Маршрут дня</div>
+          <div class="daily-badge">Дневной план</div>
           <h2>Начать короткий урок</h2>
         </div>
       </div>
-      <p class="hint">Не удалось обновить маршрут. Можно сразу открыть практические занятия.</p>
+      <p class="hint">Не удалось обновить план. Можно сразу открыть практические занятия.</p>
       <button class="btn mt-12" id="learningPathRetry">Открыть практику</button>`;
     bindSuggestedActionButton("learningPathRetry", "learn");
   }

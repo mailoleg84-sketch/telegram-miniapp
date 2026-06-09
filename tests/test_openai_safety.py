@@ -554,6 +554,21 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertTrue(payload["image_url"].startswith("/vocabulary-visual.svg?"))
         self.assertIn("w=apple", payload["image_url"])
 
+    def test_dictionary_word_status_due_beats_mastered(self):
+        # SRS: освоенное слово, у которого подошёл интервал, показываем как
+        # «повторить», а не «выучено» (иначе оно выпадает из потока повторения).
+        base = {
+            "id": 2, "word": "river", "translation": "река",
+            "example": "A long river.", "topic": "nature", "age_group": "8_10",
+            "correct_count": 5, "wrong_count": 0,
+        }
+        due = _dictionary_word_dict({**base, "mastered": True, "needs_review": True})
+        self.assertEqual(due["status"], "review")
+        self.assertEqual(due["status_label"], "повторить")
+        not_due = _dictionary_word_dict({**base, "mastered": True, "needs_review": False})
+        self.assertEqual(not_due["status"], "mastered")
+        self.assertEqual(not_due["status_label"], "выучено")
+
     def test_activity_event_formats_word_test(self):
         row = {
             "event_type": "word_test",
