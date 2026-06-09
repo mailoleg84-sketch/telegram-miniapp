@@ -1059,6 +1059,36 @@ async def update_progress(user_id: int, word_id: int, correct: bool) -> None:
         """, user_id, word_id)
 
 
+async def update_progress_bulk(user_id: int, items: list[tuple[int, bool]]) -> None:
+    """Пакетное обновление прогресса (один round-trip вместо N).
+
+    items: список (word_id, correct). Логика идентична update_progress:
+    correct -> correct_count+1, review_streak растёт до 2;
+    wrong   -> wrong_count+1, review_streak сбрасывается в 0.
+    """
+    if not items:
+        return
+    pool = await _get_pool()
+    await pool.executemany("""
+        INSERT INTO user_progress (user_id, word_id, correct_count, wrong_count, review_streak)
+        VALUES (
+            $1, $2,
+            CASE WHEN $3 THEN 1 ELSE 0 END,
+            CASE WHEN $3 THEN 0 ELSE 1 END,
+            CASE WHEN $3 THEN 1 ELSE 0 END
+        )
+        ON CONFLICT (user_id, word_id)
+        DO UPDATE SET
+            correct_count = user_progress.correct_count + CASE WHEN $3 THEN 1 ELSE 0 END,
+            wrong_count   = user_progress.wrong_count   + CASE WHEN $3 THEN 0 ELSE 1 END,
+            review_streak = CASE
+                WHEN $3 THEN LEAST(COALESCE(user_progress.review_streak, 0) + 1, 2)
+                ELSE 0
+            END,
+            last_seen = NOW()
+    """, [(user_id, int(word_id), bool(correct)) for word_id, correct in items])
+
+
 async def get_user_stats(user_id: int):
     pool = await _get_pool()
     return await pool.fetchrow("""

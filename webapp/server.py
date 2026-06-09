@@ -1803,7 +1803,21 @@ def _blank_word_in_example(word: str, example: str) -> str:
     return pattern.sub("_____", example, count=1)
 
 
-async def _build_vocab_question(word, age_group: str, index: int = 0) -> dict:
+def _pick_distractors(pool, correct_id, count: int = 3) -> list:
+    """Выбирает до `count` случайных неправильных вариантов из готового пула слов.
+
+    Пул заранее загружается ОДНИМ запросом на весь квиз/игру (анти-N+1), а
+    варианты для каждого вопроса набираются в памяти — со случайностью на
+    вопрос (random.sample) и исключением правильного ответа по id.
+    """
+    correct_id = int(correct_id)
+    eligible = [item for item in (pool or []) if int(item["id"]) != correct_id]
+    if len(eligible) <= count:
+        return list(eligible)
+    return random.sample(eligible, count)
+
+
+async def _build_vocab_question(word, age_group: str, index: int = 0, pool=None) -> dict:
     """Строит вопрос теста по словам.
 
     Тип чередуется по позиции слова, чтобы тест не был однообразным:
@@ -1822,12 +1836,16 @@ async def _build_vocab_question(word, age_group: str, index: int = 0) -> dict:
     qtype = qtypes[index % len(qtypes)]
 
     if qtype == "translation":
-        wrong = await database.get_word_options(word["id"], age_group, count=3)
+        wrong = _pick_distractors(pool, word["id"], 3)
+        if len(wrong) < 3:
+            wrong = await database.get_word_options(word["id"], age_group, count=3)
         options = [{"id": word["id"], "label": word["translation"]}]
         options += [{"id": item["id"], "label": item["translation"]} for item in wrong]
         prompt = "Выбери перевод"
     else:
-        wrong = await database.get_random_words(3, exclude_id=word["id"], age_group=age_group)
+        wrong = _pick_distractors(pool, word["id"], 3)
+        if len(wrong) < 3:
+            wrong = await database.get_random_words(3, exclude_id=word["id"], age_group=age_group)
         options = [{"id": word["id"], "label": word["word"]}]
         options += [{"id": item["id"], "label": item["word"]} for item in wrong]
         prompt = "Вставь пропущенное слово" if qtype == "gap" else "Выбери английское слово"
@@ -1867,8 +1885,10 @@ async def _build_vocab_question(word, age_group: str, index: int = 0) -> dict:
     }
 
 
-async def _build_word_hunt_round(word, age_group: str) -> dict:
-    wrong = await database.get_random_words(3, exclude_id=word["id"], age_group=age_group)
+async def _build_word_hunt_round(word, age_group: str, pool=None) -> dict:
+    wrong = _pick_distractors(pool, word["id"], 3)
+    if len(wrong) < 3:
+        wrong = await database.get_random_words(3, exclude_id=word["id"], age_group=age_group)
     options = [{"id": word["id"], "word": word["word"]}]
     options += [{"id": item["id"], "word": item["word"]} for item in wrong]
     random.shuffle(options)
@@ -2880,8 +2900,13 @@ async def api_vocab_quiz(request: web.Request):
     if not session:
         return web.json_response({"error": "session not found"}, status=404)
     words = await database.get_words_by_ids(list(session["word_ids"]))
+    # Анти-N+1: пул дистракторов загружаем ОДНИМ запросом на весь квиз,
+    # дальше варианты для каждого вопроса набираем в памяти.
+    pool = await database.get_random_words(
+        max(12, len(words) + 9), age_group=session["age_group"]
+    )
     questions = [
-        await _build_vocab_question(word, session["age_group"], idx)
+        await _build_vocab_question(word, session["age_group"], idx, pool)
         for idx, word in enumerate(words)
     ]
     return web.json_response({
@@ -2909,6 +2934,7 @@ async def api_vocab_finish(request: web.Request):
     words_by_id = {w["id"]: w for w in words}
     results = []
     latest_result_by_word_id: dict[int, dict] = {}
+    progress_updates: list[tuple[int, bool]] = []
     correct_count = 0
     wrong_count = 0
     total_delta = 0
@@ -2941,7 +2967,7 @@ async def api_vocab_finish(request: web.Request):
         else:
             wrong_count += 1
             total_delta += POINTS_WRONG
-        await database.update_progress(user_id, word_id, correct=correct)
+        progress_updates.append((word_id, correct))
         result_item = {
             "word_id": word_id,
             "word": word["word"],
@@ -2953,6 +2979,7 @@ async def api_vocab_finish(request: web.Request):
         results.append(result_item)
         latest_result_by_word_id[word_id] = result_item
 
+    await database.update_progress_bulk(user_id, progress_updates)
     await database.finish_vocabulary_session(session_id, user_id, correct_count, wrong_count)
     await database.update_points(user_id, total_delta)
     user = await database.get_user(user_id)
@@ -2988,7 +3015,9 @@ async def api_word_hunt_start(request: web.Request):
         age_group=age_group,
         word_ids=[word["id"] for word in words],
     )
-    rounds = [await _build_word_hunt_round(word, age_group) for word in words]
+    # Анти-N+1: один запрос на пул дистракторов для всех раундов.
+    pool = await database.get_random_words(max(12, len(words) + 9), age_group=age_group)
+    rounds = [await _build_word_hunt_round(word, age_group, pool) for word in words]
     return web.json_response({
         "session_id": session["id"],
         "game_type": "word_hunt",
@@ -3027,6 +3056,7 @@ async def api_word_hunt_finish(request: web.Request):
         answer_by_word[word_id] = selected_id
 
     results = []
+    progress_updates: list[tuple[int, bool]] = []
     correct_count = 0
     wrong_count = 0
 
@@ -3038,7 +3068,7 @@ async def api_word_hunt_finish(request: web.Request):
             correct_count += 1
         else:
             wrong_count += 1
-        await database.update_progress(user_id, word_id, correct=correct)
+        progress_updates.append((word_id, correct))
         results.append({
             "word_id": word_id,
             "word": word["word"],
@@ -3052,6 +3082,7 @@ async def api_word_hunt_finish(request: web.Request):
     total = correct_count + wrong_count
     perfect_bonus = GAME_PERFECT_BONUS_POINTS if total > 0 and correct_count == total else 0
     total_delta = correct_count * GAME_POINTS_CORRECT + perfect_bonus
+    await database.update_progress_bulk(user_id, progress_updates)
     await database.finish_game_session(session_id, user_id, correct_count, wrong_count)
     await database.update_points(user_id, total_delta)
     user = await database.get_user(user_id)
