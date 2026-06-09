@@ -76,12 +76,16 @@ from webapp.vocabulary_visualizer import (
     is_sensitive_word,
 )
 from webapp.free_images import fetch_word_illustration
+from webapp import storage
 
 log = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
-GENERATED_VOCAB_DIR = STATIC_DIR / "generated" / "vocabulary"
-AUDIO_CACHE_DIR = STATIC_DIR / "generated" / "audio"
-VOCAB_PHOTO_CACHE_DIR = STATIC_DIR / "generated" / "vocab_photos"
+# Каталоги кэшей берём из слоя хранилища (webapp/storage.py). По умолчанию это
+# <static>/generated (как раньше); через переменную окружения CACHE_ROOT можно
+# вынести их на постоянный диск Render, чтобы кэши переживали деплой.
+GENERATED_VOCAB_DIR = storage.vocab_image_storage.base_dir
+AUDIO_CACHE_DIR = storage.word_audio_storage.base_dir
+VOCAB_PHOTO_CACHE_DIR = storage.vocab_photo_storage.base_dir
 VOCAB_PHOTO_CACHE_MAX_FILES = int(os.getenv("VOCAB_PHOTO_CACHE_MAX_FILES", "800"))
 MAX_AUDIO_BYTES = 8 * 1024 * 1024
 MAX_SDP_BYTES = 16 * 1024  # реальный WebRTC SDP < 4 КБ; жёсткий предел тела
@@ -157,18 +161,13 @@ def _rate_limit_ok(user_id: int, key: str) -> bool:
 
 
 def _evict_cache_dir(directory: Path, max_files: int) -> None:
-    """Удаляет самые старые файлы кэша, если их больше лимита (эфемерный диск)."""
-    if max_files <= 0:
-        return
+    """Удаляет самые старые файлы кэша, если их больше лимита (эфемерный диск).
+
+    Логика вынесена в webapp/storage.evict_dir; .none-маркеры (слово без картинки)
+    не выселяем — они крошечные и экономят квоту Pixabay.
+    """
     try:
-        # .none-маркеры (слово без картинки) не выселяем: они крошечные и не дают
-        # повторно жечь квоту Pixabay. Лимит считаем только по реальным картинкам.
-        files = [p for p in directory.glob("*") if p.is_file() and not p.name.endswith(".none")]
-        if len(files) <= max_files:
-            return
-        files.sort(key=lambda p: p.stat().st_mtime)
-        for path in files[: len(files) - max_files]:
-            path.unlink(missing_ok=True)
+        storage.evict_dir(directory, max_files)
     except OSError:
         log.exception("Не удалось почистить кэш %s", directory)
 
@@ -3854,6 +3853,30 @@ async def healthz_handler(request: web.Request):
     return web.Response(text="ok")
 
 
+def _generated_dir_under_static() -> bool:
+    """True, если каталог сгенерированных картинок лежит внутри STATIC_DIR
+    (тогда их раздаёт обычный add_static). Если CACHE_ROOT вынесен наружу —
+    нужна отдельная раздача (см. generated_vocab_image_handler)."""
+    try:
+        GENERATED_VOCAB_DIR.resolve().relative_to(STATIC_DIR.resolve())
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+async def generated_vocab_image_handler(request: web.Request):
+    """Отдаёт сгенерированную картинку слова из CACHE_ROOT, когда он вынесен за
+    пределы static (например на persistent disk Render). URL-схема та же:
+    /static/generated/vocabulary/<file>, поэтому ссылки в БД не меняются."""
+    name = request.match_info.get("name", "")
+    if not name or "/" in name or "\\" in name or ".." in name:
+        raise web.HTTPNotFound()
+    path = GENERATED_VOCAB_DIR / name
+    if not path.is_file():
+        raise web.HTTPNotFound()
+    return web.FileResponse(path, headers={"Cache-Control": "public, max-age=604800"})
+
+
 def create_app(
     bot=None,
     dispatcher=None,
@@ -3919,6 +3942,12 @@ def create_app(
         ).register(app, path=webhook_path)
         setup_application(app, dispatcher, bot=bot)
 
+    # Если кэш вынесен за static (CACHE_ROOT на persistent disk) — раздаём
+    # сгенерированные картинки своим маршрутом ДО add_static (та же URL-схема).
+    if not _generated_dir_under_static():
+        app.router.add_get(
+            "/static/generated/vocabulary/{name}", generated_vocab_image_handler
+        )
     app.router.add_static("/static", STATIC_DIR)
 
     return app
