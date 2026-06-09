@@ -3330,7 +3330,11 @@ async def api_chat_send(request: web.Request):
     if len(text) > 1000:
         text = text[:1000]
 
-    stats = await database.get_ai_usage_today(user_id)
+    # Гейт лимита и профиль читаем параллельно — независимые запросы.
+    stats, user = await asyncio.gather(
+        database.get_ai_usage_today(user_id),
+        database.get_user(user_id),
+    )
     if _ai_daily_limit_reached(stats):
         return web.json_response({
             "reply": _ai_limit_message(),
@@ -3339,14 +3343,18 @@ async def api_chat_send(request: web.Request):
             "limit_reached": True,
         })
 
-    user = await database.get_user(user_id)
     user_name = user["name"] if user else "друг"
 
-    # Сохраняем сообщение пользователя
-    await database.add_message(user_id, "user", redact_personal_data(text))
+    # Запись сообщения пользователя и продвижение состояния урока — независимые
+    # записи в разные таблицы, выполняем параллельно. История — строго после.
     lesson_state = None
     if mode == "voice":
-        lesson_state = await _advance_voice_lesson_state(user_id, user, "user", text)
+        _, lesson_state = await asyncio.gather(
+            database.add_message(user_id, "user", redact_personal_data(text)),
+            _advance_voice_lesson_state(user_id, user, "user", text),
+        )
+    else:
+        await database.add_message(user_id, "user", redact_personal_data(text))
 
     # Берём последние сообщения как контекст для модели
     rows = await database.get_recent_messages(user_id, limit=CHAT_HISTORY_LIMIT)
@@ -3359,9 +3367,13 @@ async def api_chat_send(request: web.Request):
         prompt_context.update(_voice_prompt_context(user, history, lesson_state))
     reply = await chat_reply(history, user_name, age_label, prompt_context)
 
-    await database.add_message(user_id, "assistant", reply.text)
     if mode == "voice":
-        lesson_state = await _advance_voice_lesson_state(user_id, user, "assistant", reply.text)
+        _, lesson_state = await asyncio.gather(
+            database.add_message(user_id, "assistant", reply.text),
+            _advance_voice_lesson_state(user_id, user, "assistant", reply.text),
+        )
+    else:
+        await database.add_message(user_id, "assistant", reply.text)
     if reply.total_tokens > 0:
         await database.add_ai_usage(
             user_id=user_id,
@@ -3476,10 +3488,13 @@ async def api_audio_speech(request: web.Request):
 
 
 async def _voice_text_turn_payload(user_id: int, text: str) -> dict:
-    stats = await database.get_ai_usage_today(user_id)
+    # Гейт лимита и профиль читаем параллельно — независимые запросы.
+    stats, user = await asyncio.gather(
+        database.get_ai_usage_today(user_id),
+        database.get_user(user_id),
+    )
     if _ai_daily_limit_reached(stats):
-        gate_user = await database.get_user(user_id)
-        lesson_state = await _ensure_voice_lesson_state(user_id, gate_user)
+        lesson_state = await _ensure_voice_lesson_state(user_id, user)
         return {
             "text": text,
             "reply": _ai_limit_message(),
@@ -3490,11 +3505,13 @@ async def _voice_text_turn_payload(user_id: int, text: str) -> dict:
             "lesson_state": public_lesson_state(lesson_state),
             "limit_reached": True,
         }
-    user = await database.get_user(user_id)
     user_name = user["name"] if user else "друг"
 
-    await database.add_message(user_id, "user", redact_personal_data(text))
-    lesson_state = await _advance_voice_lesson_state(user_id, user, "user", text)
+    # Запись реплики пользователя ∥ продвижение урока (разные таблицы).
+    _, lesson_state = await asyncio.gather(
+        database.add_message(user_id, "user", redact_personal_data(text)),
+        _advance_voice_lesson_state(user_id, user, "user", text),
+    )
     rows = await database.get_recent_messages(user_id, limit=CHAT_HISTORY_LIMIT)
     history = [{"role": r["role"], "content": r["content"]} for r in rows]
 
@@ -3504,8 +3521,10 @@ async def _voice_text_turn_payload(user_id: int, text: str) -> dict:
     prompt_context.update(_voice_prompt_context(user, history, lesson_state))
 
     reply = await chat_reply(history, user_name, age_label, prompt_context)
-    await database.add_message(user_id, "assistant", reply.text)
-    lesson_state = await _advance_voice_lesson_state(user_id, user, "assistant", reply.text)
+    _, lesson_state = await asyncio.gather(
+        database.add_message(user_id, "assistant", reply.text),
+        _advance_voice_lesson_state(user_id, user, "assistant", reply.text),
+    )
     if reply.total_tokens > 0:
         await database.add_ai_usage(
             user_id=user_id,
