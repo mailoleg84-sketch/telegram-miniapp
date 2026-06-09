@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from webapp import server
 from webapp.free_images import _TOPIC_CATEGORY, fetch_word_illustration
+from webapp.vocabulary_visualizer import determine_visual_type, determine_part_of_speech
 import asyncio
 
 
@@ -69,6 +70,21 @@ class TopicCategoryTests(unittest.TestCase):
         with patch("webapp.free_images.PIXABAY_API_KEY", ""):
             result = asyncio.run(fetch_word_illustration("table", "home"))
         self.assertIsNone(result)
+
+
+class StopwordClassificationTests(unittest.TestCase):
+    """Служебные/сравнительные/временные слова не должны быть object (→ нет фото),
+    но настоящие '-er'-существительные обязаны остаться object."""
+
+    def test_function_and_comparative_words_are_no_good_visual(self):
+        for w in ("for", "or", "her", "better", "faster", "lower", "today", "december"):
+            with self.subTest(word=w):
+                self.assertEqual(determine_visual_type(w, determine_part_of_speech(w)), "no_good_visual")
+
+    def test_real_er_nouns_stay_object(self):
+        for w in ("paper", "door", "letter", "monster", "shower", "flower", "silver"):
+            with self.subTest(word=w):
+                self.assertEqual(determine_visual_type(w, determine_part_of_speech(w)), "object")
 
 
 if __name__ == "__main__":

@@ -80,6 +80,27 @@ MODAL_WORDS = {"should", "must", "can", "could", "would", "might", "have"}
 NO_GOOD_VISUAL_WORDS = {
     "the", "a", "an", "to", "of", "very", "really", "just", "usually",
     "always", "often", "sometimes", "never",
+    # Служебные/местоимения/сравнительные/временные слова — у них нет осмысленной
+    # единственной картинки. Раньше часть из них (топик "people") ошибочно
+    # получала тип object → фото слова вроде "for"/"better". Внимание: НЕ трогаем
+    # настоящие "-er"-существительные (paper, door, letter, monster, shower …).
+    # местоимения и определители
+    "i", "you", "he", "she", "it", "we", "they", "me", "him", "her", "us",
+    "them", "my", "your", "his", "its", "our", "their", "mine", "yours",
+    "hers", "ours", "theirs", "this", "that", "these", "those",
+    "who", "whom", "whose", "which", "what",
+    # союзы / предлоги / частицы
+    "for", "or", "nor", "as", "than", "then", "with", "from", "by", "at",
+    "about", "again", "ever", "here", "there", "der",
+    # количественные / сравнительные
+    "more", "most", "less", "least", "much", "many", "few", "fewer",
+    "better", "best", "worse", "worst", "later", "earlier",
+    "faster", "slower", "lower", "higher", "lot", "lots",
+    # дни и месяцы (нет смысловой одиночной картинки)
+    "today", "tomorrow", "yesterday",
+    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+    "january", "february", "april", "june", "july", "august",
+    "september", "october", "november", "december",
 }
 CONCRETE_TOPICS = {
     "animals", "art", "body", "clothes", "family", "food", "friends",
