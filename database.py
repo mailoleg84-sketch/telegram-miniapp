@@ -121,10 +121,37 @@ async def init_db() -> None:
                 wrong_count    INTEGER DEFAULT 0,
                 review_streak  INTEGER DEFAULT 0,
                 last_seen      TIMESTAMP DEFAULT NOW(),
+                srs_box        INTEGER DEFAULT 0,
+                next_review_at TIMESTAMP,
                 PRIMARY KEY (user_id, word_id)
             )
         """)
         await conn.execute("ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS review_streak INTEGER DEFAULT 0")
+        # SRS (интервальное повторение, Leitner): «коробка» 0..5 и срок следующего показа.
+        await conn.execute("ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS srs_box INTEGER DEFAULT 0")
+        await conn.execute("ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS next_review_at TIMESTAMP")
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS user_progress_due_idx "
+            "ON user_progress (user_id, next_review_at)"
+        )
+        # Однократная миграция SRS для строк, существовавших до появления колонок:
+        # проставляем srs_box из review_streak и срок следующего показа. Старые
+        # «на повторение» (ошибочные, не закреплённые) — сразу; остальные — по
+        # интервалу от last_seen. Идемпотентно (WHERE next_review_at IS NULL):
+        # на повторных деплоях затрагивает 0 строк.
+        await conn.execute("""
+            UPDATE user_progress
+            SET srs_box = LEAST(COALESCE(review_streak, 0), 5),
+                next_review_at = CASE
+                    WHEN COALESCE(wrong_count, 0) > 0 AND COALESCE(review_streak, 0) < 2
+                        THEN NOW()
+                    ELSE COALESCE(last_seen, NOW()) + make_interval(
+                        days => CASE LEAST(COALESCE(review_streak, 0), 5)
+                            WHEN 0 THEN 1 WHEN 1 THEN 1 WHEN 2 THEN 3
+                            WHEN 3 THEN 7 WHEN 4 THEN 16 ELSE 35 END)
+                END
+            WHERE next_review_at IS NULL
+        """)
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS conversations (
                 id          SERIAL PRIMARY KEY,
@@ -844,6 +871,10 @@ async def get_review_word(
 ):
     pool = await _get_pool()
     excluded = exclude_ids or []
+    # SRS: берём слово, которое «пора» повторить (срок подошёл) — самые
+    # просроченные первыми. NULL next_review_at (старые строки до миграции
+    # SRS) трактуем как «пора». Ошибочные слова стоят в box0 (срок = сейчас),
+    # освоенные возвращаются по своему интервалу.
     return await pool.fetchrow("""
         SELECT w.*
         FROM user_progress up
@@ -852,10 +883,9 @@ async def get_review_word(
           AND ($2::INTEGER IS NULL OR w.id != $2)
           AND ($3::TEXT IS NULL OR w.age_group = $3)
           AND (CARDINALITY($4::INTEGER[]) = 0 OR NOT (w.id = ANY($4::INTEGER[])))
-          AND COALESCE(up.wrong_count, 0) > 0
-          AND COALESCE(up.review_streak, 0) < 2
+          AND (up.next_review_at IS NULL OR up.next_review_at <= NOW())
         ORDER BY
-            COALESCE(up.review_streak, 0) ASC,
+            up.next_review_at ASC NULLS FIRST,
             COALESCE(up.wrong_count, 0) DESC,
             up.last_seen ASC,
             RANDOM()
@@ -867,10 +897,11 @@ async def get_user_dictionary(user_id: int, filter_mode: str = "all", limit: int
     pool = await _get_pool()
     filter_sql = ""
     if filter_mode == "review":
+        # SRS: «на повторение» = слово, у которого подошёл срок (next_review_at),
+        # в один источник истины с get_review_word. NULL = «пора» (до миграции).
         filter_sql = """
           AND up.word_id IS NOT NULL
-          AND COALESCE(up.wrong_count, 0) > 0
-          AND COALESCE(up.review_streak, 0) < 2
+          AND (up.next_review_at IS NULL OR up.next_review_at <= NOW())
         """
     elif filter_mode == "mastered":
         filter_sql = """
@@ -892,8 +923,8 @@ async def get_user_dictionary(user_id: int, filter_mode: str = "all", limit: int
             COALESCE(up.review_streak, 0)::INT AS review_streak,
             up.last_seen,
             (
-              COALESCE(up.wrong_count, 0) > 0
-              AND COALESCE(up.review_streak, 0) < 2
+              up.word_id IS NOT NULL
+              AND (up.next_review_at IS NULL OR up.next_review_at <= NOW())
             ) AS needs_review,
             (
               COALESCE(up.correct_count, 0) >= 3
@@ -930,8 +961,7 @@ async def get_dictionary_summary(user_id: int):
                 AND COALESCE(correct_count, 0) >= COALESCE(wrong_count, 0) + 2
             )::INT AS mastered_words,
             COUNT(*) FILTER (
-              WHERE COALESCE(wrong_count, 0) > 0
-                AND COALESCE(review_streak, 0) < 2
+              WHERE next_review_at IS NULL OR next_review_at <= NOW()
             )::INT AS review_words
         FROM user_progress
         WHERE user_id = $1
@@ -1051,24 +1081,45 @@ async def finish_game_session(
 
 # ---------- Прогресс ----------
 
+# SRS (интервальное повторение, Leitner). «Коробка» 0..5 определяет, через сколько
+# дней слово снова попадёт в режим «Повторение»:
+#   box0 — сразу (ошибка/новое-неверно), 1 → 1д, 2 → 3д, 3 → 7д, 4 → 16д, 5 → 35д.
+# Правильный ответ двигает слово на коробку выше (до 5), ошибка — в нулевую.
+# Освоенное слово всё равно вернётся через ~месяц — это и есть долгая память.
+_SRS_MAX_BOX = 5
+# Новая коробка после правильного ответа (растёт до максимума).
+_SRS_NEXT_BOX_SQL = f"LEAST(COALESCE(user_progress.srs_box, 0) + 1, {_SRS_MAX_BOX})"
+# Срок следующего показа после правильного ответа (по новой коробке 1..5).
+_SRS_DUE_AFTER_CORRECT_SQL = (
+    f"NOW() + make_interval(days => CASE {_SRS_NEXT_BOX_SQL} "
+    "WHEN 1 THEN 1 WHEN 2 THEN 3 WHEN 3 THEN 7 WHEN 4 THEN 16 ELSE 35 END)"
+)
+
+
 async def update_progress(user_id: int, word_id: int, correct: bool) -> None:
     pool = await _get_pool()
     if correct:
-        await pool.execute("""
-            INSERT INTO user_progress (user_id, word_id, correct_count, review_streak)
-            VALUES ($1, $2, 1, 1)
+        await pool.execute(f"""
+            INSERT INTO user_progress
+                (user_id, word_id, correct_count, review_streak, srs_box, next_review_at)
+            VALUES ($1, $2, 1, 1, 1, NOW() + make_interval(days => 1))
             ON CONFLICT (user_id, word_id)
             DO UPDATE SET correct_count = user_progress.correct_count + 1,
                           review_streak = LEAST(COALESCE(user_progress.review_streak, 0) + 1, 2),
+                          srs_box = {_SRS_NEXT_BOX_SQL},
+                          next_review_at = {_SRS_DUE_AFTER_CORRECT_SQL},
                           last_seen = NOW()
         """, user_id, word_id)
     else:
         await pool.execute("""
-            INSERT INTO user_progress (user_id, word_id, wrong_count, review_streak)
-            VALUES ($1, $2, 1, 0)
+            INSERT INTO user_progress
+                (user_id, word_id, wrong_count, review_streak, srs_box, next_review_at)
+            VALUES ($1, $2, 1, 0, 0, NOW())
             ON CONFLICT (user_id, word_id)
             DO UPDATE SET wrong_count = user_progress.wrong_count + 1,
                           review_streak = 0,
+                          srs_box = 0,
+                          next_review_at = NOW(),
                           last_seen = NOW()
         """, user_id, word_id)
 
@@ -1083,13 +1134,16 @@ async def update_progress_bulk(user_id: int, items: list[tuple[int, bool]]) -> N
     if not items:
         return
     pool = await _get_pool()
-    await pool.executemany("""
-        INSERT INTO user_progress (user_id, word_id, correct_count, wrong_count, review_streak)
+    await pool.executemany(f"""
+        INSERT INTO user_progress
+            (user_id, word_id, correct_count, wrong_count, review_streak, srs_box, next_review_at)
         VALUES (
             $1, $2,
             CASE WHEN $3 THEN 1 ELSE 0 END,
             CASE WHEN $3 THEN 0 ELSE 1 END,
-            CASE WHEN $3 THEN 1 ELSE 0 END
+            CASE WHEN $3 THEN 1 ELSE 0 END,
+            CASE WHEN $3 THEN 1 ELSE 0 END,
+            CASE WHEN $3 THEN NOW() + make_interval(days => 1) ELSE NOW() END
         )
         ON CONFLICT (user_id, word_id)
         DO UPDATE SET
@@ -1099,6 +1153,8 @@ async def update_progress_bulk(user_id: int, items: list[tuple[int, bool]]) -> N
                 WHEN $3 THEN LEAST(COALESCE(user_progress.review_streak, 0) + 1, 2)
                 ELSE 0
             END,
+            srs_box = CASE WHEN $3 THEN {_SRS_NEXT_BOX_SQL} ELSE 0 END,
+            next_review_at = CASE WHEN $3 THEN {_SRS_DUE_AFTER_CORRECT_SQL} ELSE NOW() END,
             last_seen = NOW()
     """, [(user_id, int(word_id), bool(correct)) for word_id, correct in items])
 

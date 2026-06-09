@@ -213,5 +213,72 @@ class TrainingTokenSqlTests(unittest.TestCase):
         self.assertFalse(run_with(fake, database.consume_training_token("tok", 7, 42)))
 
 
+class SrsProgressTests(unittest.TestCase):
+    """SRS (Leitner): правильный ответ двигает коробку и переносит срок показа,
+    ошибка — сбрасывает в box0 и делает слово «пора» немедленно."""
+
+    def test_correct_promotes_box_and_schedules(self):
+        fake = FakePool()
+        run_with(fake, database.update_progress(7, 42, correct=True))
+        _, sql, args = fake.calls[0]
+        self.assertEqual(args, (7, 42))
+        self.assertIn("srs_box = LEAST(COALESCE(user_progress.srs_box, 0) + 1, 5)", sql)
+        self.assertIn("next_review_at = NOW() + make_interval(days =>", sql)
+        # старая логика стрика сохранена (обратная совместимость)
+        self.assertIn("LEAST(COALESCE(user_progress.review_streak, 0) + 1, 2)", sql)
+
+    def test_wrong_resets_box_and_due_now(self):
+        fake = FakePool()
+        run_with(fake, database.update_progress(7, 42, correct=False))
+        _, sql, _ = fake.calls[0]
+        self.assertIn("srs_box = 0", sql)
+        self.assertIn("next_review_at = NOW()", sql)
+        self.assertIn("review_streak = 0", sql)
+
+    def test_bulk_includes_srs_columns(self):
+        fake = FakePool()
+        run_with(fake, database.update_progress_bulk(7, [(1, True), (2, False)]))
+        method, sql, args_list = fake.calls[0]
+        self.assertEqual(method, "executemany")
+        self.assertEqual(args_list, [(7, 1, True), (7, 2, False)])
+        self.assertIn("srs_box = CASE WHEN $3 THEN", sql)
+        self.assertIn("next_review_at = CASE WHEN $3 THEN", sql)
+
+
+class GetReviewWordTests(unittest.TestCase):
+    def test_selects_due_words_by_next_review_at(self):
+        fake = FakePool()
+        run_with(fake, database.get_review_word(7, age_group="8_10"))
+        method, sql, args = fake.calls[0]
+        self.assertEqual(method, "fetchrow")
+        self.assertEqual(args, (7, None, "8_10", []))
+        self.assertIn("up.next_review_at IS NULL OR up.next_review_at <= NOW()", sql)
+        self.assertIn("up.next_review_at ASC NULLS FIRST", sql)
+        # подбор больше не фильтрует «только ошибочные/незакреплённые»
+        self.assertNotIn("COALESCE(up.review_streak, 0) < 2", sql)
+
+
+class DictionaryReviewSrsTests(unittest.TestCase):
+    """Счётчики/фильтры словаря — из одного SRS-источника с get_review_word,
+    чтобы бейдж «N на повторение» совпадал с тем, что выдаёт тренировка."""
+
+    def test_summary_review_words_counts_due(self):
+        fake = FakePool()
+        fake.fetchrow_return = {"total_words": 5, "mastered_words": 2, "review_words": 1}
+        run_with(fake, database.get_dictionary_summary(7))
+        _, sql, args = fake.calls[0]
+        self.assertEqual(args, (7,))
+        self.assertIn("next_review_at IS NULL OR next_review_at <= NOW()", sql)
+        self.assertNotIn("review_streak, 0) < 2", sql)
+
+    def test_dictionary_review_filter_uses_srs(self):
+        fake = FakePool()
+        run_with(fake, database.get_user_dictionary(7, filter_mode="review"))
+        _, sql, _ = fake.calls[0]
+        self.assertIn("up.next_review_at IS NULL OR up.next_review_at <= NOW()", sql)
+        # колонка needs_review тоже по SRS, а не по старому wrong_count/streak
+        self.assertNotIn("COALESCE(up.review_streak, 0) < 2", sql)
+
+
 if __name__ == "__main__":
     unittest.main()

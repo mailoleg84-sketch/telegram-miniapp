@@ -186,7 +186,8 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertIn(".dictionary-row[hidden]", styles_css)
         self.assertNotIn("overflow-wrap: anywhere", styles_css)
         self.assertIn("review_streak", database_py)
-        self.assertIn("COALESCE(up.review_streak, 0) < 2", database_py)
+        # Режим «Повторение» переведён на SRS: подбор и счётчики — по сроку next_review_at.
+        self.assertIn("next_review_at <= NOW()", database_py)
         self.assertGreaterEqual(server_py.count("age_group = _normalized_age_group_for_user(user)"), 7)
         self.assertIn(".action-tile::after,\n.action-row::after {\n  display: none;", styles_css)
 
