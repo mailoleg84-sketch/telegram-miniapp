@@ -337,9 +337,11 @@ h1, h2 { color: var(--c-ink); font-weight: 900; letter-spacing: -0.4px; }
   cursor: pointer;
   font-family: inherit;
   font-weight: 800;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--c-muted);
   padding: 4px 2px;
+  min-height: 44px;
+  justify-content: center;
   border-radius: 12px;
   white-space: nowrap;
   transition: color .15s ease;
@@ -396,7 +398,8 @@ input[type="text"]:focus {
 }
 button:focus-visible,
 input:focus-visible {
-  outline: 3px solid var(--accent-soft);
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* ===================== ТЁМНЫЕ ИСПРАВЛЕНИЯ для захардкоженных белых поверхностей ===================== */
@@ -521,7 +524,6 @@ input:focus-visible {
    Чуть живее, когда репетитор говорит. */
 .chat-wrap .tutor-face.is-photo .tutor-avatar-img {
   animation: avatarBreathe 4.8s ease-in-out infinite;
-  will-change: transform;
 }
 .chat-wrap .tutor-face.is-photo[data-state="speaking"] .tutor-avatar-img {
   animation-duration: 3.2s;

@@ -1323,7 +1323,10 @@ code {
   color: var(--link);
   font-size: 14px;
   cursor: pointer;
-  padding: 4px;
+  padding: 4px 10px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
 }
 
 .tutor-stage {
@@ -1416,7 +1419,7 @@ code {
 }
 
 .voice-action {
-  min-height: 30px;
+  min-height: 44px;
   padding: 6px 10px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -1909,8 +1912,8 @@ input[type="text"]:focus {
 
 .pronounce-btn,
 .pronounce-btn.small {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: var(--radius-control);
   box-shadow: var(--shadow-control);
   transition: transform 0.14s ease, opacity 0.14s ease;
@@ -2114,7 +2117,7 @@ input[type="text"]:focus {
 
 button:focus-visible,
 input:focus-visible {
-  outline: 3px solid rgba(108, 92, 231, 0.22);
+  outline: 3px solid var(--accent);
   outline-offset: 2px;
 }
 

@@ -775,12 +775,21 @@ function loading() {
   app.innerHTML = `<div class="screen card center">Загрузка...</div>`;
 }
 
+function friendlyError(message) {
+  const raw = String(message || "");
+  if (/network|failed to fetch|networkerror|соедин|интернет/i.test(raw))
+    return "Нет интернета. Проверь связь и попробуй ещё раз.";
+  if (/50\d|internal|server|шлюз|gateway/i.test(raw))
+    return "Сервер немного устал. Попробуй чуть позже.";
+  return "Что-то пошло не так. Нажми «Перезагрузить».";
+}
+
 function renderError(message) {
   setBack(null);
   removeBottomNav();
   app.innerHTML = `
     <div class="screen">
-      <div class="error-box"><b>Что-то пошло не так</b><div class="mt-8">${esc(message)}</div></div>
+      <div class="error-box"><b>Упс! 🙈</b><div class="mt-8">${esc(friendlyError(message))}</div></div>
       <button class="btn mt-12" id="reload">Перезагрузить</button>
     </div>`;
   document.getElementById("reload").onclick = () => location.reload();
