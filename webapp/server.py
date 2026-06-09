@@ -3134,12 +3134,13 @@ def _consume_training_attempt(token: str, user_id: int, word_id: int) -> bool:
     return record["expires_at"] >= time.time()
 
 
-async def api_choice_next(request: web.Request):
-    user_id = request["tg_user"]["id"]
-    user = await _current_user_or_404(request)
-    body = await _safe_json(request)
+async def _select_training_word(user_id: int, body: dict, age_group: str):
+    """Каскадная выборка слова для тренировок («выбрать перевод» / «написать
+    слово»). Возвращает кортеж (word, error_response, focus, review_empty):
+    при ошибке word=None и заполнен error_response (web.Response с тем же телом
+    и статусом, что были инлайн в обработчиках).
+    """
     focus = "review" if body.get("focus") == "review" else "all"
-    age_group = _normalized_age_group_for_user(user)
     exclude_ids = []
     for item in body.get("exclude_ids") or []:
         try:
@@ -3147,42 +3148,53 @@ async def api_choice_next(request: web.Request):
         except (TypeError, ValueError):
             continue
 
-    correct = None
+    word = None
     requested_word_id = body.get("word_id")
     if requested_word_id is not None:
         try:
-            correct = await database.get_word_by_id(int(requested_word_id))
+            word = await database.get_word_by_id(int(requested_word_id))
         except (TypeError, ValueError):
-            return web.json_response({"error": "bad payload"}, status=400)
-        if not correct:
-            return web.json_response({"error": "word not found"}, status=404)
+            return None, web.json_response({"error": "bad payload"}, status=400), focus, False
+        if not word:
+            return None, web.json_response({"error": "word not found"}, status=404), focus, False
 
-    if not correct:
-        correct = await database.get_review_word(user_id, age_group=age_group, exclude_ids=exclude_ids) if focus == "review" else None
-    review_empty = focus == "review" and not correct
-    if not correct:
-        correct = await database.get_practice_word(user_id, age_group=age_group, exclude_ids=exclude_ids)
-    if not correct and exclude_ids:
-        correct = await database.get_review_word(user_id, age_group=age_group) if focus == "review" else None
-        if not correct:
-            correct = await database.get_practice_word(user_id, age_group=age_group)
-    if not correct:
-        return web.json_response({"error": "Нет слов"}, status=500)
+    if not word:
+        word = await database.get_review_word(user_id, age_group=age_group, exclude_ids=exclude_ids) if focus == "review" else None
+    review_empty = focus == "review" and not word
+    if not word:
+        word = await database.get_practice_word(user_id, age_group=age_group, exclude_ids=exclude_ids)
+    if not word and exclude_ids:
+        word = await database.get_review_word(user_id, age_group=age_group) if focus == "review" else None
+        if not word:
+            word = await database.get_practice_word(user_id, age_group=age_group)
+    if not word:
+        return None, web.json_response({"error": "Нет слов"}, status=500), focus, review_empty
+    return word, None, focus, review_empty
 
-    wrong = await database.get_random_words(3, exclude_id=correct["id"], age_group=age_group)
-    options = [{"id": correct["id"], "translation": correct["translation"]}]
+
+async def api_choice_next(request: web.Request):
+    user_id = request["tg_user"]["id"]
+    user = await _current_user_or_404(request)
+    body = await _safe_json(request)
+    age_group = _normalized_age_group_for_user(user)
+    word, error, focus, review_empty = await _select_training_word(user_id, body, age_group)
+    if error:
+        return error
+
+    wrong = await database.get_random_words(3, exclude_id=word["id"], age_group=age_group)
+    options = [{"id": word["id"], "translation": word["translation"]}]
     options += [{"id": w["id"], "translation": w["translation"]} for w in wrong]
     random.shuffle(options)
 
     return web.json_response({
-        "word":    correct["word"],
-        "word_id": correct["id"],
-        "transcription": correct["transcription"] or "",
-        "image_url": _word_image_url(correct["word"], correct["topic"] or "basic"),
+        "word":    word["word"],
+        "word_id": word["id"],
+        "transcription": word["transcription"] or "",
+        "image_url": _word_image_url(word["word"], word["topic"] or "basic"),
         "options": options,
         "focus": focus,
         "review_empty": review_empty,
-        "attempt_id": _issue_training_attempt(user_id, correct["id"]),
+        "attempt_id": _issue_training_attempt(user_id, word["id"]),
     })
 
 
@@ -3226,36 +3238,10 @@ async def api_input_next(request: web.Request):
     user_id = request["tg_user"]["id"]
     user = await _current_user_or_404(request)
     body = await _safe_json(request)
-    focus = "review" if body.get("focus") == "review" else "all"
     age_group = _normalized_age_group_for_user(user)
-    exclude_ids = []
-    for item in body.get("exclude_ids") or []:
-        try:
-            exclude_ids.append(int(item))
-        except (TypeError, ValueError):
-            continue
-
-    word = None
-    requested_word_id = body.get("word_id")
-    if requested_word_id is not None:
-        try:
-            word = await database.get_word_by_id(int(requested_word_id))
-        except (TypeError, ValueError):
-            return web.json_response({"error": "bad payload"}, status=400)
-        if not word:
-            return web.json_response({"error": "word not found"}, status=404)
-
-    if not word:
-        word = await database.get_review_word(user_id, age_group=age_group, exclude_ids=exclude_ids) if focus == "review" else None
-    review_empty = focus == "review" and not word
-    if not word:
-        word = await database.get_practice_word(user_id, age_group=age_group, exclude_ids=exclude_ids)
-    if not word and exclude_ids:
-        word = await database.get_review_word(user_id, age_group=age_group) if focus == "review" else None
-        if not word:
-            word = await database.get_practice_word(user_id, age_group=age_group)
-    if not word:
-        return web.json_response({"error": "Нет слов"}, status=500)
+    word, error, focus, review_empty = await _select_training_word(user_id, body, age_group)
+    if error:
+        return error
     return web.json_response({
         "word_id":     word["id"],
         "translation": word["translation"],
