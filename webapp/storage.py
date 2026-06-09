@@ -170,10 +170,9 @@ def make_storage(subdir: str):
     return LocalDiskStorage(CACHE_ROOT / subdir)
 
 
-# Готовые хранилища под три кэша (единый источник истины о расположении кэшей).
-# Пока локальные: переключение на make_storage() (R2) — в шаге проводки хендлеров,
-# где server.py научится работать с S3 (нет base_dir/glob). До тех пор R2 не
-# активируется, даже если заданы R2_* — поведение остаётся прежним.
-vocab_image_storage = LocalDiskStorage(CACHE_ROOT / "vocabulary")
+# Готовые хранилища под три кэша. Картинки слов — через фабрику (R2, если задан;
+# это самый дорогой кэш: повторная генерация = деньги OpenAI). Аудио/фото пока
+# локальные (дёшево пересоздать) — провести через R2 можно отдельным шагом.
+vocab_image_storage = make_storage("vocabulary")
 word_audio_storage = LocalDiskStorage(CACHE_ROOT / "audio")
 vocab_photo_storage = LocalDiskStorage(CACHE_ROOT / "vocab_photos")

@@ -85,7 +85,8 @@ STATIC_DIR = Path(__file__).parent / "static"
 # Каталоги кэшей берём из слоя хранилища (webapp/storage.py). По умолчанию это
 # <static>/generated (как раньше); через переменную окружения CACHE_ROOT можно
 # вынести их на постоянный диск Render, чтобы кэши переживали деплой.
-GENERATED_VOCAB_DIR = storage.vocab_image_storage.base_dir
+# Для локального backend — каталог (Path); для S3/R2 — None (нет локального пути).
+GENERATED_VOCAB_DIR = getattr(storage.vocab_image_storage, "base_dir", None)
 AUDIO_CACHE_DIR = storage.word_audio_storage.base_dir
 VOCAB_PHOTO_CACHE_DIR = storage.vocab_photo_storage.base_dir
 VOCAB_PHOTO_CACHE_MAX_FILES = int(os.getenv("VOCAB_PHOTO_CACHE_MAX_FILES", "800"))
@@ -313,6 +314,10 @@ def _generated_vocab_url_exists(url: str) -> bool:
     filename = url.rsplit("/", 1)[-1]
     if not filename or "/" in filename or "\\" in filename:
         return False
+    if GENERATED_VOCAB_DIR is None:
+        # S3/R2 — хранилище персистентно: раз URL в БД, объект существует. Доверяем
+        # (в отличие от эфемерного диска, где файл мог стереться при деплое).
+        return True
     return (GENERATED_VOCAB_DIR / filename).is_file()
 
 
@@ -719,7 +724,7 @@ def _admin_overview_payload(overview: dict) -> dict:
             "cost_usd": round(_safe_float(ai_today, "cost_usd"), 6),
         },
         "cache": {
-            "generated_images": _file_cache_summary(GENERATED_VOCAB_DIR),
+            "generated_images": _file_cache_summary(GENERATED_VOCAB_DIR) if GENERATED_VOCAB_DIR else {"backend": "r2"},
             "word_audio": _file_cache_summary(AUDIO_CACHE_DIR),
         },
         "config": {
@@ -1948,7 +1953,7 @@ async def api_vocab_image_generate(request: web.Request):
             "cached": True,
         })
 
-    if not force and GENERATED_VOCAB_DIR.exists():
+    if not force and GENERATED_VOCAB_DIR is not None and GENERATED_VOCAB_DIR.exists():
         for cached_path in GENERATED_VOCAB_DIR.glob(f"{prompt_hash}.*"):
             if not cached_path.is_file():
                 continue
@@ -2019,12 +2024,11 @@ async def api_vocab_image_generate(request: web.Request):
             "attempts": result.attempts,
         })
 
-    GENERATED_VOCAB_DIR.mkdir(parents=True, exist_ok=True)
     extension = _generated_vocab_extension(result.content_type)
     filename = f"{prompt_hash}.{extension}"
-    image_path = GENERATED_VOCAB_DIR / filename
-    image_path.write_bytes(result.image_bytes)
-    _evict_cache_dir(GENERATED_VOCAB_DIR, VOCAB_IMAGE_CACHE_MAX_FILES)
+    await storage.vocab_image_storage.write(filename, result.image_bytes)
+    if GENERATED_VOCAB_DIR is not None:  # eviction только для локального диска (S3 — lifecycle)
+        _evict_cache_dir(GENERATED_VOCAB_DIR, VOCAB_IMAGE_CACHE_MAX_FILES)
     image_url = _generated_vocab_static_url(filename)
     await database.update_word_generated_image(
         word_id,
@@ -3079,6 +3083,8 @@ def _generated_dir_under_static() -> bool:
     """True, если каталог сгенерированных картинок лежит внутри STATIC_DIR
     (тогда их раздаёт обычный add_static). Если CACHE_ROOT вынесен наружу —
     нужна отдельная раздача (см. generated_vocab_image_handler)."""
+    if GENERATED_VOCAB_DIR is None:
+        return False  # S3/R2 — раздаём своим маршрутом-прокси
     try:
         GENERATED_VOCAB_DIR.resolve().relative_to(STATIC_DIR.resolve())
         return True
@@ -3086,17 +3092,25 @@ def _generated_dir_under_static() -> bool:
         return False
 
 
+_GENERATED_IMAGE_CTYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp"}
+
+
 async def generated_vocab_image_handler(request: web.Request):
-    """Отдаёт сгенерированную картинку слова из CACHE_ROOT, когда он вынесен за
-    пределы static (например на persistent disk Render). URL-схема та же:
-    /static/generated/vocabulary/<file>, поэтому ссылки в БД не меняются."""
+    """Прокси-раздача сгенерированной картинки слова из хранилища (локальный диск
+    вне static или S3/R2). URL-схема та же: /static/generated/vocabulary/<file>,
+    поэтому ссылки в БД не меняются. Бакет может быть приватным."""
     name = request.match_info.get("name", "")
     if not name or "/" in name or "\\" in name or ".." in name:
         raise web.HTTPNotFound()
-    path = GENERATED_VOCAB_DIR / name
-    if not path.is_file():
+    try:
+        data = await storage.vocab_image_storage.read(name)
+    except Exception:  # noqa: BLE001 — нет объекта/файла
         raise web.HTTPNotFound()
-    return web.FileResponse(path, headers={"Cache-Control": "public, max-age=604800"})
+    ctype = _GENERATED_IMAGE_CTYPES.get(name.rsplit(".", 1)[-1].lower(), "image/png")
+    return web.Response(
+        body=data, content_type=ctype,
+        headers={"Cache-Control": "public, max-age=604800"},
+    )
 
 
 def create_app(
