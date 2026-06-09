@@ -5,6 +5,7 @@ venv/
 # Кэш Python
 __pycache__/
 *.pyc
+.pytest_cache/
 
 # Локальная база (на Render всё равно эфемерная)
 *.db
