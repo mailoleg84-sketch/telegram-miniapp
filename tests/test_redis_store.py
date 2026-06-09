@@ -95,5 +95,33 @@ class DispatchFallbackTests(unittest.IsolatedAsyncioTestCase):
         rate_limiter._rate_buckets.pop((uid, "api"), None)
 
 
+class TrainingTokenDispatchTests(unittest.IsolatedAsyncioTestCase):
+    async def test_uses_redis_when_enabled(self):
+        from webapp import server
+        with patch("webapp.redis_store.redis_enabled", return_value=True), \
+             patch("webapp.redis_store.issue_token", AsyncMock()) as issue, \
+             patch("webapp.redis_store.consume_token",
+                   AsyncMock(return_value={"user_id": 7, "word_id": 42})):
+            token = await server._issue_training_attempt(7, 42)
+            issue.assert_awaited_once()
+            ok = await server._consume_training_attempt(token, 7, 42)
+        self.assertTrue(ok)
+
+    async def test_consume_redis_mismatch_is_false(self):
+        from webapp import server
+        with patch("webapp.redis_store.redis_enabled", return_value=True), \
+             patch("webapp.redis_store.consume_token",
+                   AsyncMock(return_value={"user_id": 7, "word_id": 99})):
+            ok = await server._consume_training_attempt("t", 7, 42)
+        self.assertFalse(ok)
+
+    async def test_consume_redis_error_falls_back_to_inmemory(self):
+        from webapp import server
+        with patch("webapp.redis_store.redis_enabled", return_value=True), \
+             patch("webapp.redis_store.consume_token", AsyncMock(side_effect=RuntimeError("down"))):
+            ok = await server._consume_training_attempt("missing", 7, 42)
+        self.assertFalse(ok)  # фолбэк на in-memory: токена нет, но не падает
+
+
 if __name__ == "__main__":
     unittest.main()

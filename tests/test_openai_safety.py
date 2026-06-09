@@ -351,14 +351,15 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertIn('"/api/account/delete"', app_js)
 
     def test_training_attempt_token_is_single_use(self):
+        import asyncio
         from webapp.server import _issue_training_attempt, _consume_training_attempt
 
-        token = _issue_training_attempt(123, 45)
-        self.assertTrue(_consume_training_attempt(token, 123, 45))   # засчитываем один раз
-        self.assertFalse(_consume_training_attempt(token, 123, 45))  # повтор не проходит
-        wrong_word = _issue_training_attempt(123, 45)
-        self.assertFalse(_consume_training_attempt(wrong_word, 123, 99))
-        self.assertFalse(_consume_training_attempt("unknown-token", 123, 45))
+        token = asyncio.run(_issue_training_attempt(123, 45))
+        self.assertTrue(asyncio.run(_consume_training_attempt(token, 123, 45)))   # засчитываем один раз
+        self.assertFalse(asyncio.run(_consume_training_attempt(token, 123, 45)))  # повтор не проходит
+        wrong_word = asyncio.run(_issue_training_attempt(123, 45))
+        self.assertFalse(asyncio.run(_consume_training_attempt(wrong_word, 123, 99)))
+        self.assertFalse(asyncio.run(_consume_training_attempt("unknown-token", 123, 45)))
 
     def test_training_answer_only_awards_with_valid_attempt(self):
         root = Path(__file__).resolve().parents[1]

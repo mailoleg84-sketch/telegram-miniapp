@@ -79,6 +79,7 @@ from webapp.vocabulary_visualizer import (
 )
 from webapp.free_images import fetch_word_illustration
 from webapp import storage
+from webapp import redis_store
 
 log = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
@@ -102,6 +103,8 @@ from webapp.rate_limiter import (
     _rate_buckets,
     _rate_limit_key,
     _rate_limit_ok,
+    photo_rate_limit_ok,
+    rate_limit_ok,
 )
 
 
@@ -220,7 +223,7 @@ async def vocabulary_photo_handler(request: web.Request):
     if not VOCAB_FREE_PHOTOS or not word or is_sensitive_word(word):
         return svg_fallback()
 
-    if not _photo_rate_limit_ok(request.remote or ""):
+    if not await photo_rate_limit_ok(request.remote or ""):
         return web.Response(status=429, text="Too Many Requests")
 
     cache_path = _vocab_photo_cache_path(word)
@@ -280,7 +283,7 @@ async def auth_middleware(request: web.Request, handler):
     request["tg_user"] = parsed["user"]
     user_id = int(parsed["user"]["id"])
     key = _rate_limit_key(request.path)
-    if not _rate_limit_ok(user_id, key):
+    if not await rate_limit_ok(user_id, key):
         return web.json_response({
             "error": "Слишком много запросов. Подожди минуту и попробуй снова.",
         }, status=429)
@@ -2325,21 +2328,35 @@ def _prune_training_attempts() -> None:
         _training_attempts.pop(token, None)
 
 
-def _issue_training_attempt(user_id: int, word_id: int) -> str:
-    _prune_training_attempts()
+async def _issue_training_attempt(user_id: int, word_id: int) -> str:
     token = secrets.token_urlsafe(16)
-    _training_attempts[token] = {
-        "user_id": user_id,
-        "word_id": word_id,
-        "expires_at": time.time() + _TRAINING_ATTEMPT_TTL,
-    }
+    payload = {"user_id": user_id, "word_id": word_id}
+    if redis_store.redis_enabled():
+        try:
+            await redis_store.issue_token(token, payload, _TRAINING_ATTEMPT_TTL)
+            return token
+        except Exception:  # noqa: BLE001
+            log.warning("Redis issue_token недоступен, фолбэк на in-memory", exc_info=True)
+    _prune_training_attempts()
+    _training_attempts[token] = {**payload, "expires_at": time.time() + _TRAINING_ATTEMPT_TTL}
     return token
 
 
-def _consume_training_attempt(token: str, user_id: int, word_id: int) -> bool:
-    """Гасит токен. True только если он валиден, не истёк и ещё не использован."""
+async def _consume_training_attempt(token: str, user_id: int, word_id: int) -> bool:
+    """Гасит токен (одноразово). True только если валиден, не истёк, не использован."""
+    token = str(token or "")
+    if not token:
+        return False
+    if redis_store.redis_enabled():
+        try:
+            record = await redis_store.consume_token(token)
+            if not record:
+                return False
+            return record.get("user_id") == user_id and record.get("word_id") == word_id
+        except Exception:  # noqa: BLE001
+            log.warning("Redis consume_token недоступен, фолбэк на in-memory", exc_info=True)
     _prune_training_attempts()
-    record = _training_attempts.pop(str(token or ""), None)
+    record = _training_attempts.pop(token, None)
     if not record:
         return False
     if record["user_id"] != user_id or record["word_id"] != word_id:
@@ -2407,7 +2424,7 @@ async def api_choice_next(request: web.Request):
         "options": options,
         "focus": focus,
         "review_empty": review_empty,
-        "attempt_id": _issue_training_attempt(user_id, word["id"]),
+        "attempt_id": await _issue_training_attempt(user_id, word["id"]),
     })
 
 
@@ -2426,7 +2443,7 @@ async def api_choice_answer(request: web.Request):
 
     correct = selected_id == word_id
     focus = "review" if body.get("focus") == "review" else "all"
-    counted = _consume_training_attempt(body.get("attempt_id"), user_id, word_id)
+    counted = await _consume_training_attempt(body.get("attempt_id"), user_id, word_id)
     delta = (POINTS_CORRECT if correct else POINTS_WRONG) if counted else 0
     if counted:
         await database.update_points(user_id, delta)
@@ -2462,7 +2479,7 @@ async def api_input_next(request: web.Request):
         "image_url":   _word_image_url(word["word"], word["topic"] or "basic"),
         "focus": focus,
         "review_empty": review_empty,
-        "attempt_id": _issue_training_attempt(user_id, word["id"]),
+        "attempt_id": await _issue_training_attempt(user_id, word["id"]),
     })
 
 
@@ -2482,7 +2499,7 @@ async def api_input_answer(request: web.Request):
 
     correct = answer == word["word"].lower()
     focus = "review" if body.get("focus") == "review" else "all"
-    counted = _consume_training_attempt(body.get("attempt_id"), user_id, word_id)
+    counted = await _consume_training_attempt(body.get("attempt_id"), user_id, word_id)
     delta = (POINTS_CORRECT if correct else POINTS_WRONG) if counted else 0
     if counted:
         await database.update_points(user_id, delta)
