@@ -4,10 +4,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from webapp.storage import LocalDiskStorage, evict_dir, _resolve_root
+from webapp.storage import (
+    LocalDiskStorage, S3Storage, evict_dir, make_storage, _resolve_root,
+)
 
 
-class LocalDiskStorageTests(unittest.TestCase):
+class LocalDiskStorageTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.dir = Path(self._tmp.name)
@@ -15,16 +17,16 @@ class LocalDiskStorageTests(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def test_write_read_exists_delete_roundtrip(self):
+    async def test_write_read_exists_delete_roundtrip(self):
         store = LocalDiskStorage(self.dir / "sub")  # вложенный каталог создастся
-        self.assertFalse(store.exists("a.bin"))
-        store.write("a.bin", b"hello")
-        self.assertTrue(store.exists("a.bin"))
-        self.assertEqual(store.read("a.bin"), b"hello")
-        store.delete("a.bin")
-        self.assertFalse(store.exists("a.bin"))
+        self.assertFalse(await store.exists("a.bin"))
+        await store.write("a.bin", b"hello")
+        self.assertTrue(await store.exists("a.bin"))
+        self.assertEqual(await store.read("a.bin"), b"hello")
+        await store.delete("a.bin")
+        self.assertFalse(await store.exists("a.bin"))
         # Повторное удаление не падает.
-        store.delete("a.bin")
+        await store.delete("a.bin")
 
 
 class EvictDirTests(unittest.TestCase):
@@ -85,6 +87,43 @@ class ResolveRootTests(unittest.TestCase):
                 os.environ.pop("CACHE_ROOT", None)
             else:
                 os.environ["CACHE_ROOT"] = old
+
+
+class MakeStorageFactoryTests(unittest.TestCase):
+    R2_ENV = {
+        "R2_BUCKET": "tutor-cache",
+        "R2_ENDPOINT_URL": "https://acc.r2.cloudflarestorage.com",
+        "R2_ACCESS_KEY_ID": "ak",
+        "R2_SECRET_ACCESS_KEY": "sk",
+    }
+
+    def test_local_by_default(self):
+        for k in self.R2_ENV:
+            os.environ.pop(k, None)
+        store = make_storage("vocabulary")
+        self.assertIsInstance(store, LocalDiskStorage)
+
+    def test_s3_when_r2_configured(self):
+        old = {k: os.environ.get(k) for k in self.R2_ENV}
+        try:
+            os.environ.update(self.R2_ENV)
+            store = make_storage("vocabulary")
+            self.assertIsInstance(store, S3Storage)
+            self.assertEqual(store.bucket, "tutor-cache")
+            self.assertEqual(store.prefix, "vocabulary")
+            self.assertEqual(store.endpoint_url, "https://acc.r2.cloudflarestorage.com")
+        finally:
+            for k, v in old.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+
+    def test_s3_key_prefixing(self):
+        s = S3Storage("b", "vocabulary", "https://e", "ak", "sk")
+        self.assertEqual(s._key("abc.png"), "vocabulary/abc.png")
+        s2 = S3Storage("b", "", "https://e", "ak", "sk")
+        self.assertEqual(s2._key("abc.png"), "abc.png")
 
 
 if __name__ == "__main__":

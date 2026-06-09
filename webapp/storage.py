@@ -1,16 +1,17 @@
 """Слой хранилища файловых кэшей (картинки слов, озвучка, бесплатные фото).
 
-Сейчас единственный backend — локальный диск (`LocalDiskStorage`). Корень кэша
-задаётся переменной окружения `CACHE_ROOT` (по умолчанию `<static>/generated`,
-как было исторически).
+Два backend'а за единым async-интерфейсом (`exists/read/write/delete`):
 
-Зачем: на Render диск эфемерный и стирается при каждом деплое — сгенерированные
-платно картинки и озвучка теряются и создаются заново. Если указать `CACHE_ROOT`
-на смонтированный **persistent disk** Render, кэши переживут деплой.
+- ``LocalDiskStorage`` — локальный диск. Корень — переменная ``CACHE_ROOT``
+  (по умолчанию ``<static>/generated``). На Render это эфемерный диск (стирается
+  при деплое); можно указать на persistent disk.
+- ``S3Storage`` — S3-совместимое облако (Cloudflare R2). Включается, когда заданы
+  переменные ``R2_*`` (см. ``_r2_configured``). Тогда кэши переживают деплой и не
+  привязаны к одному инстансу. Раздаём прокси-методом через свой сервер, поэтому
+  бакет может быть приватным.
 
-Расширение на облако (S3 / Cloudflare R2) — отдельным шагом: достаточно
-реализовать класс с тем же интерфейсом (`exists/read/write/delete/evict`) и
-вернуть его из фабрик ниже. Код вызова в `server.py` менять не придётся.
+Выбор backend'а — в ``make_storage`` по env. Код вызова (server.py) работает с
+любым через одинаковый async-интерфейс.
 """
 import os
 from pathlib import Path
@@ -28,11 +29,11 @@ CACHE_ROOT = _resolve_root()
 
 
 def evict_dir(directory, max_files: int, exempt_suffix: str = ".none") -> None:
-    """Удаляет самые старые файлы каталога, если их больше max_files.
+    """Удаляет самые старые файлы каталога, если их больше max_files (локально).
 
     Файлы с суффиксом `exempt_suffix` (крошечные маркеры «картинки нет») не
     учитываются и не удаляются. Бросает OSError наверх — логирование делает
-    вызывающий слой.
+    вызывающий слой. Для S3 ретенция настраивается lifecycle-политикой бакета.
     """
     if max_files <= 0:
         return
@@ -51,30 +52,128 @@ def evict_dir(directory, max_files: int, exempt_suffix: str = ".none") -> None:
 class LocalDiskStorage:
     """Файловый кэш в каталоге base_dir. Ключ = имя файла (без подкаталогов)."""
 
+    backend = "local"
+
     def __init__(self, base_dir: Path):
         self.base_dir = Path(base_dir)
 
     def full_path(self, name: str) -> Path:
         return self.base_dir / name
 
-    def exists(self, name: str) -> bool:
+    async def exists(self, name: str) -> bool:
         return self.full_path(name).is_file()
 
-    def read(self, name: str) -> bytes:
+    async def read(self, name: str) -> bytes:
         return self.full_path(name).read_bytes()
 
-    def write(self, name: str, data: bytes) -> None:
+    async def write(self, name: str, data: bytes) -> None:
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self.full_path(name).write_bytes(data)
 
-    def delete(self, name: str) -> None:
+    async def delete(self, name: str) -> None:
         self.full_path(name).unlink(missing_ok=True)
 
     def evict(self, max_files: int, exempt_suffix: str = ".none") -> None:
         evict_dir(self.base_dir, max_files, exempt_suffix=exempt_suffix)
 
 
+class S3Storage:
+    """Хранилище в S3-совместимом облаке (Cloudflare R2) поверх aioboto3.
+
+    Тот же async-интерфейс, что у LocalDiskStorage. aioboto3 импортируется лениво
+    (только при реальной операции), чтобы локально/без R2 зависимость не требовалась.
+    """
+
+    backend = "s3"
+
+    def __init__(self, bucket: str, prefix: str, endpoint_url: str,
+                 access_key: str, secret_key: str, region: str = "auto"):
+        self.bucket = bucket
+        self.prefix = (prefix or "").strip("/")
+        self.endpoint_url = endpoint_url
+        self._access_key = access_key
+        self._secret_key = secret_key
+        self.region = region or "auto"
+
+    def _key(self, name: str) -> str:
+        return f"{self.prefix}/{name}" if self.prefix else name
+
+    def _client(self):
+        import aioboto3  # ленивый импорт: нужен только когда R2 включён
+        session = aioboto3.Session()
+        return session.client(
+            "s3",
+            endpoint_url=self.endpoint_url,
+            aws_access_key_id=self._access_key,
+            aws_secret_access_key=self._secret_key,
+            region_name=self.region,
+        )
+
+    async def exists(self, name: str) -> bool:
+        async with self._client() as s3:
+            try:
+                await s3.head_object(Bucket=self.bucket, Key=self._key(name))
+                return True
+            except Exception:  # noqa: BLE001 — нет объекта / ошибка доступа -> считаем «нет»
+                return False
+
+    async def read(self, name: str) -> bytes:
+        async with self._client() as s3:
+            resp = await s3.get_object(Bucket=self.bucket, Key=self._key(name))
+            async with resp["Body"] as body:
+                return await body.read()
+
+    async def write(self, name: str, data: bytes) -> None:
+        async with self._client() as s3:
+            await s3.put_object(Bucket=self.bucket, Key=self._key(name), Body=data)
+
+    async def delete(self, name: str) -> None:
+        async with self._client() as s3:
+            try:
+                await s3.delete_object(Bucket=self.bucket, Key=self._key(name))
+            except Exception:  # noqa: BLE001
+                pass
+
+    def evict(self, max_files: int, exempt_suffix: str = ".none") -> None:
+        # На S3 ретенцию делает lifecycle-политика бакета — здесь no-op.
+        return None
+
+
+def _r2_endpoint() -> str:
+    raw = os.getenv("R2_ENDPOINT_URL", "").strip().strip('"').strip("'")
+    if raw:
+        return raw
+    account = os.getenv("R2_ACCOUNT_ID", "").strip().strip('"').strip("'")
+    return f"https://{account}.r2.cloudflarestorage.com" if account else ""
+
+
+def _r2_configured() -> bool:
+    return bool(
+        os.getenv("R2_BUCKET")
+        and _r2_endpoint()
+        and os.getenv("R2_ACCESS_KEY_ID")
+        and os.getenv("R2_SECRET_ACCESS_KEY")
+    )
+
+
+def make_storage(subdir: str):
+    """Возвращает backend для подкаталога/префикса: S3 (R2) если настроен, иначе диск."""
+    if _r2_configured():
+        return S3Storage(
+            bucket=os.getenv("R2_BUCKET", "").strip(),
+            prefix=subdir,
+            endpoint_url=_r2_endpoint(),
+            access_key=os.getenv("R2_ACCESS_KEY_ID", "").strip(),
+            secret_key=os.getenv("R2_SECRET_ACCESS_KEY", "").strip(),
+            region=os.getenv("R2_REGION", "auto").strip() or "auto",
+        )
+    return LocalDiskStorage(CACHE_ROOT / subdir)
+
+
 # Готовые хранилища под три кэша (единый источник истины о расположении кэшей).
+# Пока локальные: переключение на make_storage() (R2) — в шаге проводки хендлеров,
+# где server.py научится работать с S3 (нет base_dir/glob). До тех пор R2 не
+# активируется, даже если заданы R2_* — поведение остаётся прежним.
 vocab_image_storage = LocalDiskStorage(CACHE_ROOT / "vocabulary")
 word_audio_storage = LocalDiskStorage(CACHE_ROOT / "audio")
 vocab_photo_storage = LocalDiskStorage(CACHE_ROOT / "vocab_photos")
