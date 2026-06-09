@@ -1,8 +1,10 @@
 """Интеграционные тесты aiohttp-приложения: авторизация, заголовки, статика,
 rate-limit. Не требуют реальной БД — где нужно, database мокается.
 """
+import asyncio
 import unittest
-from unittest.mock import AsyncMock, patch
+from contextlib import ExitStack
+from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import urlencode
 
 from aiohttp.test_utils import AioHTTPTestCase
@@ -40,6 +42,30 @@ class ServerIntegrationTests(AioHTTPTestCase):
                 headers={"X-App-Fallback-Auth": _fallback_header()},
             )
         self.assertEqual(resp.status, 403)
+
+    async def test_realtime_token_timeout_returns_friendly_504(self):
+        # При таймауте выдачи токена отдаём дружелюбный 504, а не висим ~50с.
+        stats = {"requests": 0, "input_tokens": 0, "output_tokens": 0,
+                 "total_tokens": 0, "cost_usd": 0}
+        user = {"name": "Kid", "age_group": "8_10", "child_age": 9, "goal": "speaking"}
+        with ExitStack() as es:
+            p = es.enter_context
+            p(patch("database.user_exists", AsyncMock(return_value=True)))
+            p(patch("database.get_ai_usage_today", AsyncMock(return_value=stats)))
+            p(patch("database.get_user", AsyncMock(return_value=user)))
+            p(patch("database.get_model_requests_today", AsyncMock(return_value=0)))
+            p(patch("database.get_recent_messages", AsyncMock(return_value=[])))
+            p(patch("webapp.server._ensure_voice_lesson_state", AsyncMock(return_value={})))
+            p(patch("webapp.server._realtime_prompt_context", MagicMock(return_value={})))
+            p(patch("webapp.server.create_realtime_client_secret",
+                    AsyncMock(side_effect=asyncio.TimeoutError())))
+            resp = await self.client.post(
+                "/api/realtime/token",
+                headers={"X-App-Fallback-Auth": _fallback_header(990, "Kid")},
+            )
+        self.assertEqual(resp.status, 504)
+        body = await resp.json()
+        self.assertIn("error", body)
 
     async def test_security_headers_present_on_index(self):
         resp = await self.client.get("/")

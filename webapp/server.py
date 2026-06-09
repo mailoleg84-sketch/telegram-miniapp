@@ -24,6 +24,7 @@ from config import (
     AI_DAILY_MESSAGE_LIMIT,
     AI_RATE_LIMIT_PER_MINUTE,
     REALTIME_DAILY_SESSION_LIMIT,
+    REALTIME_TOKEN_TIMEOUT_SEC,
     API_RATE_LIMIT_PER_MINUTE,
     APP_VERSION,
     BOT_RUN_MODE,
@@ -3553,11 +3554,23 @@ async def api_realtime_token(request: web.Request):
     prompt_context = _realtime_prompt_context(user, history, lesson_state)
 
     try:
-        token = await create_realtime_client_secret(
+        # Общий бюджет на токен (включая retry внутри): не даём ребёнку висеть
+        # на застывшем экране ~50с при сбоях OpenAI.
+        token_coro = create_realtime_client_secret(
             user_id=user_id,
             user_name=user["name"] if user else "друг",
             age_label=age_label,
             prompt_context=prompt_context,
+        )
+        if REALTIME_TOKEN_TIMEOUT_SEC > 0:
+            token = await asyncio.wait_for(token_coro, timeout=REALTIME_TOKEN_TIMEOUT_SEC)
+        else:
+            token = await token_coro
+    except asyncio.TimeoutError:
+        log.warning("Realtime token timed out after %ss", REALTIME_TOKEN_TIMEOUT_SEC)
+        return web.json_response(
+            {"error": "Голос пока не отвечает. Попробуй ещё раз через минутку."},
+            status=504,
         )
     except Exception as e:
         log.exception("Realtime token setup failed: %s", e)

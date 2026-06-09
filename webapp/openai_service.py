@@ -1187,7 +1187,9 @@ def _session_log_summary(session_config: dict, age_group: str) -> dict:
 
 
 async def _post_realtime_client_secret(session_config: dict, user_id: int | str) -> dict:
-    timeout = aiohttp.ClientTimeout(total=25)
+    # 15с на попытку: две попытки (осн. + минимальная) укладываются в общий
+    # бюджет ~30с (см. REALTIME_TOKEN_TIMEOUT_SEC), retry получает реальный шанс.
+    timeout = aiohttp.ClientTimeout(total=15)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.post(
             "https://api.openai.com/v1/realtime/client_secrets",
@@ -1532,9 +1534,11 @@ async def chat_reply(
             text = _finalize_voice_reply(text, last_user_text)
 
         if _needs_russian_repair(last_user_text, text):
-            repair_response = await _client.responses.create(
-                model=OPENAI_MODEL,
-                input=[{
+            # Safety-net качества (срабатывает только на плохом ответе). Держим его
+            # дешёвым: low reasoning / низкая температура и короткий лимит токенов.
+            repair_request = {
+                "model": OPENAI_MODEL,
+                "input": [{
                     "role": "user",
                     "content": (
                         "Ученик написал по-русски, а ответ получился не на русском.\n"
@@ -1546,9 +1550,14 @@ async def chat_reply(
                         "Финальный вопрос должен быть по-русски. Не вставляй английские слова внутрь русской грамматики."
                     ),
                 }],
-                instructions="Ты исправляешь язык ответа детского репетитора. Ответь только финальной репликой.",
-                max_output_tokens=min(max_output_tokens, 200),
-            )
+                "instructions": "Ты исправляешь язык ответа детского репетитора. Ответь только финальной репликой.",
+                "max_output_tokens": min(max_output_tokens, 200),
+            }
+            if reasoning_effort and _supports_reasoning(OPENAI_MODEL):
+                repair_request["reasoning"] = {"effort": reasoning_effort}
+            else:
+                repair_request["temperature"] = 0.5
+            repair_response = await _client.responses.create(**repair_request)
             repair_text = (repair_response.output_text or "").strip()
             if mode == "voice":
                 repair_text = _finalize_voice_reply(repair_text, last_user_text)
