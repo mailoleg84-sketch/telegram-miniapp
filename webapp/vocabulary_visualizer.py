@@ -322,6 +322,51 @@ WORD_EMOJI = {
     "truck": "🚚", "taxi": "🚕", "bicycle": "🚲", "helicopter": "🚁", "subway": "🚇",
     # спорт и музыка
     "football": "⚽", "basketball": "🏀", "tennis": "🎾", "music": "🎵", "song": "🎶",
+    # — расширение покрытия под банк 5000: конкретные слова, ранее уходившие
+    #   в фото-лотерею; эмодзи всегда «по смыслу», без сети и без оплаты —
+    # тело
+    "arm": "💪", "ear": "👂", "finger": "☝️", "foot": "🦶", "knee": "🦵",
+    "mouth": "👄", "nose": "👃", "heart": "❤️",
+    # школа
+    "backpack": "🎒", "pen": "🖊️", "marker": "🖍️", "ruler": "📏",
+    "calculator": "🧮", "dictionary": "📖", "folder": "📁", "library": "📚",
+    "notebook": "📓", "page": "📄", "math": "🔢", "science": "🔬",
+    "chemistry": "🧪", "biology": "🧬", "geography": "🗺️", "history": "📜",
+    # еда
+    "grape": "🍇", "fruit": "🍎", "cupcake": "🧁", "apricot": "🍑",
+    "breakfast": "🍳", "lunch": "🍱", "dinner": "🍽️", "restaurant": "🍴",
+    # дом
+    "spoon": "🥄", "fork": "🍴", "plate": "🍽️", "basket": "🧺",
+    "bottle": "🍾", "candle": "🕯️", "window": "🪟", "bedroom": "🛏️",
+    "bookshelf": "📚",
+    # природа
+    "earth": "🌍", "ocean": "🌊", "garden": "🌷", "sunflower": "🌻",
+    "seashell": "🐚", "sky": "🌤️", "meadow": "🌾",
+    # технологии
+    "screen": "🖥️", "email": "📧", "headphones": "🎧", "video": "📹",
+    "app": "📱", "internet": "🌐",
+    # путешествия / места
+    "hotel": "🏨", "map": "🗺️", "road": "🛣️", "airport": "🛫",
+    "ticket": "🎫", "compass": "🧭", "station": "🚉", "camp": "⛺",
+    "lantern": "🏮", "trip": "🧳", "postcard": "📮", "hospital": "🏥",
+    "market": "🏪", "museum": "🏛️", "village": "🏘️",
+    # семья и роли (агентивные существительные)
+    "aunt": "👩", "uncle": "👨", "cousin": "🧑", "parent": "👪",
+    "actor": "🎭", "baker": "🧑‍🍳", "farmer": "🧑‍🌾", "runner": "🏃",
+    "walker": "🚶", "reader": "📖", "singer": "🎤", "dancer": "💃",
+    "painter": "🧑‍🎨", "pilot": "🧑‍✈️", "writer": "✍️",
+    # животные
+    "goat": "🐐", "kitten": "🐱", "puppy": "🐶",
+    # игры / спорт / хобби / искусство / чтение
+    "scooter": "🛴", "skateboard": "🛹", "race": "🏁", "box": "📦",
+    "kite": "🪁", "game": "🎮", "puzzle": "🧩", "crayon": "🖍️",
+    "picture": "🖼️", "bookmark": "🔖", "magazine": "📰", "novel": "📖",
+    "flute": "🪈",
+    # одежда
+    "shoe": "👟", "shoes": "👟", "dress": "👗",
+    # прочее
+    "arrow": "➡️", "beans": "🫘", "cabin": "🛖", "horn": "📯",
+    "photograph": "🖼️", "lip": "👄",
 }
 
 
