@@ -88,6 +88,29 @@ class ServerIntegrationTests(AioHTTPTestCase):
         self.assertEqual(resp.headers.get("Content-Encoding"), "gzip")
         self.assertIn("max-age", resp.headers.get("Cache-Control", ""))
 
+    async def test_api_json_response_is_gzipped(self):
+        # API-JSON тоже должен сжиматься (особенно тяжёлый /api/dictionary).
+        # Берём успешный 200-JSON: пользователь есть, словарь замокан.
+        words = [{"id": i, "word": f"w{i}", "translation": "x", "transcription": "",
+                  "example": "", "topic": "basic", "age_group": "8_10",
+                  "correct_count": 0, "wrong_count": 0, "needs_review": False,
+                  "mastered": False} for i in range(60)]
+        summary = {"total_words": 60, "mastered_words": 0, "review_words": 0}
+        with ExitStack() as es:
+            p = es.enter_context
+            p(patch("database.user_exists", AsyncMock(return_value=True)))
+            p(patch("database.get_user", AsyncMock(return_value={"age_group": "8_10"})))
+            p(patch("database.get_user_dictionary", AsyncMock(return_value=words)))
+            p(patch("database.get_dictionary_summary", AsyncMock(return_value=summary)))
+            resp = await self.client.get(
+                "/api/dictionary",
+                headers={"X-App-Fallback-Auth": _fallback_header(771, "Kid"),
+                         "Accept-Encoding": "gzip"},
+                auto_decompress=False,
+            )
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(resp.headers.get("Content-Encoding"), "gzip")
+
 
 class RateLimitUnitTests(unittest.TestCase):
     def test_rate_limit_eventually_blocks_on_flood(self):

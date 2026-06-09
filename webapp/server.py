@@ -3016,6 +3016,14 @@ async def hardening_middleware(request: web.Request, handler):
                     response.enable_compression()
                 except (AttributeError, RuntimeError):
                     pass
+        # API-ответы JSON тоже сжимаем — особенно тяжёлый /api/dictionary (до 5000
+        # слов). gzip включается только если клиент прислал Accept-Encoding: gzip.
+        elif request.path.startswith("/api/") and \
+                (response.content_type or "").startswith("application/json"):
+            try:
+                response.enable_compression()
+            except (AttributeError, RuntimeError):
+                pass
     _log_slow_or_failed_api(request, response.status, started)
     return response
 
