@@ -146,6 +146,17 @@ from webapp.formatters import (
     _path_step,
     _game_title,
 )
+# Чистые сборщики payload'ов вынесены в webapp/payload_builders.py (шаг 3b).
+# Реэкспорт — чтобы вызовы внутри server.py и импорты в тестах не менялись.
+from webapp.payload_builders import (
+    _chat_usage_payload,
+    _daily_lesson_payload,
+    _admin_user_dict,
+    _admin_failed_image_dict,
+    _activity_event_dict,
+    _parent_recommendations,
+    _motivation_badge,
+)
 
 def _word_image_url(word: str, topic: str = "") -> str:
     clean_word = " ".join(str(word or "").split())[:48]
@@ -598,24 +609,6 @@ async def _record_ai_cost(user_id: int, model: str, cost_usd: float, *, tokens: 
         log.exception("Не удалось записать расход AI (%s)", model)
 
 
-def _chat_usage_payload(stats) -> dict:
-    used = int(stats["requests"] if stats else 0)
-    limit = AI_DAILY_MESSAGE_LIMIT
-    unlimited = limit <= 0
-    remaining = None if unlimited else max(0, limit - used)
-    return {
-        "used_today": used,
-        "daily_limit": None if unlimited else limit,
-        "remaining_today": remaining,
-        "unlimited": unlimited,
-        "limit_reached": (not unlimited) and used >= limit,
-        "input_tokens_today": int(stats["input_tokens"] if stats else 0),
-        "output_tokens_today": int(stats["output_tokens"] if stats else 0),
-        "total_tokens_today": int(stats["total_tokens"] if stats else 0),
-        "cost_usd_today": round(float(stats["cost_usd"] if stats else 0), 6),
-    }
-
-
 def _ai_daily_limit_reached(stats) -> bool:
     """True, если включён бесплатный лимит AI-уроков и он на сегодня исчерпан."""
     limit = AI_DAILY_MESSAGE_LIMIT
@@ -630,19 +623,6 @@ def _ai_limit_message() -> str:
         "Возвращайся завтра! А пока можно учить слова, проходить тесты и "
         "играть — это без ограничений."
     )
-
-
-def _daily_lesson_payload(status, reward_points: int = 0, points: int | None = None) -> dict:
-    completed_steps = int(status["completed_steps"] if status else 0)
-    return {
-        "lesson_date": status["lesson_date"] if status else "",
-        "completed_steps": completed_steps,
-        "total_steps": DAILY_LESSON_STEPS,
-        "completed": bool(status["completed"] if status else False),
-        "rewarded": bool(status["rewarded"] if status else False),
-        "reward_points": reward_points,
-        "points": points,
-    }
 
 
 def _is_admin_user_id(user_id) -> bool:
@@ -754,53 +734,6 @@ def _admin_overview_payload(overview: dict) -> dict:
     }
 
 
-def _admin_user_dict(row) -> dict:
-    total_answers = _safe_int(row, "total_correct") + _safe_int(row, "total_wrong")
-    accuracy = round(_safe_int(row, "total_correct") / total_answers * 100) if total_answers else 0
-    age_group = _record_value(row, "age_group", "")
-    return {
-        "id": _safe_int(row, "user_id"),
-        "child_name": _record_value(row, "name", ""),
-        "parent_name": _record_value(row, "parent_name", "") or "",
-        "child_age": _record_value(row, "child_age", None),
-        "age_group": age_group,
-        "age_label": _age_label(age_group),
-        "goal_label": _goal_label(_record_value(row, "goal", "")),
-        "level_label": _level_label(_record_value(row, "english_level", "")),
-        "level_test_score": _record_value(row, "level_test_score", None),
-        "level_test_completed": bool(_record_value(row, "level_test_completed_at")),
-        "points": _safe_int(row, "points"),
-        "registered_at": _date_text(_record_value(row, "registered_at")),
-        "words_learned": _safe_int(row, "words_learned"),
-        "total_correct": _safe_int(row, "total_correct"),
-        "total_wrong": _safe_int(row, "total_wrong"),
-        "accuracy": accuracy,
-        "completed_lessons": _safe_int(row, "completed_lessons"),
-        "completed_word_tests": _safe_int(row, "completed_word_tests"),
-        "completed_games": _safe_int(row, "completed_games"),
-    }
-
-
-def _admin_failed_image_dict(row) -> dict:
-    raw_review = _record_value(row, "generated_image_review", "") or ""
-    reason = ""
-    try:
-        parsed = json.loads(raw_review)
-        reason = str(parsed.get("reason") or "")
-    except Exception:
-        reason = raw_review[:180]
-    return {
-        "id": _safe_int(row, "id"),
-        "word": _record_value(row, "word", ""),
-        "translation": _record_value(row, "translation", ""),
-        "topic": _record_value(row, "topic", ""),
-        "age_group": _record_value(row, "age_group", ""),
-        "status": _record_value(row, "generated_image_status", "failed"),
-        "reason": reason,
-        "checked_at": _date_text(_record_value(row, "generated_image_checked_at")),
-    }
-
-
 def _admin_user_detail_payload(user, stats, report, dictionary_summary, problem_words, history, ai_today, streak) -> dict:
     level = _level_for_user(user)
     age_group = _normalized_age_group_for_user(user)
@@ -848,89 +781,6 @@ def _admin_user_detail_payload(user, stats, report, dictionary_summary, problem_
         "history": [_activity_event_dict(row) for row in history],
         "ai_today": _chat_usage_payload(ai_today),
     }
-
-
-def _activity_event_dict(row) -> dict:
-    event_type = row["event_type"]
-    if event_type == "daily_lesson":
-        title = "Урок дня"
-        description = "Урок завершён"
-    elif event_type == "word_game":
-        correct_count = int(row["correct_count"] or 0)
-        wrong_count = int(row["wrong_count"] or 0)
-        title = "Игровая практика"
-        description = f"{correct_count} из {correct_count + wrong_count} правильных · {int(row['score'] or 0)}%"
-    elif event_type == "word_test":
-        correct_count = int(row["correct_count"] or 0)
-        wrong_count = int(row["wrong_count"] or 0)
-        title = "Учим слова"
-        description = f"{correct_count} из {correct_count + wrong_count} правильных · {int(row['score'] or 0)}%"
-    elif event_type in {"review_training", "word_training"}:
-        correct_count = int(row["correct_count"] or 0)
-        wrong_count = int(row["wrong_count"] or 0)
-        title = "Работа над ошибками" if event_type == "review_training" else "Тренировка слов"
-        description = f"{correct_count} из {correct_count + wrong_count} правильных · {int(row['score'] or 0)}%"
-    else:
-        title = "Тест уровня"
-        description = f"Результат: {int(row['score'] or 0)}%"
-
-    return {
-        "type": event_type,
-        "date": row["event_date"] or "",
-        "event_at": _date_text(row["event_at"]),
-        "title": title,
-        "description": description,
-        "score": row["score"],
-    }
-
-
-def _parent_recommendations(report: dict, dictionary_summary: dict, problem_words: list[dict]) -> list[dict]:
-    words_learned = int(report.get("words_learned") or 0)
-    completed_lessons = int(report.get("completed_lessons") or 0)
-    completed_word_tests = int(report.get("completed_word_tests") or 0)
-    avg_score = int(report.get("avg_word_test_score") or 0)
-    total_wrong = int(report.get("total_wrong") or 0)
-    review_words = int((dictionary_summary or {}).get("review_words") or 0)
-    recommendations = []
-
-    if completed_lessons == 0:
-        recommendations.append({
-            "title": "Начать с короткого урока",
-            "text": "Пусть ребенок пройдет ежедневный урок на 5 минут: слова, мини-тест и простая фраза.",
-            "action": "daily",
-        })
-    if words_learned == 0:
-        recommendations.append({
-            "title": "Добавить первые слова",
-            "text": "Запустите набор новых слов с тестом, чтобы появился базовый словарь и первые результаты.",
-            "action": "vocab",
-        })
-    if review_words > 0:
-        recommendations.append({
-            "title": "Повторить слова по расписанию",
-            "text": f"{review_words} слов сегодня готовы к повторению — у них подошёл интервал. Короткая тренировка освежит их в памяти.",
-            "action": "review",
-        })
-    if completed_word_tests > 0 and avg_score < 70:
-        recommendations.append({
-            "title": "Снизить сложность на один шаг",
-            "text": "Средний результат тестов ниже 70%. Дайте больше повторения и короткие задания без спешки.",
-            "action": "review",
-        })
-    if problem_words and total_wrong > 0:
-        sample = ", ".join(word["word"] for word in problem_words[:3])
-        recommendations.append({
-            "title": "Фокус на конкретных словах",
-            "text": f"Чаще всего ошибается в словах: {sample}. Их стоит повторить в короткой тренировке.",
-            "action": "dictionary",
-        })
-    if not recommendations:
-        recommendations.append({
-            "title": "Продолжать текущий темп",
-            "text": "Прогресс выглядит ровно. Достаточно 5-10 минут в день: урок, повторение и короткая устная практика.",
-            "action": "daily",
-        })
-    return recommendations[:4]
 
 
 def _style_for_user(user) -> str:
@@ -1320,28 +1170,6 @@ def _learning_path_payload(user, daily_status, stats, dictionary_summary, report
         "review_words": review_words,  # SRS: сколько слов готово к повторению сегодня (для нуджа на фронте)
         "progress_percent": round(done_count / len(steps) * 100),
         "steps": steps,
-    }
-
-
-def _motivation_badge(
-    badge_id: str,
-    title: str,
-    text: str,
-    value: int,
-    target: int,
-    action: str,
-) -> dict:
-    target = max(1, target)
-    value = max(0, value)
-    return {
-        "id": badge_id,
-        "title": title,
-        "text": text,
-        "value": value,
-        "target": target,
-        "progress_percent": min(100, round(value / target * 100)),
-        "unlocked": value >= target,
-        "action": action,
     }
 
 
