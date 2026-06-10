@@ -11,6 +11,7 @@ from config import (
     ENGLISH_LEVELS,
     LEARNING_GOALS,
     TUTOR_DEFAULT_LEVEL,
+    age_group_from_age,
 )
 from data.level_tests import LEVEL_TESTS
 
@@ -132,3 +133,25 @@ def _game_title(game_type: str) -> str:
         "word_hunt": "Словесная охота",
     }
     return titles.get(game_type, "Игра со словами")
+
+
+def _age_group_from_age(age: int) -> str:
+    """Возрастная группа из точного возраста (делегирует в config — единый
+    источник «лестницы» возраст→группа). "" если вне 5-18."""
+    return age_group_from_age(age)
+
+
+def _normalized_age_group_for_user(user) -> str:
+    age_group = user["age_group"] if user else ""
+    if age_group in {"5_7", "8_10", "11_13", "14_18"}:
+        return age_group
+    try:
+        child_age = int(user["child_age"] or 0) if user else 0
+    except (TypeError, ValueError):
+        child_age = 0
+    derived = _age_group_from_age(child_age)
+    if derived:
+        return derived
+    if age_group in {"under_12", "under12", "under_10"}:
+        return "8_10"
+    return "8_10"

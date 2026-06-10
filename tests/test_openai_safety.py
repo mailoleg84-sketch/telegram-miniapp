@@ -237,17 +237,25 @@ class OpenAISafetyTests(unittest.TestCase):
         server_py = (root / "webapp" / "server.py").read_text(encoding="utf-8")
         app_js = (root / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
 
+        # Admin-гарды/overview вынесены в webapp/routes_admin.py (рефакторинг 3c);
+        # server.py регистрирует маршруты и реэкспортирует имена.
+        routes_admin_py = (root / "webapp" / "routes_admin.py").read_text(encoding="utf-8")
+
         self.assertIn("ADMIN_USER_IDS", config_py)
         self.assertIn("get_admin_overview", database_py)
         self.assertIn("reset_failed_generated_images", database_py)
-        self.assertIn("def _is_admin_request", server_py)
+        self.assertIn("def _is_admin_request", routes_admin_py)
         self.assertIn("\"is_admin\": is_admin", server_py)
         self.assertIn("/api/admin/overview", server_py)
         self.assertIn("/api/admin/users", server_py)
         self.assertIn("/api/admin/users/detail", server_py)
         self.assertIn("/api/admin/images/reset-failed", server_py)
-        self.assertIn("Доступ только для администратора", server_py)
-        self.assertIn("\"health\": health", server_py)
+        self.assertIn("Доступ только для администратора", routes_admin_py)
+        self.assertIn("\"health\": health", routes_admin_py)
+        # каждый admin-хендлер в routes_admin начинается с проверки прав
+        self.assertEqual(routes_admin_py.count("if not _is_admin_request(request):"), 4)
+        # и оставшийся в server.py детальный хендлер тоже под гардом
+        self.assertIn("if not _is_admin_request(request):", server_py)
         self.assertIn("renderAdminPanel", app_js)
         self.assertIn("renderAdminUsers", app_js)
         self.assertIn("renderAdminUserDetail", app_js)
