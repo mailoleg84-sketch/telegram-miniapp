@@ -375,11 +375,13 @@ class OpenAISafetyTests(unittest.TestCase):
             self.assertFalse(asyncio.run(_consume_training_attempt("unknown-token", 123, 45)))
 
     def test_training_answer_only_awards_with_valid_attempt(self):
+        # Тренировочные хендлеры вынесены в webapp/routes_training.py (шаг 3d-2).
         root = Path(__file__).resolve().parents[1]
-        server_py = (root / "webapp" / "server.py").read_text(encoding="utf-8")
+        routes_training_py = (root / "webapp" / "routes_training.py").read_text(encoding="utf-8")
         for marker in ("async def api_choice_answer", "async def api_input_answer"):
-            start = server_py.index(marker)
-            block = server_py[start:server_py.index("async def ", start + 1)]
+            start = routes_training_py.index(marker)
+            next_def = routes_training_py.find("async def ", start + 1)
+            block = routes_training_py[start:next_def if next_def != -1 else len(routes_training_py)]
             self.assertIn("_consume_training_attempt(body.get(\"attempt_id\")", block)
             self.assertIn("if counted:", block)
             self.assertIn("await database.update_points(user_id, delta)", block)

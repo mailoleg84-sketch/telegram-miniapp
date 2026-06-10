@@ -8,6 +8,8 @@ import logging
 
 from aiohttp import web
 
+import database
+
 log = logging.getLogger(__name__)
 
 
@@ -20,3 +22,10 @@ async def _safe_json(request: web.Request) -> dict:
                         request.method, request.path)
             return {}
     return {}
+
+
+async def _current_user_or_404(request: web.Request):
+    user = await database.get_user(request["tg_user"]["id"])
+    if not user:
+        raise web.HTTPBadRequest(text="user is not registered")
+    return user
