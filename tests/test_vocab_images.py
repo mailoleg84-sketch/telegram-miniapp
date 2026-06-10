@@ -15,7 +15,8 @@ SVG = "/vocabulary-visual.svg?w=x&v=object"
 class VocabCardImageUrlTests(unittest.TestCase):
     def setUp(self):
         # Делаем поведение детерминированным независимо от .env.
-        self._p = patch("webapp.server.VOCAB_FREE_PHOTOS", True)
+        # Патчим там, где имя ИЩЕТСЯ: _vocab_card_image_url живёт в word_payloads.
+        self._p = patch("webapp.word_payloads.VOCAB_FREE_PHOTOS", True)
         self._p.start()
 
     def tearDown(self):
@@ -49,7 +50,7 @@ class VocabCardImageUrlTests(unittest.TestCase):
         self.assertEqual(url, SVG)
 
     def test_photos_disabled_falls_back(self):
-        with patch("webapp.server.VOCAB_FREE_PHOTOS", False):
+        with patch("webapp.word_payloads.VOCAB_FREE_PHOTOS", False):
             url = server._vocab_card_image_url("table", SVG, emoji="", visual_type="object", topic="home")
         self.assertEqual(url, SVG)
 
