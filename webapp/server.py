@@ -1,7 +1,5 @@
 """aiohttp-сервер: статика Mini App + JSON API."""
 import asyncio
-import base64
-from collections import defaultdict, deque
 import hashlib
 import json
 import logging
@@ -17,15 +15,7 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 import database
 from config import (
     AGE_GROUPS,
-    age_group_from_age,
-    AI_DAILY_MESSAGE_LIMIT,
-    AI_RATE_LIMIT_PER_MINUTE,
-    REALTIME_DAILY_SESSION_LIMIT,
-    REALTIME_TOKEN_TIMEOUT_SEC,
-    API_RATE_LIMIT_PER_MINUTE,
     APP_VERSION,
-    BOT_RUN_MODE,
-    CHAT_HISTORY_LIMIT,
     DAILY_LESSON_REWARD_POINTS,
     DAILY_LESSON_STEPS,
     ENGLISH_LEVELS,
@@ -34,37 +24,18 @@ from config import (
     LEARNING_GOALS,
     POINTS_CORRECT,
     POINTS_WRONG,
-    TUTOR_DEFAULT_LEVEL,
     WORDS_PER_AGE_GROUP,
     WEBAPP_HOST,
     WEBAPP_PORT,
-    WEBAPP_URL,
     OPENAI_IMAGE_MODEL,
     VOCAB_FREE_PHOTOS,
     PIXABAY_API_KEY,
-    OPENAI_TTS_MODEL,
-    OPENAI_REALTIME_MODEL,
-    OPENAI_TTS_COST_PER_1K_CHARS,
     OPENAI_IMAGE_COST_PER_CALL,
-    OPENAI_REALTIME_SESSION_COST,
 )
 from webapp.auth import verify_fallback_auth, verify_init_data
-from webapp.lesson_engine import (
-    advance_lesson_state,
-    create_lesson_state,
-    lesson_prompt_context,
-    public_lesson_state,
-)
 from webapp.openai_service import (
-    chat_reply,
-    create_realtime_call,
-    create_realtime_client_secret,
     generate_vocabulary_image,
     public_openai_error,
-    redact_personal_data,
-    synthesize_speech,
-    synthesize_speech_stream,
-    transcribe_audio,
 )
 from webapp.vocabulary_visualizer import (
     build_vocabulary_visual,
@@ -73,6 +44,9 @@ from webapp.vocabulary_visualizer import (
 )
 from webapp.free_images import fetch_word_illustration
 from webapp import storage
+# Чистка локальных кэшей вынесена в webapp/storage.py (шаг 3e-1). Реэкспорт —
+# вызовы внутри server.py и возможные импорты в тестах не меняются.
+from webapp.storage import _evict_cache_dir
 
 log = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
@@ -81,36 +55,21 @@ STATIC_DIR = Path(__file__).parent / "static"
 # вынести их на постоянный диск Render, чтобы кэши переживали деплой.
 # Для локального backend — каталог (Path); для S3/R2 — None (нет локального пути).
 GENERATED_VOCAB_DIR = getattr(storage.vocab_image_storage, "base_dir", None)
-AUDIO_CACHE_DIR = getattr(storage.word_audio_storage, "base_dir", None)
 VOCAB_PHOTO_CACHE_DIR = getattr(storage.vocab_photo_storage, "base_dir", None)
 VOCAB_PHOTO_CACHE_MAX_FILES = int(os.getenv("VOCAB_PHOTO_CACHE_MAX_FILES", "800"))
-MAX_AUDIO_BYTES = 8 * 1024 * 1024
-MAX_SDP_BYTES = 16 * 1024  # реальный WebRTC SDP < 4 КБ; жёсткий предел тела
 # Кэши на эфемерном диске Render не должны расти бесконечно (QA-аудит).
-AUDIO_CACHE_MAX_FILES = int(os.getenv("AUDIO_CACHE_MAX_FILES", "4000"))
 VOCAB_IMAGE_CACHE_MAX_FILES = int(os.getenv("VOCAB_IMAGE_CACHE_MAX_FILES", "4000"))
 PUBLIC_API_PATHS = {"/api/me", "/api/register"}
-# Лимитирование вынесено в webapp/rate_limiter.py.
+# Лимитирование вынесено в webapp/rate_limiter.py. Реэкспорт только нужного:
+# тело server.py зовёт rate_limit_ok/_rate_limit_key/photo_rate_limit_ok,
+# тесты импортируют _rate_limit_ok/_rate_buckets через webapp.server.
 from webapp.rate_limiter import (
-    _photo_rate_limit_ok,
     _rate_buckets,
     _rate_limit_key,
     _rate_limit_ok,
     photo_rate_limit_ok,
     rate_limit_ok,
 )
-
-
-def _evict_cache_dir(directory: Path, max_files: int) -> None:
-    """Удаляет самые старые файлы кэша, если их больше лимита (эфемерный диск).
-
-    Логика вынесена в webapp/storage.evict_dir; .none-маркеры (слово без картинки)
-    не выселяем — они крошечные и экономят квоту Pixabay.
-    """
-    try:
-        storage.evict_dir(directory, max_files)
-    except OSError:
-        log.exception("Не удалось почистить кэш %s", directory)
 
 
 # SVG-рендер вынесен в webapp/svg_renderer.py (чистые функции построения SVG).
@@ -124,12 +83,10 @@ from webapp.svg_renderer import (
 from webapp.formatters import (
     _record_value,
     _safe_int,
-    _safe_float,
     _date_text,
     _age_label,
     _goal_label,
     _level_label,
-    _estimated_level_for_user,
     _level_for_user,
     _level_from_score,
     _level_result_message,
@@ -145,8 +102,6 @@ from webapp.formatters import (
 from webapp.payload_builders import (
     _chat_usage_payload,
     _daily_lesson_payload,
-    _admin_user_dict,
-    _admin_failed_image_dict,
     _activity_event_dict,
     _parent_recommendations,
     _motivation_badge,
@@ -164,11 +119,9 @@ from webapp.routes_admin import (
     api_admin_reset_image_failures,
 )
 # Тренировки (токены попыток, выборка слова, 4 хендлера) вынесены в
-# webapp/routes_training.py (шаг 3d-2). Реэкспорт — вызовы/тесты не меняются.
+# webapp/routes_training.py (шаг 3d-2). Реэкспорт — хендлеры для create_app,
+# выборка/токены — для тестов, что импортируют их через webapp.server.
 from webapp.routes_training import (
-    _training_attempts,
-    _TRAINING_ATTEMPT_TTL,
-    _prune_training_attempts,
     _issue_training_attempt,
     _consume_training_attempt,
     _select_training_word,
@@ -177,13 +130,34 @@ from webapp.routes_training import (
     api_input_next,
     api_input_answer,
 )
+# ИИ-репетитор (чат, озвучка/распознавание, голосовой ход, Realtime) вынесен в
+# webapp/routes_chat_voice.py (шаг 3e-3). Реэкспорт — хендлеры регистрирует
+# create_app; MAX_AUDIO_BYTES/_record_ai_cost зовёт тело server.py; кэш-имя
+# озвучки и голосовой ход импортируют тесты через webapp.server. Контекст
+# промптов/состояние урока (webapp/voice_context.py) сюда НЕ реэкспортируем —
+# его потребляет routes_chat_voice напрямую, server им не пользуется.
+from webapp.routes_chat_voice import (
+    MAX_AUDIO_BYTES,
+    _record_ai_cost,
+    _word_audio_cache_name,
+    _voice_text_turn_payload,
+    api_chat_history,
+    api_chat_send,
+    api_audio_transcribe,
+    api_audio_speech,
+    api_voice_text_turn,
+    api_voice_turn,
+    api_realtime_call,
+    api_realtime_token,
+    api_realtime_log,
+    api_chat_reset,
+)
 # Word-payload слой (словари слова + URL-ы картинок) вынесен в
-# webapp/word_payloads.py (шаг 3d-1). Реэкспорт — вызовы/тесты не меняются.
+# webapp/word_payloads.py (шаг 3d-1). Реэкспорт — то, что зовёт тело server.py
+# или импортируют тесты (через webapp.server).
 from webapp.word_payloads import (
-    PHOTO_VISUAL_TYPES,
     _word_image_url,
     _vocab_card_image_url,
-    _vocabulary_image_prompt_hash,
     _generated_vocab_url_exists,
     _generated_vocab_extension,
     _generated_vocab_static_url,
@@ -314,129 +288,6 @@ async def auth_middleware(request: web.Request, handler):
 
 # ---------- Helpers ----------
 
-def _cacheable_word_audio(text: str, mode: str) -> bool:
-    clean_text = " ".join(str(text or "").split())
-    return mode == "word" and 0 < len(clean_text) <= 120
-
-
-def _word_audio_cache_name(text: str, mode: str, speed) -> str | None:
-    """Имя файла кэша озвучки (``<sha1>.mp3``) или None, если текст не кэшируем.
-    Каталог/префикс добавляет слой хранилища (storage.word_audio_storage), поэтому
-    одинаково работает и для локального диска, и для S3/R2."""
-    if not _cacheable_word_audio(text, mode):
-        return None
-    clean_text = " ".join(str(text or "").split()).lower()
-    speed_key = "" if speed in (None, "") else str(speed)
-    raw = json.dumps({
-        "mode": mode,
-        "text": clean_text,
-        "speed": speed_key,
-        "format": "mp3",
-        "v": 1,
-    }, ensure_ascii=False, sort_keys=True)
-    return f"{hashlib.sha1(raw.encode('utf-8')).hexdigest()}.mp3"
-
-
-def _looks_like_audio(buf: bytes) -> bool:
-    """Проверка magic-bytes: отсекаем заведомо не-аудио до отправки в Whisper.
-
-    Поддержанные контейнеры: WebM/Matroska, OGG/Opus, MP3 (ID3 или frame sync),
-    WAV/RIFF, MP4/M4A (ftyp), AIFF, FLAC. Защищает от cost-amplification.
-    """
-    if len(buf) < 12:
-        return False
-    head = buf[:12]
-    if head[:4] == b"\x1a\x45\xdf\xa3":          # WebM / Matroska (EBML)
-        return True
-    if head[:4] == b"OggS":                       # OGG (Opus/Vorbis)
-        return True
-    if head[:3] == b"ID3":                         # MP3 с ID3-тегом
-        return True
-    if head[0] == 0xFF and (head[1] & 0xE0) == 0xE0:  # MP3 frame sync
-        return True
-    if head[:4] == b"RIFF" and buf[8:12] == b"WAVE":  # WAV
-        return True
-    if head[4:8] == b"ftyp":                       # MP4 / M4A
-        return True
-    if head[:4] == b"FORM":                         # AIFF
-        return True
-    if head[:4] == b"fLaC":                         # FLAC
-        return True
-    return False
-
-
-async def _read_audio_upload(request: web.Request) -> tuple[bytes, str, str]:
-    try:
-        reader = await request.multipart()
-        field = await reader.next()
-    except Exception as exc:
-        raise web.HTTPBadRequest(text="Нужно отправить аудиофайл") from exc
-
-    if not field or field.name != "audio":
-        raise web.HTTPBadRequest(text="Поле audio не найдено")
-
-    chunks = []
-    total = 0
-    while True:
-        chunk = await field.read_chunk(size=64 * 1024)
-        if not chunk:
-            break
-        total += len(chunk)
-        if total > MAX_AUDIO_BYTES:
-            raise web.HTTPRequestEntityTooLarge(
-                max_size=MAX_AUDIO_BYTES,
-                actual_size=total,
-                text="Голосовое сообщение слишком большое",
-            )
-        chunks.append(chunk)
-
-    audio = b"".join(chunks)
-    if not audio:
-        raise web.HTTPBadRequest(text="Пустое голосовое сообщение")
-    if not _looks_like_audio(audio):
-        raise web.HTTPBadRequest(text="Неподдерживаемый формат аудио")
-
-    return (
-        audio,
-        field.filename or "voice.webm",
-        field.headers.get("Content-Type", "audio/webm"),
-    )
-
-
-async def _record_ai_cost(user_id: int, model: str, cost_usd: float, *, tokens: int = 0) -> None:
-    """Учитывает расход OpenAI (TTS/картинки/Realtime) для видимости в админке.
-
-    Никогда не ломает пользовательский поток: ошибки записи проглатываются.
-    """
-    try:
-        await database.add_ai_usage(
-            user_id=user_id,
-            model=model,
-            input_tokens=tokens,
-            output_tokens=0,
-            total_tokens=tokens,
-            cost_usd=round(float(cost_usd), 6),
-        )
-    except Exception:
-        log.exception("Не удалось записать расход AI (%s)", model)
-
-
-def _ai_daily_limit_reached(stats) -> bool:
-    """True, если включён бесплатный лимит AI-уроков и он на сегодня исчерпан."""
-    limit = AI_DAILY_MESSAGE_LIMIT
-    if limit <= 0:
-        return False
-    return int(stats["requests"] if stats else 0) >= limit
-
-
-def _ai_limit_message() -> str:
-    return (
-        "На сегодня бесплатные занятия с репетитором закончились. "
-        "Возвращайся завтра! А пока можно учить слова, проходить тесты и "
-        "играть — это без ограничений."
-    )
-
-
 # `_admin_user_detail_payload` и `api_admin_user_detail` остаются здесь (а не в
 # routes_admin): payload тянет `_problem_word_dict` -> `_word_dict` ->
 # визуализатор и кэш сгенерированных картинок (runtime-клей server.py).
@@ -487,182 +338,6 @@ def _admin_user_detail_payload(user, stats, report, dictionary_summary, problem_
         "history": [_activity_event_dict(row) for row in history],
         "ai_today": _chat_usage_payload(ai_today),
     }
-
-
-def _style_for_user(user) -> str:
-    age_group = user["age_group"] if user else ""
-    if age_group in {"5_7", "8_10"}:
-        return "игровой, очень доброжелательный, с простыми фразами и мини-играми"
-    if age_group == "14_18":
-        return "спокойный, дружелюбный, с диалогами и реальными ситуациями"
-    return "дружелюбный, короткими репликами, с понятными примерами"
-
-
-def _topics_for_user(user) -> str:
-    goal = user["goal"] if user else ""
-    age_group = user["age_group"] if user else ""
-    if goal == "travel":
-        return "путешествия, аэропорт, кафе, покупки, знакомство, карта города"
-    if goal == "exams":
-        return "школа, хобби, планы, короткие диалоги, экзаменационные темы без стресса"
-    if goal == "speaking":
-        return "игры, друзья, спорт, музыка, фильмы, хобби, повседневные диалоги"
-    if age_group in {"5_7", "8_10"}:
-        return "животные, цвета, еда, игрушки, игры, школа, сказочные истории"
-    return "школа, игры, спорт, путешествия, хобби, истории, повседневные ситуации"
-
-
-def _prompt_context_for_user(user) -> dict:
-    return {
-        "age": str(user["child_age"] or _age_label(user["age_group"])) if user else "не указан",
-        "age_group": _normalized_age_group_for_user(user),
-        "level": _level_for_user(user),
-        "goal": _goal_label(user["goal"]) if user else "устная практика",
-        "style": _style_for_user(user),
-        "topics": _topics_for_user(user),
-    }
-
-
-def _voice_topic_bank(user) -> list[str]:
-    age_group = user["age_group"] if user else ""
-    goal = user["goal"] if user else ""
-    if goal == "travel":
-        return [
-            "airport adventure", "hotel check-in", "cafe order", "city map",
-            "souvenir shop", "beach day", "train station", "lost backpack",
-            "photo walk", "weather talk", "ice cream kiosk", "museum quest",
-            "passport helper", "bus stop", "theme park", "family trip",
-            "restaurant mistake", "ask for directions",
-        ]
-    if goal == "exams":
-        return [
-            "school day", "favorite hobby", "weekend plans", "short interview",
-            "picture description", "study routine", "sports club", "my room",
-            "healthy food", "future job", "friendship", "small presentation",
-            "compare two pictures", "tell a mini story", "opinion practice",
-            "exam calm-down", "daily routine challenge", "question cards",
-        ]
-    if age_group in {"5_7", "8_10"}:
-        return [
-            "magic shop", "space picnic", "robot friend", "treasure map",
-            "funny cafe", "toy store", "school bag", "secret door",
-            "superhero training", "rainbow colors", "little chef", "sports day",
-            "pet doctor", "birthday party", "snowy park", "music game",
-            "dragon library", "pirate bakery", "dino museum", "jungle camera",
-            "monster picnic", "art studio", "weather machine", "lost teddy",
-            "train of words", "moon playground", "detective game", "tiny theater",
-        ]
-    if age_group == "11_13":
-        return [
-            "school project", "gaming club", "sports practice", "music playlist",
-            "movie scene", "travel vlog", "cafe dialogue", "new classmate",
-            "weekend plan", "pet story", "shopping challenge", "mystery quest",
-            "YouTube plan", "comic book idea", "science fair", "escape room",
-            "football commentary", "birthday planning", "school club pitch",
-            "phone call practice",
-        ]
-    return [
-        "real conversation", "travel problem", "school debate", "job interview mini",
-        "movie discussion", "music and hobbies", "daily routine", "exam warm-up",
-        "ordering food", "city directions", "online safety", "future plans",
-        "small talk practice", "opinion challenge", "presentation opener",
-        "friendly disagreement", "study abroad scene", "interview with a blogger",
-    ]
-
-
-def _choose_voice_topics(user, messages: list[dict], count: int = 3) -> list[str]:
-    bank = _voice_topic_bank(user)
-    recent_text = " ".join(m["content"] for m in messages[-10:]).lower()
-    fresh = [topic for topic in bank if topic.lower() not in recent_text]
-    if len(fresh) < count:
-        fresh = bank[:]
-    random.shuffle(fresh)
-    return fresh[:count]
-
-
-def _voice_lesson_focus(messages: list[dict]) -> str:
-    recent = [
-        " ".join(str(message.get("content") or "").split())
-        for message in messages[-6:]
-        if str(message.get("content") or "").strip()
-    ]
-    if not recent:
-        return "урок только начинается"
-    return (
-        "Текущая линия урока — последние реплики: "
-        + " | ".join(recent[-4:])
-        + ". Продолжай эту тему и мини-сцену, пока ребенок сам не попросит сменить тему."
-    )
-
-
-def _voice_prompt_context(user, messages: list[dict], lesson_state: dict | None = None) -> dict:
-    topics = _choose_voice_topics(user, messages)
-    lesson_focus = _voice_lesson_focus(messages)
-    has_history = any(str(message.get("content") or "").strip() for message in messages)
-    recent_user_messages = [m["content"] for m in messages if m["role"] == "user"][-3:]
-    recent_assistant_messages = [m["content"] for m in messages if m["role"] == "assistant"][-3:]
-    context = {
-        "lesson_focus": lesson_focus,
-        "topic_suggestions": (
-            "не меняй текущую тему; запасные темы только если ребенок явно просит сменить тему: "
-            + ", ".join(topics)
-            if has_history else ", ".join(topics)
-        ),
-        "avoid_topics": (
-            "Не меняй тему по таймеру и не начинай новый урок сам. "
-            "Продолжай текущую линию урока 8-10 реплик или до явной просьбы ребенка сменить тему. "
-            "Не перечисляй новые темы, если ребенок уже находится в мини-сцене."
-        ),
-        "recent_user_messages": " | ".join(recent_user_messages) or "пока нет",
-        "recent_assistant_messages": " | ".join(recent_assistant_messages) or "пока нет",
-        "activity_menu": (
-            "роль: продавец/покупатель, мини-квест, угадай слово, естественный вопрос, "
-            "выбор из двух вариантов, вопрос про день ребенка, короткая смешная сценка, "
-            "мини-история на 2 реплики, возвращение к слову из прошлой реплики"
-        ),
-        "lesson_loop": (
-            "Сначала живо отреагируй на смысл реплики ребенка. Затем обязательно добавь маленькую учебную пользу: "
-            "одну английскую фразу вроде I want..., I like..., Can I have...?, одно слово, мягкое исправление "
-            "или выбор из двух вариантов. Не требуй повторения каждый раз; иногда задай естественный вопрос "
-            "или продолжи сцену. Держи одну тему урока, пока ребенок сам не сменит ее. Через несколько реплик верни одно старое слово."
-        ),
-        "conversation_plan": (
-            "1) Сначала понять настоящий запрос ребенка: вопрос, просьба, выбор темы, усталость или ошибка. "
-            "2) Ответить по сути на этот запрос, не игнорировать его ради плана урока. "
-            "3) Всегда связать ответ с короткой учебной пользой: фразой, словом, исправлением, выбором или мини-практикой. "
-            "4) Продолжить текущую мини-сцену 8-10 ходов, если ребенок не просит сменить тему. "
-            "5) Каждые 3-4 реплики можно менять активность внутри той же темы: мини-диалог, угадай слово, роль, вопрос, исправление. "
-            "6) Если ребенок отвечает коротко, упростить и дать выбор из двух вариантов. "
-            "7) Если ребенок спрашивает по-русски, ответить по-русски и дать одну маленькую английскую фразу."
-        ),
-    }
-    if lesson_state:
-        context.update(lesson_prompt_context(lesson_state))
-    return context
-
-
-async def _ensure_voice_lesson_state(user_id: int, user) -> dict:
-    row = await database.get_voice_lesson_state(user_id)
-    age_group = _normalized_age_group_for_user(user)
-    if row and row["age_group"] == age_group:
-        return dict(row)
-    state = create_lesson_state(
-        age_group=age_group,
-        goal=user["goal"] if user else "",
-        seed=str(user_id),
-    )
-    await database.save_voice_lesson_state(user_id, state)
-    return state
-
-
-async def _advance_voice_lesson_state(user_id: int, user, role: str, text: str) -> dict:
-    state = await _ensure_voice_lesson_state(user_id, user)
-    previous_phase = state.get("phase")
-    state = advance_lesson_state(state, role, text)
-    await database.save_voice_lesson_state(user_id, state)
-    if previous_phase != "wrapup" and state.get("phase") == "wrapup":
-        await database.save_completed_voice_lesson(user_id, state)
-    return state
 
 
 def _blank_word_in_example(word: str, example: str) -> str:
@@ -1678,470 +1353,6 @@ async def api_word_hunt_finish(request: web.Request):
         "points": user["points"] if user else 0,
         "results": results,
     })
-
-
-# ---------- API: ИИ-репетитор ----------
-
-async def api_chat_history(request: web.Request):
-    user_id = request["tg_user"]["id"]
-    user = await _current_user_or_404(request)
-    rows = await database.get_recent_messages(user_id, limit=CHAT_HISTORY_LIMIT * 2)
-    messages = [{"role": r["role"], "content": r["content"]} for r in rows]
-    stats = await database.get_ai_usage_today(user_id)
-    lesson_state = await _ensure_voice_lesson_state(user_id, user)
-    return web.json_response({
-        "messages": messages,
-        "usage": _chat_usage_payload(stats),
-        "lesson_state": public_lesson_state(lesson_state),
-    })
-
-
-async def api_chat_send(request: web.Request):
-    user_id = request["tg_user"]["id"]
-    body = await _safe_json(request)
-    text = (body.get("message") or "").strip()
-    mode = "voice" if body.get("mode") == "voice" else "chat"
-    if not text:
-        return web.json_response({"error": "empty message"}, status=400)
-    if len(text) > 1000:
-        text = text[:1000]
-
-    # Гейт лимита и профиль читаем параллельно — независимые запросы.
-    stats, user = await asyncio.gather(
-        database.get_ai_usage_today(user_id),
-        database.get_user(user_id),
-    )
-    if _ai_daily_limit_reached(stats):
-        return web.json_response({
-            "reply": _ai_limit_message(),
-            "usage": _chat_usage_payload(stats),
-            "lesson_state": {},
-            "limit_reached": True,
-        })
-
-    user_name = user["name"] if user else "друг"
-
-    # Запись сообщения пользователя и продвижение состояния урока — независимые
-    # записи в разные таблицы, выполняем параллельно. История — строго после.
-    lesson_state = None
-    if mode == "voice":
-        _, lesson_state = await asyncio.gather(
-            database.add_message(user_id, "user", redact_personal_data(text)),
-            _advance_voice_lesson_state(user_id, user, "user", text),
-        )
-    else:
-        await database.add_message(user_id, "user", redact_personal_data(text))
-
-    # Берём последние сообщения как контекст для модели
-    rows = await database.get_recent_messages(user_id, limit=CHAT_HISTORY_LIMIT)
-    history = [{"role": r["role"], "content": r["content"]} for r in rows]
-
-    age_label = _age_label(user["age_group"]) if user else ""
-    prompt_context = _prompt_context_for_user(user) if user else {}
-    prompt_context["mode"] = mode
-    if mode == "voice":
-        prompt_context.update(_voice_prompt_context(user, history, lesson_state))
-    reply = await chat_reply(history, user_name, age_label, prompt_context)
-
-    if mode == "voice":
-        _, lesson_state = await asyncio.gather(
-            database.add_message(user_id, "assistant", reply.text),
-            _advance_voice_lesson_state(user_id, user, "assistant", reply.text),
-        )
-    else:
-        await database.add_message(user_id, "assistant", reply.text)
-    if reply.total_tokens > 0:
-        await database.add_ai_usage(
-            user_id=user_id,
-            model=reply.model,
-            input_tokens=reply.input_tokens,
-            output_tokens=reply.output_tokens,
-            total_tokens=reply.total_tokens,
-            cost_usd=reply.cost_usd,
-        )
-        stats = await database.get_ai_usage_today(user_id)
-
-    return web.json_response({
-        "reply": reply.text,
-        "usage": _chat_usage_payload(stats),
-        "lesson_state": public_lesson_state(lesson_state),
-    })
-
-
-async def api_audio_transcribe(request: web.Request):
-    try:
-        audio, filename, content_type = await _read_audio_upload(request)
-    except web.HTTPRequestEntityTooLarge as e:
-        return web.json_response({"error": e.text}, status=413)
-    except web.HTTPBadRequest as e:
-        return web.json_response({"error": e.text}, status=400)
-
-    try:
-        text = await transcribe_audio(
-            audio,
-            filename=filename,
-            content_type=content_type,
-        )
-    except Exception as e:
-        log.exception("Audio transcription failed")
-        return web.json_response({"error": f"Не удалось распознать голос. {public_openai_error(e)}"}, status=502)
-
-    return web.json_response({"text": text})
-
-
-async def api_audio_speech(request: web.Request):
-    body = await _safe_json(request)
-    text = (body.get("text") or "").strip()
-    mode = body.get("mode") if body.get("mode") in {"voice", "word"} else "chat"
-    speed = body.get("speed")
-    if not text:
-        return web.json_response({"error": "Нет текста для озвучки"}, status=400)
-    if len(text) > 1200:
-        text = text[:1200]
-
-    cache_name = _word_audio_cache_name(text, mode, speed)
-    if cache_name:
-        try:
-            cached = await storage.word_audio_storage.read(cache_name)
-        except Exception:  # noqa: BLE001 — нет объекта/файла -> промах кэша
-            cached = None
-        if cached:
-            return web.Response(
-                body=cached,
-                content_type="audio/mpeg",
-                headers={
-                    "Cache-Control": "public, max-age=31536000, immutable",
-                    "X-Audio-Cache": "hit",
-                },
-            )
-
-    # Cache miss → stream from OpenAI and tee chunks into the disk cache.
-    # Pull the first chunk before prepare() so an immediate failure still returns JSON.
-    gen = synthesize_speech_stream(text, mode=mode, speed=speed)
-    try:
-        first_chunk = await gen.__anext__()
-    except StopAsyncIteration:
-        log.error("TTS generator yielded no audio for text len=%d", len(text))
-        return web.json_response({"error": "Не удалось озвучить ответ: пустой ответ от TTS."}, status=502)
-    except Exception as e:
-        log.exception("Speech synthesis failed")
-        return web.json_response({"error": f"Не удалось озвучить ответ. {public_openai_error(e)}"}, status=502)
-
-    response = web.StreamResponse(headers={
-        "Content-Type": "audio/mpeg",
-        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-        "X-Audio-Cache": "miss",
-    })
-    await response.prepare(request)
-    buffer = bytearray()
-    try:
-        if first_chunk:
-            buffer.extend(first_chunk)
-            await response.write(first_chunk)
-        async for chunk in gen:
-            buffer.extend(chunk)
-            await response.write(chunk)
-    except Exception:
-        # Headers/200 already sent — end the stream; the client falls back on a short clip.
-        log.exception("Speech streaming interrupted")
-        await response.write_eof()
-        return response
-
-    await response.write_eof()
-
-    # Стоимость списываем только после полностью успешного стрима (не при пустом/обрыве).
-    await _record_ai_cost(
-        request["tg_user"]["id"],
-        OPENAI_TTS_MODEL,
-        len(text) / 1000 * OPENAI_TTS_COST_PER_1K_CHARS,
-    )
-
-    # Persist to cache only after a full, successful stream.
-    if cache_name and buffer:
-        try:
-            await storage.word_audio_storage.write(cache_name, bytes(buffer))
-            if AUDIO_CACHE_DIR is not None:  # eviction только локально (S3 — lifecycle)
-                _evict_cache_dir(AUDIO_CACHE_DIR, AUDIO_CACHE_MAX_FILES)
-        except Exception:  # noqa: BLE001 — сбой кэша не должен ронять уже отданный ответ
-            log.exception("Failed to store word audio cache")
-
-    return response
-
-
-async def _voice_text_turn_payload(user_id: int, text: str) -> dict:
-    # Гейт лимита и профиль читаем параллельно — независимые запросы.
-    stats, user = await asyncio.gather(
-        database.get_ai_usage_today(user_id),
-        database.get_user(user_id),
-    )
-    if _ai_daily_limit_reached(stats):
-        lesson_state = await _ensure_voice_lesson_state(user_id, user)
-        return {
-            "text": text,
-            "reply": _ai_limit_message(),
-            "audio_base64": "",
-            "audio_content_type": "",
-            "audio_error": "",
-            "usage": _chat_usage_payload(stats),
-            "lesson_state": public_lesson_state(lesson_state),
-            "limit_reached": True,
-        }
-    user_name = user["name"] if user else "друг"
-
-    # Запись реплики пользователя ∥ продвижение урока (разные таблицы).
-    _, lesson_state = await asyncio.gather(
-        database.add_message(user_id, "user", redact_personal_data(text)),
-        _advance_voice_lesson_state(user_id, user, "user", text),
-    )
-    rows = await database.get_recent_messages(user_id, limit=CHAT_HISTORY_LIMIT)
-    history = [{"role": r["role"], "content": r["content"]} for r in rows]
-
-    age_label = _age_label(user["age_group"]) if user else ""
-    prompt_context = _prompt_context_for_user(user) if user else {}
-    prompt_context["mode"] = "voice"
-    prompt_context.update(_voice_prompt_context(user, history, lesson_state))
-
-    reply = await chat_reply(history, user_name, age_label, prompt_context)
-    _, lesson_state = await asyncio.gather(
-        database.add_message(user_id, "assistant", reply.text),
-        _advance_voice_lesson_state(user_id, user, "assistant", reply.text),
-    )
-    if reply.total_tokens > 0:
-        await database.add_ai_usage(
-            user_id=user_id,
-            model=reply.model,
-            input_tokens=reply.input_tokens,
-            output_tokens=reply.output_tokens,
-            total_tokens=reply.total_tokens,
-            cost_usd=reply.cost_usd,
-        )
-        stats = await database.get_ai_usage_today(user_id)
-
-    # Аудио инлайн не синтезируем: текст уходит сразу, а озвучку клиент берёт
-    # потоково из /api/audio/speech (бинарь + дисковый кэш + прогрессивное
-    # воспроизведение). Это убирает ожидание полного MP3 и base64-оверхед.
-    return {
-        "text": text,
-        "reply": reply.text,
-        "audio_base64": "",
-        "audio_content_type": "",
-        "audio_error": "",
-        "usage": _chat_usage_payload(stats),
-        "lesson_state": public_lesson_state(lesson_state),
-    }
-
-
-async def _voice_unclear_payload(user_id: int, reply_text: str | None = None) -> dict:
-    user = await database.get_user(user_id)
-    lesson_state = await _ensure_voice_lesson_state(user_id, user)
-    age_group = _normalized_age_group_for_user(user)
-    if reply_text:
-        reply = reply_text
-    elif age_group == "5_7":
-        reply = "Я не очень хорошо услышал. Повтори одно слово, пожалуйста."
-    else:
-        reply = "Я не очень хорошо услышал. Повтори, пожалуйста, короткой фразой."
-
-    audio_b64 = ""
-    audio_error = ""
-    try:
-        speech = await synthesize_speech(reply, mode="voice")
-        audio_b64 = base64.b64encode(speech).decode("ascii")
-    except Exception as e:
-        log.exception("Unclear voice fallback speech synthesis failed")
-        audio_error = public_openai_error(e)
-
-    return {
-        "text": "",
-        "reply": reply,
-        "audio_base64": audio_b64,
-        "audio_content_type": "audio/mpeg" if audio_b64 else "",
-        "audio_error": audio_error,
-        "usage": _chat_usage_payload(await database.get_ai_usage_today(user_id)),
-        "lesson_state": public_lesson_state(lesson_state),
-        "voice_fallback": "unclear",
-    }
-
-
-async def api_voice_text_turn(request: web.Request):
-    """Stable hybrid turn when speech was already transcribed by Realtime."""
-    user_id = request["tg_user"]["id"]
-    body = await _safe_json(request)
-    text = " ".join((body.get("message") or body.get("text") or "").split())
-    if not text:
-        payload = await _voice_unclear_payload(user_id)
-        return web.json_response(payload, headers={"Cache-Control": "no-store"})
-    if len(text) > 1000:
-        text = text[:1000]
-
-    try:
-        payload = await _voice_text_turn_payload(user_id, text)
-    except Exception as e:
-        log.exception("Hybrid voice text turn failed")
-        return web.json_response({"error": public_openai_error(e)}, status=502)
-    return web.json_response(payload, headers={"Cache-Control": "no-store"})
-
-
-async def api_voice_turn(request: web.Request):
-    """Stable hybrid voice turn: transcribe, reply, and synthesize in one request."""
-    user_id = request["tg_user"]["id"]
-    try:
-        audio, filename, content_type = await _read_audio_upload(request)
-    except web.HTTPRequestEntityTooLarge as e:
-        return web.json_response({"error": e.text}, status=413)
-    except web.HTTPBadRequest as e:
-        return web.json_response({"error": e.text}, status=400)
-
-    try:
-        text = await transcribe_audio(audio, filename=filename, content_type=content_type)
-    except Exception as e:
-        log.exception("Hybrid voice transcription failed")
-        return web.json_response({"error": f"Не удалось распознать голос. {public_openai_error(e)}"}, status=502)
-
-    text = " ".join(text.split())
-    if not text:
-        payload = await _voice_unclear_payload(user_id)
-        return web.json_response(payload, headers={"Cache-Control": "no-store"})
-    if len(text) > 1000:
-        text = text[:1000]
-
-    try:
-        payload = await _voice_text_turn_payload(user_id, text)
-    except Exception as e:
-        log.exception("Hybrid voice turn failed")
-        return web.json_response({"error": public_openai_error(e)}, status=502)
-    return web.json_response(payload, headers={"Cache-Control": "no-store"})
-
-
-async def api_realtime_call(request: web.Request):
-    user_id = request["tg_user"]["id"]
-    raw_body = await request.read()
-    sdp_offer = raw_body.decode("utf-8", errors="replace").strip()
-    log.info(
-        "Realtime SDP: content_type=%s body_len=%d sdp_starts=%s",
-        request.content_type, len(raw_body), repr(sdp_offer[:40]) if sdp_offer else "EMPTY",
-    )
-    if not sdp_offer or len(raw_body) > MAX_SDP_BYTES:
-        return web.json_response({"error": f"Некорректный SDP: len={len(raw_body)}, starts={repr(sdp_offer[:30])}"}, status=400)
-
-    user = await _current_user_or_404(request)
-    rows = await database.get_recent_messages(user_id, limit=CHAT_HISTORY_LIMIT)
-    history = [{"role": r["role"], "content": r["content"]} for r in rows]
-    age_label = _age_label(user["age_group"]) if user else ""
-    lesson_state = await _ensure_voice_lesson_state(user_id, user)
-    prompt_context = _realtime_prompt_context(user, history, lesson_state)
-
-    try:
-        answer_sdp = await create_realtime_call(
-            sdp_offer=sdp_offer,
-            user_id=user_id,
-            user_name=user["name"] if user else "друг",
-            age_label=age_label,
-            prompt_context=prompt_context,
-        )
-    except Exception as e:
-        log.exception("Realtime call setup failed: %s", e)
-        return web.json_response({"error": public_openai_error(e)}, status=502)
-
-    return web.Response(
-        text=answer_sdp,
-        content_type="application/sdp",
-        headers={"Cache-Control": "no-store"},
-    )
-
-
-def _realtime_prompt_context(user, history: list[dict], lesson_state: dict | None = None) -> dict:
-    prompt_context = _prompt_context_for_user(user) if user else {}
-    prompt_context["mode"] = "voice"
-    prompt_context["age_group"] = _normalized_age_group_for_user(user) if user else "8_10"
-    prompt_context.update(_voice_prompt_context(user, history, lesson_state))
-    return prompt_context
-
-
-async def api_realtime_token(request: web.Request):
-    user_id = request["tg_user"]["id"]
-    user = await _current_user_or_404(request)
-    gate_stats = await database.get_ai_usage_today(user_id)
-    if _ai_daily_limit_reached(gate_stats):
-        return web.json_response({
-            "limit_reached": True,
-            "error": _ai_limit_message(),
-            "usage": _chat_usage_payload(gate_stats),
-        }, status=403)
-    # Отдельный жёсткий суточный лимит именно на дорогие Realtime-сессии:
-    # защита от cost-amplification, не зависит от общего AI_DAILY_MESSAGE_LIMIT.
-    if REALTIME_DAILY_SESSION_LIMIT > 0:
-        realtime_today = await database.get_model_requests_today(
-            user_id, OPENAI_REALTIME_MODEL
-        )
-        if realtime_today >= REALTIME_DAILY_SESSION_LIMIT:
-            return web.json_response({
-                "limit_reached": True,
-                "error": (
-                    "На сегодня голосовые занятия закончились. Возвращайся завтра! "
-                    "А пока можно учить слова, проходить тесты и играть."
-                ),
-                "usage": _chat_usage_payload(gate_stats),
-            }, status=429)
-    rows = await database.get_recent_messages(user_id, limit=CHAT_HISTORY_LIMIT)
-    history = [{"role": r["role"], "content": r["content"]} for r in rows]
-    age_label = _age_label(user["age_group"]) if user else ""
-    lesson_state = await _ensure_voice_lesson_state(user_id, user)
-    prompt_context = _realtime_prompt_context(user, history, lesson_state)
-
-    try:
-        # Общий бюджет на токен (включая retry внутри): не даём ребёнку висеть
-        # на застывшем экране ~50с при сбоях OpenAI.
-        token_coro = create_realtime_client_secret(
-            user_id=user_id,
-            user_name=user["name"] if user else "друг",
-            age_label=age_label,
-            prompt_context=prompt_context,
-        )
-        if REALTIME_TOKEN_TIMEOUT_SEC > 0:
-            token = await asyncio.wait_for(token_coro, timeout=REALTIME_TOKEN_TIMEOUT_SEC)
-        else:
-            token = await token_coro
-    except asyncio.TimeoutError:
-        log.warning("Realtime token timed out after %ss", REALTIME_TOKEN_TIMEOUT_SEC)
-        return web.json_response(
-            {"error": "Голос пока не отвечает. Попробуй ещё раз через минутку."},
-            status=504,
-        )
-    except Exception as e:
-        log.exception("Realtime token setup failed: %s", e)
-        return web.json_response({"error": public_openai_error(e)}, status=502)
-
-    # Учитываем старт Realtime-сессии: видимость расходов в админке и заодно
-    # этот ход считается в дневной freemium-лимит (раньше голос его обходил).
-    await _record_ai_cost(user_id, OPENAI_REALTIME_MODEL, OPENAI_REALTIME_SESSION_COST)
-    return web.json_response(token, headers={"Cache-Control": "no-store"})
-
-
-async def api_realtime_log(request: web.Request):
-    user_id = request["tg_user"]["id"]
-    user = await _current_user_or_404(request)
-    body = await _safe_json(request)
-    role = "assistant" if body.get("role") == "assistant" else "user"
-    content = " ".join(str(body.get("content") or "").split())
-    if not content:
-        return web.json_response({"ok": True})
-    if len(content) > 1000:
-        content = content[:1000]
-    stored_content = redact_personal_data(content) if role == "user" else content
-    await database.add_message(user_id, role, stored_content)
-    lesson_state = await _advance_voice_lesson_state(user_id, user, role, content)
-    return web.json_response({
-        "ok": True,
-        "lesson_state": public_lesson_state(lesson_state),
-    })
-
-
-async def api_chat_reset(request: web.Request):
-    user_id = request["tg_user"]["id"]
-    await database.clear_conversation(user_id)
-    await database.clear_voice_lesson_state(user_id)
-    return web.json_response({"ok": True})
 
 
 # ---------- Static ----------

@@ -135,15 +135,16 @@ class LessonEngineTests(unittest.TestCase):
         self.assertNotIn("lesson_state_instruction", payload)
 
     def test_voice_routes_and_frontend_share_persistent_lesson_state(self):
+        # Голосовые маршруты живут в webapp/routes_chat_voice.py (шаг 3e-3).
         root = Path(__file__).resolve().parents[1]
-        server = (root / "webapp" / "server.py").read_text(encoding="utf-8")
+        routes_chat_voice = (root / "webapp" / "routes_chat_voice.py").read_text(encoding="utf-8")
         database = (root / "database.py").read_text(encoding="utf-8")
         app = (root / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
 
         self.assertIn("CREATE TABLE IF NOT EXISTS voice_lesson_state", database)
-        self.assertGreaterEqual(server.count("_advance_voice_lesson_state("), 4)
-        self.assertGreaterEqual(server.count("public_lesson_state("), 4)
-        self.assertIn("_voice_unclear_payload", server)
+        self.assertGreaterEqual(routes_chat_voice.count("_advance_voice_lesson_state("), 4)
+        self.assertGreaterEqual(routes_chat_voice.count("public_lesson_state("), 4)
+        self.assertIn("_voice_unclear_payload", routes_chat_voice)
         self.assertIn('id="voiceLessonStrip"', app)
         self.assertIn("renderLessonState(result.lesson_state)", app)
         self.assertIn("VOICE_STATE_LABELS", app)

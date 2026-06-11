@@ -13,8 +13,11 @@
 Выбор backend'а — в ``make_storage`` по env. Код вызова (server.py) работает с
 любым через одинаковый async-интерфейс.
 """
+import logging
 import os
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 _DEFAULT_ROOT = Path(__file__).parent / "static" / "generated"
 
@@ -47,6 +50,19 @@ def evict_dir(directory, max_files: int, exempt_suffix: str = ".none") -> None:
     files.sort(key=lambda p: p.stat().st_mtime)
     for path in files[: len(files) - max_files]:
         path.unlink(missing_ok=True)
+
+
+def _evict_cache_dir(directory: Path, max_files: int) -> None:
+    """Удаляет самые старые файлы кэша, если их больше лимита (эфемерный диск).
+
+    Обёртка над evict_dir с логированием: .none-маркеры (слово без картинки)
+    не выселяем — они крошечные и экономят квоту Pixabay; OSError не роняет
+    вызывающий поток. Используют server.py и модули маршрутов.
+    """
+    try:
+        evict_dir(directory, max_files)
+    except OSError:
+        log.exception("Не удалось почистить кэш %s", directory)
 
 
 class LocalDiskStorage:

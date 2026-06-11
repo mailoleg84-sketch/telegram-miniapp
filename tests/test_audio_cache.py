@@ -41,7 +41,9 @@ class AudioCacheHitTests(unittest.IsolatedAsyncioTestCase):
         body = {"text": "cat", "mode": "word"}
         expected_name = server._word_audio_cache_name("cat", "word", None)
         read_mock = AsyncMock(return_value=b"ID3-FAKE-MP3")
-        with patch("webapp.server._safe_json", AsyncMock(return_value=body)), \
+        # Хендлер озвучки живёт в webapp/routes_chat_voice.py (шаг 3e-3) —
+        # патчим его пространство имён; server реэкспортирует хендлер.
+        with patch("webapp.routes_chat_voice._safe_json", AsyncMock(return_value=body)), \
              patch.object(server.storage.word_audio_storage, "read", read_mock):
             resp = await server.api_audio_speech(object())
         self.assertEqual(resp.body, b"ID3-FAKE-MP3")
@@ -58,10 +60,10 @@ class AudioCacheHitTests(unittest.IsolatedAsyncioTestCase):
             return
             yield  # noqa: делает функцию async-генератором
 
-        with patch("webapp.server._safe_json", AsyncMock(return_value=body)), \
+        with patch("webapp.routes_chat_voice._safe_json", AsyncMock(return_value=body)), \
              patch.object(server.storage.word_audio_storage, "read",
                           AsyncMock(side_effect=RuntimeError("backend down"))), \
-             patch("webapp.server.synthesize_speech_stream", _empty_stream):
+             patch("webapp.routes_chat_voice.synthesize_speech_stream", _empty_stream):
             resp = await server.api_audio_speech(object())
         # Не упали на чтении кэша; дошли до генерации, которая вернула пусто -> 502.
         self.assertEqual(resp.status, 502)

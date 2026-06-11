@@ -396,25 +396,32 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertNotIn("completed_steps = GREATEST(completed_steps, $2)", block)
 
     def test_ai_cost_tracking_covers_tts_image_realtime(self):
+        # Учёт расходов живёт в webapp/routes_chat_voice.py (шаг 3e-3); картинки
+        # генерируются из server.py и тоже проходят через _record_ai_cost.
         root = Path(__file__).resolve().parents[1]
         server_py = (root / "webapp" / "server.py").read_text(encoding="utf-8")
-        self.assertIn("async def _record_ai_cost", server_py)
-        self.assertIn("OPENAI_TTS_COST_PER_1K_CHARS", server_py)
+        routes_chat_voice_py = (root / "webapp" / "routes_chat_voice.py").read_text(encoding="utf-8")
+        self.assertIn("async def _record_ai_cost", routes_chat_voice_py)
+        self.assertIn("OPENAI_TTS_COST_PER_1K_CHARS", routes_chat_voice_py)
         self.assertIn("OPENAI_IMAGE_COST_PER_CALL", server_py)
+        self.assertIn("_record_ai_cost(", server_py)  # стоимость картинок учитывается
         # Realtime-сессия учитывается (видимость + считается в freemium-лимит).
         self.assertIn(
             "_record_ai_cost(user_id, OPENAI_REALTIME_MODEL, OPENAI_REALTIME_SESSION_COST)",
-            server_py,
+            routes_chat_voice_py,
         )
 
     def test_production_readiness_infrastructure(self):
         root = Path(__file__).resolve().parents[1]
         server_py = (root / "webapp" / "server.py").read_text(encoding="utf-8")
+        storage_py = (root / "webapp" / "storage.py").read_text(encoding="utf-8")
         self.assertIn("async def healthz_handler", server_py)
         self.assertIn('app.router.add_get("/healthz", healthz_handler)', server_py)
         self.assertIn("async def hardening_middleware", server_py)
         self.assertIn("middlewares=[hardening_middleware, auth_middleware]", server_py)
-        self.assertIn("def _evict_cache_dir", server_py)
+        # Чистка кэшей живёт в storage (шаг 3e-1), но вызывается из обработчиков.
+        self.assertIn("def _evict_cache_dir", storage_py)
+        self.assertIn("_evict_cache_dir(", server_py)
         self.assertIn("X-Content-Type-Options", server_py)
 
         dockerfile = (root / "Dockerfile").read_text(encoding="utf-8")

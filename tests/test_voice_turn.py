@@ -40,12 +40,14 @@ class VoiceTurnPayloadTests(unittest.IsolatedAsyncioTestCase):
             p(patch("database.add_message", add_msg))
             p(patch("database.add_ai_usage", add_usage))
             p(patch("database.get_recent_messages", AsyncMock(return_value=[])))
-            p(patch("webapp.server._advance_voice_lesson_state",
+            # Голосовой ход живёт в webapp/routes_chat_voice.py (шаг 3e-3) —
+            # патчим имена в его пространстве; server реэкспортирует функцию.
+            p(patch("webapp.routes_chat_voice._advance_voice_lesson_state",
                     AsyncMock(return_value={"phase": "dialogue"})))
-            p(patch("webapp.server.chat_reply", AsyncMock(return_value=reply)))
-            p(patch("webapp.server._voice_prompt_context", MagicMock(return_value={})))
-            p(patch("webapp.server._prompt_context_for_user", MagicMock(return_value={})))
-            p(patch("webapp.server.public_lesson_state",
+            p(patch("webapp.routes_chat_voice.chat_reply", AsyncMock(return_value=reply)))
+            p(patch("webapp.routes_chat_voice._voice_prompt_context", MagicMock(return_value={})))
+            p(patch("webapp.routes_chat_voice._prompt_context_for_user", MagicMock(return_value={})))
+            p(patch("webapp.routes_chat_voice.public_lesson_state",
                     MagicMock(return_value={"phase": "dialogue"})))
             result = await server._voice_text_turn_payload(123, "hi there")
 
@@ -62,13 +64,13 @@ class VoiceTurnPayloadTests(unittest.IsolatedAsyncioTestCase):
         add_msg = AsyncMock()
         with ExitStack() as es:
             p = es.enter_context
-            p(patch("webapp.server.AI_DAILY_MESSAGE_LIMIT", 10))
+            p(patch("webapp.routes_chat_voice.AI_DAILY_MESSAGE_LIMIT", 10))
             p(patch("database.get_ai_usage_today", AsyncMock(return_value=_stats(requests=999))))
             p(patch("database.get_user", AsyncMock(return_value=_USER)))
             p(patch("database.add_message", add_msg))
-            p(patch("webapp.server._ensure_voice_lesson_state",
+            p(patch("webapp.routes_chat_voice._ensure_voice_lesson_state",
                     AsyncMock(return_value={"phase": "welcome"})))
-            p(patch("webapp.server.public_lesson_state",
+            p(patch("webapp.routes_chat_voice.public_lesson_state",
                     MagicMock(return_value={"phase": "welcome"})))
             result = await server._voice_text_turn_payload(123, "hi there")
 

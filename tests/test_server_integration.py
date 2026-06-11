@@ -55,9 +55,10 @@ class ServerIntegrationTests(AioHTTPTestCase):
             p(patch("database.get_user", AsyncMock(return_value=user)))
             p(patch("database.get_model_requests_today", AsyncMock(return_value=0)))
             p(patch("database.get_recent_messages", AsyncMock(return_value=[])))
-            p(patch("webapp.server._ensure_voice_lesson_state", AsyncMock(return_value={})))
-            p(patch("webapp.server._realtime_prompt_context", MagicMock(return_value={})))
-            p(patch("webapp.server.create_realtime_client_secret",
+            # Realtime-маршруты живут в webapp/routes_chat_voice.py (шаг 3e-3).
+            p(patch("webapp.routes_chat_voice._ensure_voice_lesson_state", AsyncMock(return_value={})))
+            p(patch("webapp.routes_chat_voice._realtime_prompt_context", MagicMock(return_value={})))
+            p(patch("webapp.routes_chat_voice.create_realtime_client_secret",
                     AsyncMock(side_effect=asyncio.TimeoutError())))
             resp = await self.client.post(
                 "/api/realtime/token",

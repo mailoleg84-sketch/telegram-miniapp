@@ -66,11 +66,11 @@
 ## Технический контекст (для быстрого старта)
 
 - **Стек:** Python · `aiogram` 3 (бот-лаунчер) · `aiohttp` (API) · `asyncpg` + PostgreSQL (Neon) · OpenAI (чат, TTS, Whisper, Realtime WebRTC, gpt-image-1).
-- **Точка входа:** `main.py`. **API и вся логика:** `webapp/server.py`. **БД:** `database.py`. **ИИ:** `webapp/openai_service.py`. **Фронтенд (SPA):** `webapp/static/`.
+- **Точка входа:** `main.py`. **API:** `webapp/server.py` + модули маршрутов (`webapp/routes_admin.py`, `webapp/routes_training.py`, `webapp/routes_chat_voice.py`). **БД:** `database.py`. **ИИ:** `webapp/openai_service.py`. **Фронтенд (SPA):** `webapp/static/`.
 - **Проверки:**
   ```bash
   .venv\Scripts\python.exe -m unittest discover -s tests -v
-  .venv\Scripts\python.exe -m py_compile config.py database.py webapp\server.py webapp\openai_service.py webapp\lesson_engine.py
+  .venv\Scripts\python.exe -m py_compile config.py database.py webapp\server.py webapp\openai_service.py webapp\lesson_engine.py webapp\routes_chat_voice.py webapp\voice_context.py webapp\routes_training.py webapp\routes_admin.py
   node --check webapp\static\app.js
   ```
 - **Деплой:** Render, авто-деплой при push в `main` (webhook-режим). База — Neon.
