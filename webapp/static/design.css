@@ -14,7 +14,7 @@
   --c-bg-1: #fbfcff;
   --c-bg-2: #f1f3fc;
   --c-ink: #1c2440;
-  --c-muted: #6b7394;
+  --c-muted: #5d6482;  /* затемнён до WCAG AA на белом для 14px (UX-аудит) */
   --c-card: #ffffff;
   --c-line: rgba(28, 36, 64, 0.09);
   --c-line-strong: rgba(28, 36, 64, 0.15);
@@ -296,7 +296,7 @@ h1, h2 { color: var(--c-ink); font-weight: 900; letter-spacing: -0.4px; }
 .action-tile b,
 .action-row b { max-width: 100%; font-size: 17px; font-weight: 900; }
 .action-tile small,
-.action-row small { color: var(--c-muted); font-weight: 700; line-height: 1.32; }
+.action-row small { color: var(--c-muted); font-weight: 700; line-height: 1.45; }
 
 /* Полноширинные ряды (Урок дня / Админ) — иконка слева, текст справа. */
 .action-row {

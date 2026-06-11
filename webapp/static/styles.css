@@ -1915,6 +1915,11 @@ input[type="text"]:focus {
   gap: 14px;
   padding: 14px 4px;
   border-radius: 0;
+  /* Словарь до 5000 слов: пропускаем рендер строк вне экрана (UX-аудит — лаги
+     при 100+). contain-intrinsic-size = примерная высота строки, чтобы скролл
+     не прыгал; browser уточняет после первого показа. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 56px;
 }
 
 .leader-row + .leader-row,
