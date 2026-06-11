@@ -313,13 +313,54 @@ async def init_db() -> None:
 
 # Защита в глубину: ни одно из этих слов не попадёт в детский банк, даже если
 # просочится в data-файл. Слова не в этом списке также удаляются из БД сидером.
+# Расширено 2026-06-11 после адверсариального аудита банка (5 ревьюеров нашли
+# слова, недопустимые для детей 5–18): сленг, слуры, оружие/насилие, оскорбления,
+# смерть/тёмное, наркотики/алкоголь, война/национальности. Решение пользователя —
+# блокировать агрессивно, включая спорные. Это safety-слой: ослаблять нельзя.
 BLOCKED_SEED_WORDS = frozenset({
+    # --- мат / сексуальное (было) ---
     "fuck", "fucking", "fucked", "fuckin", "fucker", "motherfucker", "shit", "shitty",
     "bullshit", "crap", "ass", "asshole", "arse", "bitch", "bastard", "dick", "cock",
     "prick", "pussy", "cunt", "slut", "whore", "hoe", "piss", "pissed", "sex", "sexy",
     "sexual", "porn", "porno", "nude", "naked", "penis", "vagina", "boobs", "boob",
     "tits", "nipple", "orgasm", "masturbate", "horny", "erotic", "condom", "rape",
     "rapist", "damn", "goddamn", "nigger", "faggot", "retard",
+    # --- интернет-сленг / не-словарь ---
+    "wtf", "idk", "lol", "lmao", "lmfao", "omg", "omfg", "bro", "dude", "tho", "nah",
+    "nope", "yep", "yea", "yeah", "huh", "ugh", "gotta", "wanna", "gonna", "haha",
+    "lit", "bruh", "meh", "btw", "imo", "af",
+    # --- вульгаризмы ---
+    "sucks", "suck", "sucking", "sucked", "screw", "screwed",
+    # --- слуры / оскорбительные по группам ---
+    "blacks", "negro", "negros", "negroes", "gay", "gays", "lesbian", "lesbians",
+    "queer", "fag", "fags", "dyke", "kike", "spic", "chink", "nazi", "nazis", "tranny",
+    # --- религия / национальности (спорные — по решению блокируем) ---
+    "jew", "jews", "jewish", "arab", "arabs", "muslim", "muslims", "islamic",
+    "christian", "christians", "catholic", "israeli", "israelis", "mexican",
+    "mexicans", "indian", "indians", "asian", "asians", "gypsy", "gypsies",
+    # --- оружие / насилие ---
+    "knife", "knives", "blade", "blades", "sword", "swords", "bullet", "bullets",
+    "gun", "guns", "pistol", "rifle", "shotgun", "shoot", "shooting", "shot", "shots",
+    "punch", "punched", "punching", "rob", "robbed", "robbing", "robbery", "stab",
+    "stabbed", "stabbing", "kill", "killed", "killing", "kills", "killer", "murder",
+    "murdered", "murderer", "weapon", "weapons", "bomb", "bombs", "bombing", "blast",
+    "blasts", "missile", "missiles", "explosion", "explosions", "explode", "exploded",
+    "grenade", "war", "wars", "warfare", "fight", "fights", "fighting", "fought",
+    "combat", "attack", "attacks", "attacked", "assault", "assaults", "violence",
+    "violent", "nuclear", "torture", "tortured", "beaten", "beat", "beating", "slap",
+    "slapped", "terror", "terrorist", "terrorism", "hostage",
+    # --- оскорбления / уничижительное ---
+    "idiot", "idiots", "stupid", "dumb", "fool", "fools", "foolish", "ugly", "loser",
+    "losers", "moron", "morons", "crazy", "mad", "madness", "fat", "brat", "freak",
+    # --- смерть / тёмное ---
+    "die", "dies", "died", "dying", "dead", "death", "deaths", "buried", "bury",
+    "grave", "graves", "funeral", "funerals", "deadly", "corpse", "coffin", "tomb",
+    "suicide", "devil", "demon", "demons", "ghost", "satan", "evil",
+    # --- наркотики / алкоголь / азарт ---
+    "drunk", "drunken", "beer", "wine", "alcohol", "alcoholic", "whiskey", "vodka",
+    "cigarette", "cigarettes", "smoke", "smoking", "smoked", "drug", "drugs",
+    "cocaine", "heroin", "weed", "marijuana", "cannabis", "gambling", "casino", "bet",
+    "betting", "abortion", "pregnant", "pregnancy",
 })
 
 

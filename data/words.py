@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import hashlib
 import re
 
 import pronouncing
@@ -1460,4 +1461,158 @@ def _is_single_word(word: str) -> bool:
     return " " not in word.strip()
 
 
-LEARNING_WORDS = tuple(item for item in _with_transcriptions(list(SINGLE_WORDS_5000)) if _is_single_word(item[0]))
+# --------------------------------------------------------------------------
+# «Живые примеры» к словам (детерминированно, без OpenAI, шаг плана 5.2).
+#
+# Раньше пример был один шаблон на все 5000 слов: "Let's learn the word X.".
+# Здесь пример генерируется по слову/части речи/возрасту из вариативных
+# безопасных шаблонов. Принцип «качество не падает»: настоящие примеры
+# употребления строим только там, где часть речи известна надёжно (курируемые
+# списки VERBS/NOUNS/ADJECTIVES + тема `verbs`/`grammar` + морфология глагола);
+# для неоднозначных слов берём естественный учебный фрейм с кавычками — он
+# грамматически корректен для ЛЮБОЙ части речи и не рискует выдать кривую фразу.
+# Инвариант: пример всегда содержит целевое слово (нужно для gap-вопросов) и
+# короткий (≤ ~80 символов). Шаблоны-каркасы безопасны, слова уже отфильтрованы.
+# --------------------------------------------------------------------------
+
+# Служебные слова, наречия, местоимения, детерминативы: настоящий пример
+# употребления для них рискован (склейка получится кривой) — отдаём фрейм с
+# кавычками ("Find 'and' in the sentence."), грамматически корректный всегда.
+_EXAMPLE_FUNCTION_WORDS = {
+    "a", "an", "the", "this", "that", "these", "those", "and", "or", "but", "so",
+    "if", "as", "of", "to", "in", "on", "at", "by", "for", "from", "into", "with",
+    "about", "up", "out", "off", "over", "under", "again", "ago", "always", "never",
+    "often", "very", "too", "just", "not", "no", "yes", "all", "any", "some", "each",
+    "every", "another", "here", "there", "now", "then", "away", "am", "is", "are",
+    "was", "were", "be", "been", "do", "does", "did", "have", "has", "had", "will",
+    "would", "can", "could", "should", "may", "might", "must", "i", "you", "he",
+    "she", "it", "we", "they", "me", "him", "her", "us", "them", "my", "your",
+    "his", "its", "our", "their", "who", "what", "when", "where", "why", "how",
+    "which", "whose", "alright",
+}
+
+# Курируемые списки (часть речи и базовая форма известны надёжно) — ТОЛЬКО здесь
+# строим НАСТОЯЩИЕ примеры употребления. Морфология/русский перевод как сигнал
+# части речи отвергнуты: адверсариальная проверка показала массу ошибок (русские
+# существительные с адъективным склонением «полицейский», причастия «aimed»,
+# порядковые «first», национальности «french» → кривые «It is very cop.»). Цена
+# ошибки в детском контенте выше выгоды охвата, поэтому полагаемся на ручные списки.
+# like/have/argue — лёгкие/непереходные-неудобные глаголы (см. ниже шаблоны с «it»).
+_EXAMPLE_VERB_SET = {v[0].lower() for v in VERBS} - {"like", "have", "argue"}
+_EXAMPLE_NOUN_SET = {n[0].lower() for n in NOUNS}
+_EXAMPLE_ADJ_SET = {a[0].lower() for a in ADJECTIVES}
+
+# Расширение курируемого ядра (2026-06-11, решение «расширить ядро»): частые,
+# однозначные, безопасные слова из банка, которых не было в NOUNS/ADJECTIVES/VERBS.
+# Все проверены вручную (часть речи + что пример читается верно); счётные сущ. и
+# непереходные глаголы разнесены, чтобы шаблоны не давали кривых фраз.
+_EXTRA_COUNT_NOUNS = frozenset((
+    "apple arm artist backpack bag ball banana bank bell belt boot bowl boy bridge "
+    "brush button cap castle cat cave cherry chicken city coin cow crayon deer dish "
+    "dog door driver drum ear farmer fence finger flag floor foot forest fox friend "
+    "gate giant gift girl glass grape hammer head hill hotel island jacket key kid "
+    "king kitchen kitten knee knight lake letter library lip lock map mirror mountain "
+    "mouth nail neck nose nurse palace pan pencil photo pie pilot pizza plate "
+    "playground pocket poster pot prince princess puppy puzzle queen rabbit ring road "
+    "rocket roof ruler school scooter sheep ship shirt shop singer snake spider spoon "
+    "sticker store street taxi teacher tiger tongue tower town toy train truck turtle "
+    "van wall watch window wolf writer zoo"
+).split())
+_EXTRA_ADJECTIVES = frozenset((
+    "beautiful calm cool deep dry empty famous fancy flat free full gentle great heavy "
+    "high honest huge large lazy light lonely lovely low lucky normal perfect pretty "
+    "proud real scared sharp shy smart smooth straight tall tiny tired wet wide wise "
+    "wonderful young"
+).split())
+_EXTRA_INTRANSITIVE_VERBS = frozenset((
+    "arrive cry dance fall fly hop jump laugh leave march rest run sing sit skip sleep "
+    "smile stand stay swim travel wait walk wave"
+).split())
+
+_YOUNG_AGE_GROUPS = {"5_7", "8_10"}
+
+# Шаблоны: {w} — слово, {W} — слово с заглавной (начало предложения),
+# {art} — артикль a/an. Каждый список — пул, выбор детерминирован по слову
+# (стабильно и разнообразно). Младшим — проще и игривее. Глагольные шаблоны несут
+# объект «it» — курируемые глаголы переходные ("Can you carry?" ✗ → "...carry it?").
+_EXAMPLE_TEMPLATES = {
+    ("verb", "young"): ["Let's {w} it!", "Can you {w} it?", "I want to {w} it.", "We can {w} it together."],
+    ("verb", "older"): ["Can you {w} it with me?", "I want to {w} it today.", "We can {w} it together.", "Let's {w} it after school."],
+    # Непереходные глаголы — без объекта ("I can run.", "I like to dance.").
+    ("verb_intrans", "young"): ["I can {w}.", "Can you {w}?", "We can {w} together.", "I like to {w}."],
+    ("verb_intrans", "older"): ["I like to {w} every day.", "Can you {w} with me?", "We can {w} together.", "I want to {w} today."],
+    ("noun_count", "young"): ["I have {art} {w}.", "Look at the {w}!", "This is {art} {w}.", "I can see {art} {w}."],
+    ("noun_count", "older"): ["I have {art} {w} at home.", "Look at that {w}!", "She found {art} {w}.", "There is {art} {w} here."],
+    # «the»-фреймы корректны и для счётных, и для несчётных (без риска a/an/some,
+    # если _needs_article ошибся на курируемом существительном).
+    ("noun_uncount", "young"): ["I like the {w}.", "Look at the {w}!", "I can see the {w}."],
+    ("noun_uncount", "older"): ["I really like the {w}.", "Look at the {w} here.", "I can see the {w}."],
+    ("adj", "young"): ["It is very {w}.", "It looks {w}.", "This one is {w}.", "That looks {w}."],
+    ("adj", "older"): ["It looks really {w}.", "This one is very {w}.", "That seems {w}.", "It is quite {w}."],
+    ("func", "young"): ["We use '{w}' a lot.", "Find '{w}' in the sentence.", "Listen to '{w}'.", "'{W}' is a small word."],
+    ("func", "older"): ["We use '{w}' in many sentences.", "Find '{w}' in the sentence.", "Listen to the word '{w}'.", "'{W}' is a useful word."],
+    ("unknown", "young"): [
+        "Let's practice '{w}'.", "Can you say '{w}'?", "The word '{w}' is fun!",
+        "Read the word '{w}'.", "Let's learn '{w}' today.", "Say '{w}' out loud!",
+        "Can you spell '{w}'?", "Point to the word '{w}'.",
+    ],
+    ("unknown", "older"): [
+        "Let's practice the word '{w}'.", "Can you use '{w}' in a sentence?",
+        "Today's word is '{w}'.", "Try to spell '{w}'.", "'{W}' is a good word to know.",
+        "Read and repeat: '{w}'.", "Add '{w}' to your word list.", "Can you remember '{w}'?",
+    ],
+}
+
+
+def _stable_index(word: str, age_group: str, length: int) -> int:
+    """Детерминированный (кросс-платформенный) выбор шаблона по слову — для
+    разнообразия без random и без зависимости от соли hash() Python."""
+    if length <= 1:
+        return 0
+    digest = hashlib.sha1(f"{word}|{age_group}".encode("utf-8")).hexdigest()
+    return int(digest, 16) % length
+
+
+def _example_category(word: str, translation: str, topic: str) -> str:
+    """Безопасная классификация для выбора шаблона: настоящий пример только при
+    надёжном сигнале (курируемая часть речи или русское прилагательное); иначе —
+    учебный фрейм с кавычками (корректен для любой части речи)."""
+    w = word.lower()
+    if w in _EXAMPLE_FUNCTION_WORDS or topic == "grammar":
+        return "func"
+    if w in _EXAMPLE_VERB_SET:
+        return "verb"
+    if w in _EXTRA_INTRANSITIVE_VERBS:
+        return "verb_intrans"
+    if w in _EXAMPLE_ADJ_SET or w in _EXTRA_ADJECTIVES:
+        return "adj"
+    if w in _EXTRA_COUNT_NOUNS:
+        return "noun_count"
+    if w in _EXAMPLE_NOUN_SET:
+        return "noun_uncount" if not _needs_article(w, topic) else "noun_count"
+    return "unknown"
+
+
+def _build_example(word: str, translation: str, topic: str, age_group: str) -> str:
+    """Возвращает короткий «живой» пример с целевым словом (см. блок выше)."""
+    category = _example_category(word, translation, topic)
+    tier = "young" if age_group in _YOUNG_AGE_GROUPS else "older"
+    pool = _EXAMPLE_TEMPLATES.get((category, tier)) or _EXAMPLE_TEMPLATES[("unknown", tier)]
+    template = pool[_stable_index(word, age_group, len(pool))]
+    return template.format(w=word, W=word[:1].upper() + word[1:], art=_article_for(word))
+
+
+def _with_examples(entries: list[Entry6]) -> list[Entry6]:
+    """Заменяет поле example на сгенерированный «живой» пример (как транскрипции —
+    производное от слова, считается при импорте; источник данных не дублируется)."""
+    return [
+        (word, translation, _build_example(word, translation, topic, age_group), topic, age_group, transcription)
+        for word, translation, _example, topic, age_group, transcription in entries
+    ]
+
+
+LEARNING_WORDS = tuple(
+    _with_examples(
+        [item for item in _with_transcriptions(list(SINGLE_WORDS_5000)) if _is_single_word(item[0])]
+    )
+)
