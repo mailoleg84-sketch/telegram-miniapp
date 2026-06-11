@@ -82,6 +82,8 @@ async def init_db() -> None:
         await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS english_level TEXT DEFAULT 'beginner'")
         await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS level_test_score INTEGER")
         await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS level_test_completed_at TIMESTAMP")
+        # PIN-код входа в родительский раздел (хеш, не открытый текст).
+        await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS parent_pin_hash TEXT")
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS words (
                 id           SERIAL PRIMARY KEY,
@@ -506,6 +508,23 @@ async def update_points(user_id: int, delta: int) -> None:
     await pool.execute(
         "UPDATE users SET points = GREATEST(0, points + $1) WHERE user_id = $2",
         delta, user_id,
+    )
+
+
+async def get_parent_pin_hash(user_id: int) -> str | None:
+    """Хеш PIN родительского раздела (или None, если не задан)."""
+    pool = await _get_pool()
+    return await pool.fetchval(
+        "SELECT parent_pin_hash FROM users WHERE user_id = $1", user_id
+    )
+
+
+async def set_parent_pin_hash(user_id: int, pin_hash: str | None) -> None:
+    """Устанавливает (или сбрасывает при None) хеш PIN родительского раздела."""
+    pool = await _get_pool()
+    await pool.execute(
+        "UPDATE users SET parent_pin_hash = $2 WHERE user_id = $1",
+        user_id, pin_hash,
     )
 
 

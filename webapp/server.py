@@ -1,6 +1,7 @@
 """aiohttp-сервер: статика Mini App + JSON API."""
 import asyncio
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -16,6 +17,7 @@ import database
 from config import (
     AGE_GROUPS,
     APP_VERSION,
+    BOT_TOKEN,
     DAILY_LESSON_REWARD_POINTS,
     DAILY_LESSON_STEPS,
     ENGLISH_LEVELS,
@@ -654,6 +656,7 @@ async def api_me(request: web.Request):
             "level_test_score": _record_value(user, "level_test_score"),
             "level_test_completed": bool(_record_value(user, "level_test_completed_at")),
             "points":     user["points"],
+            "parent_pin_set": bool(_record_value(user, "parent_pin_hash")),
         },
         "stats": {
             "words_learned": stats["words_learned"],
@@ -902,6 +905,99 @@ async def api_account_delete(request: web.Request):
 
     await database.delete_user_account(user_id)
     return web.json_response({"ok": True, "deleted": True})
+
+
+# ---------- PIN родительского раздела ----------
+# Заменяет старый детский «реши пример» на вход по PIN. PIN — kid-gate (не пускает
+# ребёнка, держащего телефон родителя), не защита от владельца аккаунта (он уже
+# авторизован). Хеш — HMAC от BOT_TOKEN с per-user солью (как в webapp/auth.py),
+# открытый PIN не хранится. Перебор 4 цифр гасится лимитом попыток (ниже) и общим
+# rate-limit. Сброс при забытом PIN — командой /resetpin боту (handlers/start.py).
+
+# Защита от перебора PIN: per-user счётчик неудач + короткая блокировка.
+# In-memory (Render — один инстанс; переживать рестарт не требуется).
+_pin_fail_attempts: dict[int, dict] = {}
+_PIN_MAX_ATTEMPTS = 5
+_PIN_LOCK_SECONDS = 60
+
+
+def _parent_pin_hash(user_id: int, pin: str) -> str:
+    """HMAC-хеш PIN с per-user солью (производный под-ключ от BOT_TOKEN)."""
+    sub_key = hmac.new(b"parent-pin", BOT_TOKEN.encode(), hashlib.sha256).digest()
+    return hmac.new(sub_key, f"{user_id}:{pin}".encode(), hashlib.sha256).hexdigest()
+
+
+def _valid_pin(pin: str) -> bool:
+    return pin.isdigit() and len(pin) == 4
+
+
+def _pin_locked_seconds_left(user_id: int) -> int:
+    rec = _pin_fail_attempts.get(user_id)
+    if rec and rec["fails"] >= _PIN_MAX_ATTEMPTS:
+        left = int(rec["locked_until"] - time.time())
+        if left > 0:
+            return left
+        _pin_fail_attempts.pop(user_id, None)  # срок блокировки истёк — сброс
+    return 0
+
+
+def _pin_register_fail(user_id: int) -> int:
+    """Учитывает неудачную попытку PIN; при достижении лимита — блокировка.
+    Счётчик ОБЩИЙ для verify и смены PIN — иначе перебор уходит через /pin/set."""
+    rec = _pin_fail_attempts.setdefault(user_id, {"fails": 0, "locked_until": 0.0})
+    rec["fails"] += 1
+    if rec["fails"] >= _PIN_MAX_ATTEMPTS:
+        rec["locked_until"] = time.time() + _PIN_LOCK_SECONDS
+    return max(0, _PIN_MAX_ATTEMPTS - rec["fails"])
+
+
+def _pin_lock_response(seconds: int) -> web.Response:
+    return web.json_response(
+        {"ok": False, "locked": True, "retry_after": seconds,
+         "error": f"Слишком много попыток. Подождите {seconds} сек."},
+        status=429,
+    )
+
+
+async def api_parent_pin_set(request: web.Request):
+    """Задаёт PIN (первый раз) или меняет его (тогда нужен текущий current_pin)."""
+    user_id = request["tg_user"]["id"]
+    body = await _safe_json(request)
+    pin = str(body.get("pin") or "")
+    if not _valid_pin(pin):
+        return web.json_response({"error": "PIN должен состоять из 4 цифр"}, status=400)
+    current_hash = await database.get_parent_pin_hash(user_id)
+    if current_hash:  # смена существующего PIN — подтверждаем текущим (тот же лимит, что verify)
+        locked = _pin_locked_seconds_left(user_id)
+        if locked:
+            return _pin_lock_response(locked)
+        current_pin = str(body.get("current_pin") or "")
+        if not hmac.compare_digest(current_hash, _parent_pin_hash(user_id, current_pin)):
+            _pin_register_fail(user_id)
+            return web.json_response({"error": "Текущий PIN неверный"}, status=403)
+    await database.set_parent_pin_hash(user_id, _parent_pin_hash(user_id, pin))
+    _pin_fail_attempts.pop(user_id, None)
+    return web.json_response({"ok": True, "parent_pin_set": True})
+
+
+async def api_parent_pin_verify(request: web.Request):
+    """Проверяет PIN при входе в родительский раздел (с лимитом попыток)."""
+    user_id = request["tg_user"]["id"]
+    body = await _safe_json(request)
+    pin = str(body.get("pin") or "")
+    if not _valid_pin(pin):  # пустой/мусорный ввод не должен жечь попытки
+        return web.json_response({"error": "PIN должен состоять из 4 цифр"}, status=400)
+    locked = _pin_locked_seconds_left(user_id)
+    if locked:
+        return _pin_lock_response(locked)
+    current_hash = await database.get_parent_pin_hash(user_id)
+    if not current_hash:
+        return web.json_response({"ok": False, "not_set": True})
+    if hmac.compare_digest(current_hash, _parent_pin_hash(user_id, pin)):
+        _pin_fail_attempts.pop(user_id, None)
+        return web.json_response({"ok": True})
+    remaining = _pin_register_fail(user_id)
+    return web.json_response({"ok": False, "remaining": remaining})
 
 
 async def api_activity_history(request: web.Request):
@@ -1541,6 +1637,8 @@ def create_app(
     app.router.add_get("/api/learning/path",            api_learning_path)
     app.router.add_get("/api/motivation/status",        api_motivation_status)
     app.router.add_get("/api/parent/report",            api_parent_report)
+    app.router.add_post("/api/parent/pin/set",          api_parent_pin_set)
+    app.router.add_post("/api/parent/pin/verify",       api_parent_pin_verify)
     app.router.add_post("/api/results/reset",           api_results_reset)
     app.router.add_post("/api/account/delete",          api_account_delete)
     app.router.add_get("/api/activity/history",         api_activity_history)

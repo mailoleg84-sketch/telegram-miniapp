@@ -1,4 +1,5 @@
 """Бот сводится к одному действию — открыть Mini App."""
+import logging
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from aiogram import Router
@@ -6,11 +7,13 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import KeyboardButton, Message, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 
+import database
 from config import ADMIN_USER_IDS, APP_VERSION, WEBAPP_URL
 from webapp.auth import make_fallback_auth_params
 from webapp.openai_service import openai_config_status, test_openai_connection
 
 router = Router()
+log = logging.getLogger(__name__)
 
 
 def _is_admin(user) -> bool:
@@ -132,10 +135,32 @@ async def openai_test_handler(message: Message) -> None:
     )
 
 
+@router.message(Command("resetpin"))
+async def resetpin_handler(message: Message) -> None:
+    """Сброс PIN родительского раздела. Доступно только владельцу аккаунта —
+    написать боту может только он, поэтому это безопасный способ восстановления."""
+    user = message.from_user
+    if not user:
+        return
+    try:
+        await database.set_parent_pin_hash(user.id, None)
+    except Exception:
+        log.exception("resetpin: ошибка сброса PIN для user_id=%s", user.id)
+        await message.answer(
+            "Не получилось сбросить PIN. Попробуйте ещё раз чуть позже."
+        )
+        return
+    await message.answer(
+        "🔓 PIN родительского раздела сброшен.\n\n"
+        "Откройте приложение, зайдите в «Родителям» и задайте новый PIN.",
+        reply_markup=_webapp_inline_kb(user),
+    )
+
+
 @router.message(Command("help"))
 async def help_handler(message: Message) -> None:
     await message.answer(
         "ℹ️ Всё происходит в приложении: регистрация, слова, тренировки, "
         "разговор с ИИ-репетитором и баллы.\n\n"
-        "Команды: /start, /app, /help",
+        "Команды: /start, /app, /resetpin, /help",
     )

@@ -756,6 +756,7 @@ function clearAccountLocalState() {
   state.dailyResult = null;
   state.dailyAnswers = [];
   state.dictionaryFilter = "all";
+  parentZoneUnlocked = false;  // при выходе родительский раздел снова под PIN
   removeBottomNav();
   try {
     localStorage.removeItem("stableVoiceUntil");
@@ -1226,45 +1227,151 @@ function renderProgressHub() {
   loadMotivationPreview();
 }
 
-// Кабинет родителя: отдельная зона с детским gate «реши пример», собирающая
-// отчёт, историю занятий и аккаунт ребёнка в одном месте.
+// Кабинет родителя: отдельная зона со входом по PIN-коду (kid-gate — не пускает
+// ребёнка, держащего телефон родителя). PIN хранится на сервере (хеш); забытый
+// PIN сбрасывается командой /resetpin боту. Собирает отчёт, историю и аккаунт.
 let parentZoneUnlocked = false;
+
+function parentPinInputHtml(id, placeholder) {
+  return `<input id="${id}" type="password" inputmode="numeric" pattern="[0-9]*"
+    maxlength="4" autocomplete="off" placeholder="${placeholder}"
+    style="width:100%;text-align:center;font-size:26px;letter-spacing:8px;padding:12px;
+    border-radius:var(--radius-control);border:1px solid var(--line);
+    background:var(--surface);color:var(--text);box-sizing:border-box">`;
+}
 
 function renderParentGate() {
   setBack(renderMenu);
   tg.MainButton.hide();
-  const a = 3 + Math.floor(Math.random() * 6); // 3..8
-  const b = 4 + Math.floor(Math.random() * 6); // 4..9
-  const answer = a + b;
-  const options = [answer, answer + 1, answer - 2, answer + 3]
-    .sort(() => Math.random() - 0.5);
+  // Нет PIN — экран «придумайте PIN»; PIN задан — экран ввода.
+  if (state.me?.user?.parent_pin_set) {
+    renderParentPinEntry();
+  } else {
+    renderParentPinSetup();
+  }
+}
+
+function renderParentPinSetup() {
+  setBack(renderMenu);
+  tg.MainButton.hide();
   app.innerHTML = `
     <div class="screen">
       <h1>Раздел для родителей</h1>
       <div class="card">
-        <p class="hint">Этот раздел для родителей. Чтобы войти, реши пример.</p>
-        <div class="big mt-12">${a} + ${b} = ?</div>
+        <p class="hint">Придумайте PIN-код из 4 цифр для входа в раздел родителей.
+        Его нужно будет вводить, чтобы открыть отчёт и настройки.</p>
+        <div class="mt-12">${parentPinInputHtml("pinNew", "PIN")}</div>
+        <div class="mt-8">${parentPinInputHtml("pinRepeat", "Повторите PIN")}</div>
+        <p class="hint" id="pinErr" style="color:var(--red)" hidden></p>
       </div>
-      <div class="action-list mt-12">
-        ${options.map(value => `
-          <button class="btn btn-secondary parent-gate-opt" data-value="${value}">${value}</button>
-        `).join("")}
-      </div>
+      <button class="btn mt-12" id="pinSave">Сохранить PIN</button>
     </div>`;
-  document.querySelectorAll(".parent-gate-opt").forEach(button => {
-    button.onclick = () => {
-      if (Number(button.dataset.value) === answer) {
+  const err = document.getElementById("pinErr");
+  const showErr = (m) => { err.textContent = m; err.hidden = false; haptic("error"); };
+  document.getElementById("pinSave").onclick = async () => {
+    const pin = document.getElementById("pinNew").value.trim();
+    const repeat = document.getElementById("pinRepeat").value.trim();
+    if (!/^\d{4}$/.test(pin)) return showErr("PIN должен состоять из 4 цифр.");
+    if (pin !== repeat) return showErr("PIN-коды не совпадают.");
+    const btn = document.getElementById("pinSave");
+    btn.disabled = true;
+    try {
+      await api("/api/parent/pin/set", "POST", { pin });
+      if (state.me?.user) state.me.user.parent_pin_set = true;
+      parentZoneUnlocked = true;
+      haptic("success");
+      renderParentZone();
+    } catch (e) {
+      btn.disabled = false;
+      showErr(e.message || "Не удалось сохранить PIN.");
+    }
+  };
+  setTimeout(() => document.getElementById("pinNew")?.focus(), 50);
+}
+
+function renderParentPinEntry() {
+  setBack(renderMenu);
+  tg.MainButton.hide();
+  app.innerHTML = `
+    <div class="screen">
+      <h1>Раздел для родителей</h1>
+      <div class="card">
+        <p class="hint">Введите PIN-код, чтобы открыть раздел родителей.</p>
+        <div class="mt-12">${parentPinInputHtml("pinEnter", "PIN")}</div>
+        <p class="hint" id="pinErr" style="color:var(--red)" hidden></p>
+      </div>
+      <button class="btn mt-12" id="pinGo">Войти</button>
+      <p class="hint mt-12">Забыли PIN? Отправьте команду <b>/resetpin</b> боту
+      @my_eng_tutor777_bot — он сбросит PIN, и вы зададите новый.</p>
+    </div>`;
+  const err = document.getElementById("pinErr");
+  const showErr = (m) => { err.textContent = m; err.hidden = false; haptic("error"); };
+  const submit = async () => {
+    const input = document.getElementById("pinEnter");
+    const pin = input.value.trim();
+    if (!/^\d{4}$/.test(pin)) return showErr("PIN — это 4 цифры.");
+    const btn = document.getElementById("pinGo");
+    btn.disabled = true;
+    try {
+      const res = await api("/api/parent/pin/verify", "POST", { pin });
+      if (res.ok) {
         parentZoneUnlocked = true;
         haptic("success");
         renderParentZone();
-      } else {
-        haptic("error");
-        button.classList.remove("btn-secondary");
-        button.classList.add("btn-wrong");
-        button.disabled = true;
+        return;
       }
-    };
-  });
+      if (res.not_set) { renderParentPinSetup(); return; }
+      btn.disabled = false;
+      input.value = "";
+      showErr(res.remaining != null
+        ? `Неверный PIN. Осталось попыток: ${res.remaining}.`
+        : "Неверный PIN.");
+    } catch (e) {
+      btn.disabled = false;
+      showErr(e.message || "Не удалось проверить PIN.");
+    }
+  };
+  document.getElementById("pinGo").onclick = submit;
+  const input = document.getElementById("pinEnter");
+  input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") submit(); });
+  setTimeout(() => input?.focus(), 50);
+}
+
+function renderParentPinChange() {
+  setBack(renderParentZone);
+  tg.MainButton.hide();
+  app.innerHTML = `
+    <div class="screen">
+      <h1>Изменить PIN</h1>
+      <div class="card">
+        <p class="hint">Введите текущий PIN и новый PIN из 4 цифр.</p>
+        <div class="mt-12">${parentPinInputHtml("pinCur", "Текущий PIN")}</div>
+        <div class="mt-8">${parentPinInputHtml("pinNew", "Новый PIN")}</div>
+        <div class="mt-8">${parentPinInputHtml("pinRepeat", "Повторите новый PIN")}</div>
+        <p class="hint" id="pinErr" style="color:var(--red)" hidden></p>
+      </div>
+      <button class="btn mt-12" id="pinSave">Сохранить</button>
+    </div>`;
+  const err = document.getElementById("pinErr");
+  const showErr = (m) => { err.textContent = m; err.hidden = false; haptic("error"); };
+  document.getElementById("pinSave").onclick = async () => {
+    const current_pin = document.getElementById("pinCur").value.trim();
+    const pin = document.getElementById("pinNew").value.trim();
+    const repeat = document.getElementById("pinRepeat").value.trim();
+    if (!/^\d{4}$/.test(pin)) return showErr("Новый PIN должен состоять из 4 цифр.");
+    if (pin !== repeat) return showErr("Новые PIN-коды не совпадают.");
+    const btn = document.getElementById("pinSave");
+    btn.disabled = true;
+    try {
+      await api("/api/parent/pin/set", "POST", { pin, current_pin });
+      haptic("success");
+      renderParentZone();
+    } catch (e) {
+      btn.disabled = false;
+      showErr(e.message || "Не удалось изменить PIN.");
+    }
+  };
+  setTimeout(() => document.getElementById("pinCur")?.focus(), 50);
 }
 
 function renderParentZone() {
@@ -1281,7 +1388,7 @@ function renderParentZone() {
       <h1>Кабинет родителя</h1>
       <div class="card">
         <b>${esc(u.child_name)}</b>
-        <p class="hint mt-8">${esc(u.age_label || "")} · ${esc(u.goal_label || "Английский")} · ${esc(u.level_label || "Beginner / A1")}</p>
+        <p class="hint mt-8">${esc(ageYearsLabel(u.child_age))} · Уровень - ${esc(u.level_label || "Beginner / A1")}</p>
         <div class="stat-row"><span>Баллы</span><b>${u.points}</b></div>
         <div class="stat-row"><span>Тест уровня</span><b>${u.level_test_completed ? "пройден" : "не пройден"}</b></div>
       </div>
@@ -1309,6 +1416,13 @@ function renderParentZone() {
             <small>уровень, сброс результатов, выход</small>
           </div>
         </button>
+        <button class="action-row" id="pzPin">
+          <i class="tile-ic">🔒</i>
+          <div class="action-row-text">
+            <b>PIN-код</b>
+            <small>сменить код входа в раздел</small>
+          </div>
+        </button>
       </div>
 
       <p class="hint mt-12">Занятия безопасны и подобраны по возрасту. Личные данные ребёнка приложение не запрашивает.</p>
@@ -1316,6 +1430,7 @@ function renderParentZone() {
   document.getElementById("pzReport").onclick = () => { haptic(); renderParentReport(); };
   document.getElementById("pzHistory").onclick = () => { haptic(); renderActivityHistory(); };
   document.getElementById("pzProfile").onclick = () => { haptic(); renderProfile(); };
+  document.getElementById("pzPin").onclick = () => { haptic(); renderParentPinChange(); };
 }
 
 async function renderLevelTestIntro({ afterRegistration = false } = {}) {
