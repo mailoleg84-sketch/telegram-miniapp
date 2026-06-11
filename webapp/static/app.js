@@ -46,6 +46,32 @@ function applyAppearance() {
 applyAppearance();
 if (typeof tg.onEvent === "function") tg.onEvent("themeChanged", applyAppearance);
 
+// iOS: экранная клавиатура перекрывает поле ввода чата (visual viewport сжимается,
+// а layout — нет, поэтому sticky-инпут уходит под клавиатуру). Считаем перекрытие
+// и поднимаем поле через CSS-переменную --kb-inset (на десктопе/Android = 0px,
+// поведение не меняется — правка чисто аддитивная и под feature-detection).
+function setupKeyboardInset() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const root = document.documentElement;
+  const update = () => {
+    const overlap = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    // Порог отсекает мелкие изменения вьюпорта (шапка Telegram) — реагируем
+    // только на реальную клавиатуру.
+    const inset = overlap > 120 ? Math.round(overlap) : 0;
+    root.style.setProperty("--kb-inset", inset + "px");
+    if (inset) {
+      const msgs = document.getElementById("messages");
+      if (msgs) msgs.scrollTop = msgs.scrollHeight;
+    }
+  };
+  vv.addEventListener("resize", update);
+  vv.addEventListener("scroll", update);
+  if (typeof tg.onEvent === "function") tg.onEvent("viewportChanged", update);
+  update();
+}
+setupKeyboardInset();
+
 function authHeaders(contentType = "application/json") {
   const headers = {
     "X-Telegram-Init-Data": tg.initData || "",
@@ -53,6 +79,15 @@ function authHeaders(contentType = "application/json") {
   };
   if (contentType) headers["Content-Type"] = contentType;
   return headers;
+}
+
+// Дружелюбное сообщение вместо сырого «HTTP 503» детям. Срабатывает только когда
+// бэкенд не отдал свой текст ошибки (err.error) — например, при сетевом/прокси-сбое.
+function friendlyHttpError(status) {
+  if (status === 429) return "Слишком много запросов. Подожди минутку и попробуй снова.";
+  if (status === 401 || status === 403) return "Нужно открыть приложение заново через Telegram.";
+  if (status >= 500) return "Сервер пока не отвечает. Попробуй ещё раз через минутку.";
+  return "Что-то пошло не так. Попробуй ещё раз.";
 }
 
 async function api(path, method = "POST", body = null) {
@@ -63,7 +98,7 @@ async function api(path, method = "POST", body = null) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `HTTP ${res.status}`);
+    throw new Error(err.error || friendlyHttpError(res.status));
   }
   return res.json();
 }
@@ -76,7 +111,7 @@ async function apiForm(path, formData) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `HTTP ${res.status}`);
+    throw new Error(err.error || friendlyHttpError(res.status));
   }
   return res.json();
 }
@@ -95,7 +130,7 @@ async function apiBlob(path, body, timeoutMs = 0) {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `HTTP ${res.status}`);
+      throw new Error(err.error || friendlyHttpError(res.status));
     }
     return res.blob();
   } finally {

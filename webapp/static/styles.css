@@ -2967,7 +2967,9 @@ h2 {
     0 16px 34px rgba(16, 24, 40, 0.16),
     0 0 0 1px rgba(255, 255, 255, 0.9);
   transform-origin: center bottom;
-  animation: tutorPresence 4.8s ease-in-out infinite;
+  /* Старое «вечное» tutorPresence убрано (UX-аудит): аватар живёт внутри
+     .chat-wrap, где анимация и так отключена (design.css), а мягкое «дыхание»
+     даёт avatarBreathe — точечно и под prefers-reduced-motion. */
 }
 
 .tutor-avatar-img {

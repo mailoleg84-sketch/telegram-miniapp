@@ -352,8 +352,12 @@ h1, h2 { color: var(--c-ink); font-weight: 900; letter-spacing: -0.4px; }
 #bottomNav .nav-item.on { color: var(--accent); }
 #bottomNav .nav-item:active { transform: scale(.96); }
 body.has-bottom-nav #app { padding-bottom: calc(86px + env(safe-area-inset-bottom)); }
-/* Поле ввода чата приподнимаем над нижней навигацией, чтобы оно не пряталось под баром. */
-body.has-bottom-nav .chat-input-row { bottom: calc(80px + env(safe-area-inset-bottom)); }
+/* Поле ввода чата приподнимаем над нижней навигацией, чтобы оно не пряталось под баром.
+   + var(--kb-inset) поднимает его над экранной клавиатурой на iOS (см. setupKeyboardInset
+   в app.js); на десктопе/Android переменная = 0px и ничего не меняется. */
+body.has-bottom-nav .chat-input-row {
+  bottom: calc(80px + env(safe-area-inset-bottom) + var(--kb-inset, 0px));
+}
 
 .word-card {
   border-top-color: var(--accent);
