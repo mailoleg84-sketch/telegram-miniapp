@@ -468,7 +468,8 @@ def _learning_path_payload(user, daily_status, stats, dictionary_summary, report
         next_text = "Короткий тест поможет давать задания не слишком легкие и не слишком сложные."
     elif not daily_done:
         next_action = "daily"
-        next_title = f"Продолжить урок: шаг {min(daily_steps + 1, DAILY_LESSON_STEPS)} из {DAILY_LESSON_STEPS}"
+        # Неразрывные пробелы: «шаг N из M» не должен ломаться переносом (UX).
+        next_title = f"Продолжить урок: шаг {min(daily_steps + 1, DAILY_LESSON_STEPS)} из {DAILY_LESSON_STEPS}"
         next_text = "Сегодняшний план: слова, мини-тест, фраза и награда."
     elif words_learned == 0:
         next_action = "vocab"
@@ -476,7 +477,7 @@ def _learning_path_payload(user, daily_status, stats, dictionary_summary, report
         next_text = "Небольшой набор слов даст основу для игр и устной практики."
     elif review_words > 0:
         next_action = "review"
-        next_title = f"Повторить {review_words} слов"
+        next_title = f"Повторить {review_words} слов"
         next_text = "Сегодня подошёл интервал повторения — короткая тренировка освежит эти слова."
     else:
         next_action = "learn"
@@ -556,7 +557,7 @@ def _motivation_payload(user, stats, dictionary_summary, report, streak) -> dict
         next_text = "Короткий урок сохранит серию и даст новые слова без перегруза."
     elif review_words > 0:
         next_action = "review"
-        next_title = f"Повторить {review_words} слов"
+        next_title = f"Повторить {review_words} слов"
         next_text = "Подошёл интервал повторения — повтори эти слова, чтобы они закрепились надолго."
     elif words_learned < 10:
         next_action = "vocab"

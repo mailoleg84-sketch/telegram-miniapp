@@ -1083,7 +1083,7 @@ function renderMenu() {
         <div>
           <div class="daily-badge">Сегодня</div>
           <h1>Привет, ${esc(u.child_name)}!</h1>
-          <p>${esc(u.goal_label || "Английский")} · ${esc(u.level_label || "Beginner / A1")}</p>
+          <p>Уровень - ${esc(u.level_label || "Beginner / A1")}</p>
         </div>
         <div class="points-orb">
           <b>${u.points}</b>
