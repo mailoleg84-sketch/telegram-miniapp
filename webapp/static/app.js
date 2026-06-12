@@ -4306,7 +4306,7 @@ async function renderParentReport() {
         <h1>Отчет для родителя</h1>
         <div class="card">
           <h2>${esc(data.child.name)}</h2>
-          <p class="hint">${esc(data.child.age_label)} · ${esc(data.child.goal_label)} · ${esc(data.child.level_label || "Beginner / A1")}</p>
+          <p class="hint">${esc(ageYearsLabel(data.child.child_age))} · Уровень - ${esc(data.child.level_label || "Beginner / A1")}</p>
         </div>
         <div class="card">
           <div class="stat-row"><span>Уроков пройдено</span><b>${r.completed_lessons}</b></div>

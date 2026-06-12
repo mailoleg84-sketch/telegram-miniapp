@@ -859,6 +859,7 @@ async def api_parent_report(request: web.Request):
             "name": user["name"],
             "age_group": user["age_group"],
             "age_label": _age_label(user["age_group"]),
+            "child_age": _record_value(user, "child_age"),
             "goal_label": _goal_label(user["goal"]),
             "level_label": _level_label(level),
             "points": user["points"],
