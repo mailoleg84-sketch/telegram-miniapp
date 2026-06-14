@@ -462,9 +462,9 @@ class OpenAISafetyTests(unittest.TestCase):
             last_user_text="Давай поговорим",
         )
 
-        self.assertIn("Не просто болтай", prompt)
-        self.assertIn("учебный шаг", prompt)
-        self.assertIn("Не меняй тему", prompt)
+        self.assertIn("просто болтать без пользы нельзя", prompt)
+        self.assertIn("обучающий шаг", prompt)
+        self.assertIn("не повторяй тему", prompt)
 
     def test_voice_prompt_enforces_short_natural_turn_contract(self):
         context = {
@@ -479,9 +479,9 @@ class OpenAISafetyTests(unittest.TestCase):
         realtime = build_voice_realtime_instructions("Миша", "10 лет", context)
 
         self.assertIn("Контракт каждого голосового хода", prompt)
-        self.assertIn("Никогда не делай больше трех", prompt)
-        self.assertIn("Простая болтовня без обучения запрещена", prompt)
-        self.assertIn("не предлагай меню тем", prompt)
+        self.assertIn("Не делай больше трёх предложений", prompt)
+        self.assertIn("Язык — зеркало ребёнка", prompt)
+        self.assertIn("меню тем", prompt)
         self.assertIn("Voice turn contract, highest priority", realtime)
         self.assertIn("Do not merely chat", realtime)
         self.assertIn("directly connected question", realtime)
