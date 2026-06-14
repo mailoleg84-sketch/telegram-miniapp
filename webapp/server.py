@@ -369,72 +369,89 @@ def _pick_distractors(pool, correct_id, count: int = 3) -> list:
     return random.sample(eligible, count)
 
 
-async def _build_vocab_question(word, age_group: str, index: int = 0, pool=None) -> dict:
-    """Строит вопрос теста по словам.
-
-    Тип чередуется по позиции слова, чтобы тест не был однообразным:
+async def _build_vocab_question(word, age_group: str, index: int = 0, pool=None, qtype: str | None = None) -> dict:
+    """Строит вопрос теста по словам. Тип задаётся явно (qtype) или чередуется по
+    позиции. Разнообразие:
     - translation: показываем слово -> выбрать перевод;
     - word: показываем перевод -> выбрать английское слово;
-    - gap: показываем пример с пропуском -> выбрать пропущенное слово.
-    Во всех типах правильный вариант — это тот, чей id == word_id, поэтому
-    логика подсчёта на /api/vocab/finish не меняется.
+    - gap: пример с пропуском -> выбрать пропущенное слово (не для 5-7);
+    - listen: озвучка слова -> выбрать перевод (аудирование);
+    - image: эмодзи-картинка слова -> выбрать перевод (только «картинкуемые» слова).
+    Во всех типах правильный вариант — тот, чей id == word_id, поэтому логика
+    подсчёта на /api/vocab/finish не меняется.
     """
     example = (word["example"] or "").strip()
     gap_text = _blank_word_in_example(word["word"], example)
 
-    qtypes = ["translation", "word"]
-    if gap_text and age_group != "5_7":
-        qtypes.append("gap")
-    qtype = qtypes[index % len(qtypes)]
+    # Тип берём из qtype (его рандомизирует api_vocab_quiz на сессию — чтобы из
+    # раза в раз не повторялось одно и то же задание); если не передан — ротация
+    # по позиции (обратная совместимость). Мягкие откаты там, где тип недоступен.
+    rotation = ["translation", "word", "listen", "image", "gap"]
+    if qtype is None:
+        qtype = rotation[index % len(rotation)]
+    if qtype not in rotation:
+        qtype = "translation"
+    # Откаты ведут к РАЗНЫМ всегда-доступным типам (не оба в один) — чтобы при
+    # недоступности не схлопывалось разнообразие внутри теста.
+    if qtype == "gap" and not (gap_text and age_group != "5_7"):
+        qtype = "word"
 
-    if qtype == "translation":
+    # «Картинка» — только для слов с эмодзи (чёткий мгновенный глиф, без машинерии
+    # генерации и без нечестных абстрактных сцен); иначе обычный перевод.
+    emoji = ""
+    if qtype == "image":
+        emoji = (_word_dict(word).get("emoji") or "")
+        if not emoji:
+            qtype = "translation"
+
+    # Варианты: переводы (читаем/слушаем/смотрим -> перевод) или англ. слова (word/gap).
+    answer_is_translation = qtype in {"translation", "listen", "image"}
+    if answer_is_translation:
         wrong = _pick_distractors(pool, word["id"], 3)
         if len(wrong) < 3:
             wrong = await database.get_word_options(word["id"], age_group, count=3)
         options = [{"id": word["id"], "label": word["translation"]}]
         options += [{"id": item["id"], "label": item["translation"]} for item in wrong]
-        prompt = "Выбери перевод"
     else:
         wrong = _pick_distractors(pool, word["id"], 3)
         if len(wrong) < 3:
             wrong = await database.get_random_words(3, exclude_id=word["id"], age_group=age_group)
         options = [{"id": word["id"], "label": word["word"]}]
         options += [{"id": item["id"], "label": item["word"]} for item in wrong]
-        prompt = "Вставь пропущенное слово" if qtype == "gap" else "Выбери английское слово"
 
     random.shuffle(options)
 
-    # Перевод показываем как ВОПРОС только для типов word/gap (там ответ —
-    # английское слово). Для типа translation перевод — это ответ, поэтому в
-    # payload он не попадает.
-    prompt_translation = word["translation"]
-    if qtype == "translation":
-        return {
-            "word_id": word["id"],
-            "type": "translation",
-            "word": word["word"],
-            "transcription": word["transcription"] or "",
-            "translation": "",
-            "example": "",
-            "gap_text": "",
-            "image_url": _word_image_url(word["word"], word["topic"] or "basic"),
-            "prompt": prompt,
-            "options": options,
-        }
-    # Ответ — английское слово: прячем слово, транскрипцию, картинку и полный
-    # пример (gap_text уже с пропуском).
-    return {
+    # Базовый payload: все «вопросные» поля пусты, заполняем только нужные для типа,
+    # чтобы не раскрыть ответ (напр. перевод не утекает в translation/listen/image).
+    payload = {
         "word_id": word["id"],
         "type": qtype,
         "word": "",
         "transcription": "",
-        "translation": prompt_translation,
+        "translation": "",
         "example": "",
-        "gap_text": gap_text if qtype == "gap" else "",
+        "gap_text": "",
         "image_url": "",
-        "prompt": prompt,
+        "emoji": "",
+        "audio_word": "",
         "options": options,
     }
+    if qtype == "translation":
+        payload["word"] = word["word"]
+        payload["transcription"] = word["transcription"] or ""
+        payload["image_url"] = _word_image_url(word["word"], word["topic"] or "basic")
+        payload["prompt"] = "Выбери перевод"
+    elif qtype == "listen":
+        payload["audio_word"] = word["word"]  # карточка проигрывает аудио, слово скрыто
+        payload["prompt"] = "Послушай и выбери перевод"
+    elif qtype == "image":
+        payload["emoji"] = emoji
+        payload["prompt"] = "Что на картинке?"
+    else:  # word / gap — ответ английское слово; показываем перевод/пропуск как вопрос
+        payload["translation"] = word["translation"]
+        payload["gap_text"] = gap_text if qtype == "gap" else ""
+        payload["prompt"] = "Вставь пропущенное слово" if qtype == "gap" else "Выбери английское слово"
+    return payload
 
 
 async def _build_word_hunt_round(word, age_group: str, pool=None) -> dict:
@@ -1164,8 +1181,16 @@ async def api_vocab_quiz(request: web.Request):
     pool = await database.get_random_words(
         max(12, len(words) + 9), age_group=session["age_group"]
     )
+    # Тип задания рандомизируем НА СЕССИЮ: перетасованная ротация даёт разные типы
+    # внутри теста и разный порядок при каждом прохождении (не «одно и то же из
+    # раза в раз»). Недоступные для слова типы мягко откатываются внутри билдера.
+    type_sequence = ["translation", "word", "listen", "image", "gap"]
+    random.shuffle(type_sequence)
     questions = [
-        await _build_vocab_question(word, session["age_group"], idx, pool)
+        await _build_vocab_question(
+            word, session["age_group"], idx, pool,
+            qtype=type_sequence[idx % len(type_sequence)],
+        )
         for idx, word in enumerate(words)
     ]
     return web.json_response({

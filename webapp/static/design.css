@@ -399,6 +399,31 @@ body.has-bottom-nav .chat-input-row {
   margin-top: 10px;
 }
 
+/* Задание «Что на картинке?»: крупный эмодзи по центру. */
+.quiz-emoji {
+  margin: 6px 0 2px;
+  font-size: 76px;
+  line-height: 1.1;
+  text-align: center;
+}
+/* Задание «Послушай»: крупная кнопка озвучки + подсказка по центру. */
+.quiz-listen {
+  margin: 8px 0 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.quiz-listen .pronounce-btn {
+  width: 64px;
+  height: 64px;
+  font-size: 28px;
+}
+.quiz-listen-hint {
+  font-size: 14px;
+  color: var(--c-muted);
+}
+
 .chat-mic {
   background: var(--c-card);
   color: var(--accent);

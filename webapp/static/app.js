@@ -633,6 +633,21 @@ function ageYearsLabel(value) {
   return `${age} ${suffix}`;
 }
 
+// Правильное склонение: 1 день, 2-4 дня, 5-20 дней, 21 день и т.д.
+function daysLabel(value) {
+  const n = Math.max(0, Number(value) || 0);
+  const lastTwo = n % 100;
+  const last = n % 10;
+  const suffix = lastTwo >= 11 && lastTwo <= 14
+    ? "дней"
+    : last === 1
+      ? "день"
+      : last >= 2 && last <= 4
+        ? "дня"
+        : "дней";
+  return `${n} ${suffix}`;
+}
+
 function pronunciationButtonHtml(word, small = false) {
   return `<button type="button" class="pronounce-btn ${small ? "small" : ""}" data-word="${esc(word)}" aria-label="Озвучить ${esc(word)}">🔊</button>`;
 }
@@ -945,7 +960,7 @@ function motivationPreviewHtml(data) {
     <div class="motivation-head">
       <div>
         <div class="daily-badge">${esc(data.title || "Достижения")}</div>
-        <h2>${streak.current || 0} дней подряд</h2>
+        <h2>${daysLabel(streak.current)} подряд</h2>
       </div>
       <strong>${esc(badges)}</strong>
     </div>
@@ -1437,6 +1452,27 @@ function quizProgressHtml(index) {
 
 function quizPromptCard(q, badge = "") {
   const badgeHtml = badge ? `<div class="daily-badge">${esc(badge)}</div>` : "<span></span>";
+  if (q.type === "listen") {
+    // Аудирование: проигрываем озвучку слова, само слово скрыто -> выбрать перевод.
+    return `
+      <div class="card word-card compact">
+        <div class="word-card-top">${badgeHtml}<span></span></div>
+        <div class="quiz-listen">
+          ${pronunciationButtonHtml(q.audio_word)}
+          <span class="quiz-listen-hint">Нажми и послушай</span>
+        </div>
+        <p class="hint mt-12">${esc(q.prompt)}</p>
+      </div>`;
+  }
+  if (q.type === "image") {
+    // Картинка (эмодзи) -> выбрать перевод.
+    return `
+      <div class="card word-card compact">
+        <div class="word-card-top">${badgeHtml}<span></span></div>
+        <div class="quiz-emoji" role="img" aria-label="картинка">${esc(q.emoji)}</div>
+        <p class="hint mt-12">${esc(q.prompt)}</p>
+      </div>`;
+  }
   if (q.type === "word") {
     // Показываем перевод -> ребёнок выбирает английское слово.
     return `
@@ -2200,9 +2236,9 @@ function renderDailyQuizQuestion(index) {
   app.innerHTML = `
     <div class="screen">
       <h1>Урок: мини-тест</h1>
-      ${wordStudyCard(q, { badge: `Шаг 2 из 4 · ${index + 1}/${state.dailyQuiz.questions.length}`, prompt: "Выбери перевод", compact: true, showTranslation: false, showLearningDetails: false })}
+      ${quizPromptCard(q, `Шаг 2 из 4 · ${index + 1}/${state.dailyQuiz.questions.length}`)}
       ${q.options.map(o => `
-        <button class="btn btn-secondary daily-answer" data-id="${o.id}">${esc(o.translation)}</button>
+        <button class="btn btn-secondary daily-answer" data-id="${o.id}">${esc(o.label)}</button>
       `).join("")}
     </div>`;
 
@@ -4107,7 +4143,7 @@ async function renderMotivation() {
         <div class="card motivation-hero">
           <div>
             <span class="daily-badge">Серия занятий</span>
-            <h2>${streak.current || 0} дней подряд</h2>
+            <h2>${daysLabel(streak.current)} подряд</h2>
             <p class="hint">${esc(data.coach_message || "Каждый короткий урок двигает вперед.")}</p>
           </div>
           <strong>${summary.unlocked_badges || 0}/${summary.total_badges || 0}</strong>
