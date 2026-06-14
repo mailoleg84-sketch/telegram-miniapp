@@ -756,7 +756,6 @@ function clearAccountLocalState() {
   state.dailyResult = null;
   state.dailyAnswers = [];
   state.dictionaryFilter = "all";
-  parentZoneUnlocked = false;  // при выходе родительский раздел снова под PIN
   removeBottomNav();
   try {
     localStorage.removeItem("stableVoiceUntil");
@@ -1227,161 +1226,13 @@ function renderProgressHub() {
   loadMotivationPreview();
 }
 
-// Кабинет родителя: отдельная зона со входом по PIN-коду (kid-gate — не пускает
-// ребёнка, держащего телефон родителя). PIN хранится на сервере (хеш); забытый
-// PIN сбрасывается командой /resetpin боту. Собирает отчёт, историю и аккаунт.
-let parentZoneUnlocked = false;
-
-function parentPinInputHtml(id, placeholder) {
-  return `<input id="${id}" type="password" inputmode="numeric" pattern="[0-9]*"
-    maxlength="4" autocomplete="off" placeholder="${placeholder}"
-    style="width:100%;text-align:center;font-size:26px;letter-spacing:8px;padding:12px;
-    border-radius:var(--radius-control);border:1px solid var(--line);
-    background:var(--surface);color:var(--text);box-sizing:border-box">`;
-}
-
-function renderParentGate() {
-  setBack(renderMenu);
-  tg.MainButton.hide();
-  // Нет PIN — экран «придумайте PIN»; PIN задан — экран ввода.
-  if (state.me?.user?.parent_pin_set) {
-    renderParentPinEntry();
-  } else {
-    renderParentPinSetup();
-  }
-}
-
-function renderParentPinSetup() {
-  setBack(renderMenu);
-  tg.MainButton.hide();
-  app.innerHTML = `
-    <div class="screen">
-      <h1>Раздел для родителей</h1>
-      <div class="card">
-        <p class="hint">Придумайте PIN-код из 4 цифр для входа в раздел родителей.
-        Его нужно будет вводить, чтобы открыть отчёт и настройки.</p>
-        <div class="mt-12">${parentPinInputHtml("pinNew", "PIN")}</div>
-        <div class="mt-8">${parentPinInputHtml("pinRepeat", "Повторите PIN")}</div>
-        <p class="hint" id="pinErr" style="color:var(--red)" hidden></p>
-      </div>
-      <button class="btn mt-12" id="pinSave">Сохранить PIN</button>
-    </div>`;
-  const err = document.getElementById("pinErr");
-  const showErr = (m) => { err.textContent = m; err.hidden = false; haptic("error"); };
-  document.getElementById("pinSave").onclick = async () => {
-    const pin = document.getElementById("pinNew").value.trim();
-    const repeat = document.getElementById("pinRepeat").value.trim();
-    if (!/^\d{4}$/.test(pin)) return showErr("PIN должен состоять из 4 цифр.");
-    if (pin !== repeat) return showErr("PIN-коды не совпадают.");
-    const btn = document.getElementById("pinSave");
-    btn.disabled = true;
-    try {
-      await api("/api/parent/pin/set", "POST", { pin });
-      if (state.me?.user) state.me.user.parent_pin_set = true;
-      parentZoneUnlocked = true;
-      haptic("success");
-      renderParentZone();
-    } catch (e) {
-      btn.disabled = false;
-      showErr(e.message || "Не удалось сохранить PIN.");
-    }
-  };
-  setTimeout(() => document.getElementById("pinNew")?.focus(), 50);
-}
-
-function renderParentPinEntry() {
-  setBack(renderMenu);
-  tg.MainButton.hide();
-  app.innerHTML = `
-    <div class="screen">
-      <h1>Раздел для родителей</h1>
-      <div class="card">
-        <p class="hint">Введите PIN-код, чтобы открыть раздел родителей.</p>
-        <div class="mt-12">${parentPinInputHtml("pinEnter", "PIN")}</div>
-        <p class="hint" id="pinErr" style="color:var(--red)" hidden></p>
-      </div>
-      <button class="btn mt-12" id="pinGo">Войти</button>
-      <p class="hint mt-12">Забыли PIN? Отправьте команду <b>/resetpin</b> боту
-      @my_eng_tutor777_bot — он сбросит PIN, и вы зададите новый.</p>
-    </div>`;
-  const err = document.getElementById("pinErr");
-  const showErr = (m) => { err.textContent = m; err.hidden = false; haptic("error"); };
-  const submit = async () => {
-    const input = document.getElementById("pinEnter");
-    const pin = input.value.trim();
-    if (!/^\d{4}$/.test(pin)) return showErr("PIN — это 4 цифры.");
-    const btn = document.getElementById("pinGo");
-    btn.disabled = true;
-    try {
-      const res = await api("/api/parent/pin/verify", "POST", { pin });
-      if (res.ok) {
-        parentZoneUnlocked = true;
-        haptic("success");
-        renderParentZone();
-        return;
-      }
-      if (res.not_set) { renderParentPinSetup(); return; }
-      btn.disabled = false;
-      input.value = "";
-      showErr(res.remaining != null
-        ? `Неверный PIN. Осталось попыток: ${res.remaining}.`
-        : "Неверный PIN.");
-    } catch (e) {
-      btn.disabled = false;
-      showErr(e.message || "Не удалось проверить PIN.");
-    }
-  };
-  document.getElementById("pinGo").onclick = submit;
-  const input = document.getElementById("pinEnter");
-  input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") submit(); });
-  setTimeout(() => input?.focus(), 50);
-}
-
-function renderParentPinChange() {
-  setBack(renderParentZone);
-  tg.MainButton.hide();
-  app.innerHTML = `
-    <div class="screen">
-      <h1>Изменить PIN</h1>
-      <div class="card">
-        <p class="hint">Введите текущий PIN и новый PIN из 4 цифр.</p>
-        <div class="mt-12">${parentPinInputHtml("pinCur", "Текущий PIN")}</div>
-        <div class="mt-8">${parentPinInputHtml("pinNew", "Новый PIN")}</div>
-        <div class="mt-8">${parentPinInputHtml("pinRepeat", "Повторите новый PIN")}</div>
-        <p class="hint" id="pinErr" style="color:var(--red)" hidden></p>
-      </div>
-      <button class="btn mt-12" id="pinSave">Сохранить</button>
-    </div>`;
-  const err = document.getElementById("pinErr");
-  const showErr = (m) => { err.textContent = m; err.hidden = false; haptic("error"); };
-  document.getElementById("pinSave").onclick = async () => {
-    const current_pin = document.getElementById("pinCur").value.trim();
-    const pin = document.getElementById("pinNew").value.trim();
-    const repeat = document.getElementById("pinRepeat").value.trim();
-    if (!/^\d{4}$/.test(pin)) return showErr("Новый PIN должен состоять из 4 цифр.");
-    if (pin !== repeat) return showErr("Новые PIN-коды не совпадают.");
-    const btn = document.getElementById("pinSave");
-    btn.disabled = true;
-    try {
-      await api("/api/parent/pin/set", "POST", { pin, current_pin });
-      haptic("success");
-      renderParentZone();
-    } catch (e) {
-      btn.disabled = false;
-      showErr(e.message || "Не удалось изменить PIN.");
-    }
-  };
-  setTimeout(() => document.getElementById("pinCur")?.focus(), 50);
-}
+// Кабинет родителя: отчёт, история занятий и аккаунт ребёнка в одном месте.
+// Открывается сразу, без пароля (по решению пользователя).
 
 function renderParentZone() {
   setBack(renderMenu);
   tg.MainButton.hide();
   ensureBottomNav("parent");
-  if (!parentZoneUnlocked) {
-    renderParentGate();
-    return;
-  }
   const u = state.me.user;
   app.innerHTML = `
     <div class="screen">
@@ -1416,13 +1267,6 @@ function renderParentZone() {
             <small>уровень, сброс результатов, выход</small>
           </div>
         </button>
-        <button class="action-row" id="pzPin">
-          <i class="tile-ic">🔒</i>
-          <div class="action-row-text">
-            <b>PIN-код</b>
-            <small>сменить код входа в раздел</small>
-          </div>
-        </button>
       </div>
 
       <p class="hint mt-12">Занятия безопасны и подобраны по возрасту. Личные данные ребёнка приложение не запрашивает.</p>
@@ -1430,7 +1274,6 @@ function renderParentZone() {
   document.getElementById("pzReport").onclick = () => { haptic(); renderParentReport(); };
   document.getElementById("pzHistory").onclick = () => { haptic(); renderActivityHistory(); };
   document.getElementById("pzProfile").onclick = () => { haptic(); renderProfile(); };
-  document.getElementById("pzPin").onclick = () => { haptic(); renderParentPinChange(); };
 }
 
 async function renderLevelTestIntro({ afterRegistration = false } = {}) {

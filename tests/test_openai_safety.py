@@ -155,7 +155,9 @@ class OpenAISafetyTests(unittest.TestCase):
             self.assertIn("setBack(renderParentZone)", app_js[start:start + 180], marker)
 
         self.assertIn("function renderParentZone()", app_js)
-        self.assertIn("function renderParentGate()", app_js)
+        # Родительский раздел открывается без пароля: гейта/PIN нет.
+        self.assertNotIn("function renderParentGate()", app_js)
+        self.assertNotIn("parentZoneUnlocked", app_js)
         self.assertEqual(app_js.count('id="parentZone"'), 1)
 
         forbidden_server_routes = (
