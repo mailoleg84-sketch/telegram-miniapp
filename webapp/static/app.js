@@ -1043,6 +1043,11 @@ function renderRegistration() {
     if (child_name.length < 2) return tg.showAlert("Введите имя ребенка");
     if (!child_age || Number(child_age) < 5 || Number(child_age) > 18) return tg.showAlert("Возраст должен быть от 5 до 18");
     if (!goal) return tg.showAlert("Выберите цель обучения");
+    // Блокируем кнопку на время запроса — иначе двойной тап = двойная регистрация.
+    const btn = document.getElementById("register");
+    const btnText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Создаём профиль…";
     try {
       // Возрастную группу больше не выбираем вручную — сервер выведет её из возраста.
       await api("/api/register", "POST", { parent_name, child_name, child_age, goal });
@@ -1051,6 +1056,8 @@ function renderRegistration() {
       haptic("success");
       renderLevelTestIntro({ afterRegistration: true });
     } catch (e) {
+      btn.disabled = false;
+      btn.textContent = btnText;
       tg.showAlert(e.message);
     }
   };
@@ -1389,11 +1396,57 @@ async function finishLevelTest() {
   }
 }
 
+// Правильное склонение: 1 слово, 2-4 слова, 5-20 слов.
+function wordsLabel(value) {
+  const n = Math.max(0, Number(value) || 0);
+  const lastTwo = n % 100;
+  const last = n % 10;
+  const suffix = lastTwo >= 11 && lastTwo <= 14
+    ? "слов"
+    : last === 1 ? "слово" : last >= 2 && last <= 4 ? "слова" : "слов";
+  return `${n} ${suffix}`;
+}
+
+// Шаг 1: выбор темы (колоды). Показываем только темы, где для возраста ребёнка
+// достаточно слов (сервер фильтрует), плюс «Любые слова» — случайный набор.
 async function renderVocabStart() {
   setBack(renderLearningHub);
   loading();
   try {
-    const data = await api("/api/vocab/start", "POST", {});
+    const data = await api("/api/vocab/topics", "GET");
+    const topics = data.topics || [];
+    app.innerHTML = `
+      <div class="screen">
+        <h1>Выбери тему</h1>
+        <p class="hint">С чего начнём сегодня?</p>
+        <div class="hub-grid">
+          ${topics.map(t => `
+            <button class="action-tile vocab-topic" data-topic="${esc(t.topic)}">
+              <i class="tile-ic">${esc(t.emoji)}</i>
+              <b>${esc(t.label)}</b>
+              <small>${wordsLabel(t.count)}</small>
+            </button>`).join("")}
+          <button class="action-tile vocab-topic" data-topic="">
+            <i class="tile-ic">🎲</i>
+            <b>Любые слова</b>
+            <small>случайный набор</small>
+          </button>
+        </div>
+      </div>`;
+    document.querySelectorAll(".vocab-topic").forEach(btn => {
+      btn.onclick = () => { haptic(); renderVocabWords(btn.dataset.topic || null); };
+    });
+  } catch (e) {
+    renderError(e.message);
+  }
+}
+
+// Шаг 2: карточки слов выбранной темы, затем тест.
+async function renderVocabWords(topic) {
+  setBack(renderVocabStart);
+  loading();
+  try {
+    const data = await api("/api/vocab/start", "POST", topic ? { topic } : {});
     state.vocab = data;
     app.innerHTML = `
       <div class="screen">

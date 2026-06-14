@@ -6,6 +6,9 @@ services:
     name: telegram-miniapp
     runtime: docker
     plan: free
+    # Liveness: /healthz (быстрый, без БД) — чтобы холодный старт Neon не вызывал
+    # рестарт-флаппинг единственного инстанса на free-плане.
+    # Readiness c пингом БД доступен на /readyz (для мониторинга и мульти-инстанса).
     healthCheckPath: /healthz
     envVars:
       - key: BOT_TOKEN

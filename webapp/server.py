@@ -1136,6 +1136,37 @@ async def api_dictionary(request: web.Request):
     })
 
 
+# Кид-френдли темы для колод: метка + эмодзи. Показываем только конкретные темы
+# (не everyday/abstract/grammar/verbs/people — они не «тема для выбора»).
+VOCAB_TOPIC_LABELS = {
+    "animals": ("Животные", "🐶"), "food": ("Еда", "🍎"), "school": ("Школа", "🎒"),
+    "colors": ("Цвета", "🎨"), "nature": ("Природа", "🌳"), "body": ("Тело", "✋"),
+    "family": ("Семья", "👪"), "sports": ("Спорт", "⚽"), "travel": ("Путешествия", "✈️"),
+    "home": ("Дом", "🏠"), "toys": ("Игрушки", "🧸"), "clothes": ("Одежда", "👕"),
+    "transport": ("Транспорт", "🚗"), "music": ("Музыка", "🎵"),
+    "technology": ("Техника", "💻"), "feelings": ("Чувства", "😊"),
+    "hobbies": ("Хобби", "🎯"), "work": ("Работа", "💼"),
+}
+VOCAB_TOPIC_MIN_WORDS = 6
+
+
+async def api_vocab_topics(request: web.Request):
+    """Темы для тематических колод: только те, где для возраста ребёнка набирается
+    достаточно слов (≥ VOCAB_TOPIC_MIN_WORDS) — чтобы не показывать пустые темы."""
+    user = await _current_user_or_404(request)
+    age_group = _normalized_age_group_for_user(user)
+    rows = await database.get_topic_counts(age_group)
+    topics = []
+    for row in rows:
+        topic = row["topic"]
+        count = int(row["n"])
+        if topic in VOCAB_TOPIC_LABELS and count >= VOCAB_TOPIC_MIN_WORDS:
+            label, emoji = VOCAB_TOPIC_LABELS[topic]
+            topics.append({"topic": topic, "label": label, "emoji": emoji, "count": count})
+    topics.sort(key=lambda item: -item["count"])
+    return web.json_response({"topics": topics})
+
+
 async def api_vocab_start(request: web.Request):
     user_id = request["tg_user"]["id"]
     user = await _current_user_or_404(request)
@@ -1507,6 +1538,19 @@ async def healthz_handler(request: web.Request):
     return web.Response(text="ok")
 
 
+async def readyz_handler(request: web.Request):
+    """Readiness-проба: реально пингует БД. Render должен снимать трафик с
+    инстанса, у которого мёртвое соединение с Neon. Короткий таймаут, чтобы
+    не зависнуть на холодном старте serverless-БД."""
+    try:
+        ok = await asyncio.wait_for(database.ping(), timeout=3)
+    except Exception:
+        ok = False
+    if ok:
+        return web.Response(text="ready")
+    return web.Response(text="db unavailable", status=503)
+
+
 def _generated_dir_under_static() -> bool:
     """True, если каталог сгенерированных картинок лежит внутри STATIC_DIR
     (тогда их раздаёт обычный add_static). Если CACHE_ROOT вынесен наружу —
@@ -1553,6 +1597,7 @@ def create_app(
     )
 
     app.router.add_get("/healthz", healthz_handler)
+    app.router.add_get("/readyz", readyz_handler)
     app.router.add_get("/",        index_handler)
     app.router.add_get("/word-image.svg", word_image_handler)
     app.router.add_get("/vocabulary-visual.svg", vocabulary_visual_handler)
@@ -1578,6 +1623,7 @@ def create_app(
     app.router.add_get("/api/dictionary",              api_dictionary)
     app.router.add_post("/api/learn/next",             api_learn_next)
     app.router.add_post("/api/vocab/image/generate",   api_vocab_image_generate)
+    app.router.add_get("/api/vocab/topics",            api_vocab_topics)
     app.router.add_post("/api/vocab/start",            api_vocab_start)
     app.router.add_post("/api/vocab/quiz",             api_vocab_quiz)
     app.router.add_post("/api/vocab/finish",           api_vocab_finish)

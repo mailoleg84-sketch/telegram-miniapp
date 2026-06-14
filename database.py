@@ -58,6 +58,12 @@ async def close_pool() -> None:
         _pool = None
 
 
+async def ping() -> bool:
+    """Лёгкая проверка живости БД для readiness-пробы (/readyz)."""
+    pool = await _get_pool()
+    return await pool.fetchval("SELECT 1") == 1
+
+
 async def init_db() -> None:
     pool = await _get_pool()
     async with pool.acquire() as conn:
@@ -361,6 +367,13 @@ BLOCKED_SEED_WORDS = frozenset({
     "cigarette", "cigarettes", "smoke", "smoking", "smoked", "drug", "drugs",
     "cocaine", "heroin", "weed", "marijuana", "cannabis", "gambling", "casino", "bet",
     "betting", "abortion", "pregnant", "pregnancy",
+    # --- мусорные аббревиатуры / не-слова (артефакты исходника, не словарь) ---
+    "abc", "aug", "sep", "sept", "oct", "nov", "dec", "jan", "feb", "mar", "apr",
+    "jun", "jul", "etc", "com", "del", "des", "der", "inc", "ltd", "vs",
+    # --- сленг денег / алкоголь-площадки (не для детей) ---
+    "bucks", "bar", "bars",
+    # --- романтические отношения (не для младших; в банке тегнуто только 5-7) ---
+    "boyfriend", "girlfriend",
 })
 
 
@@ -805,6 +818,15 @@ async def get_random_words(
         )
     return await pool.fetch(
         "SELECT * FROM words ORDER BY RANDOM() LIMIT $1", count,
+    )
+
+
+async def get_topic_counts(age_group: str):
+    """Сколько слов по каждой теме в возрастной группе — для тематических колод."""
+    pool = await _get_pool()
+    return await pool.fetch(
+        "SELECT topic, COUNT(*) AS n FROM words WHERE age_group = $1 GROUP BY topic",
+        age_group,
     )
 
 
