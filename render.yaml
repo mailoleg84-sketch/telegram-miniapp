@@ -32,6 +32,11 @@ services:
         value: "120"       # базовая защита API от спама
       - key: AI_RATE_LIMIT_PER_MINUTE
         value: "30"        # защита OpenAI/голосовых endpoint'ов от спама и расходов
+      - key: REMINDER_CRON_SECRET
+        sync: false        # секрет для POST /internal/send-reminders; ТО ЖЕ значение
+                           # задать в GitHub Secrets. Пусто = рассылка выключена
+      - key: REMINDER_ACTIVITY_WINDOW_DAYS
+        value: "14"        # напоминаем только активным за последние N дней
       - key: OPENAI_INPUT_COST_PER_1M
         value: "0.75"      # USD за 1M input tokens для выбранной модели
       - key: OPENAI_OUTPUT_COST_PER_1M

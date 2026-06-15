@@ -86,7 +86,7 @@ async def main() -> None:
         return
 
     await bot.delete_webhook(drop_pending_updates=True)
-    runner = await run_webapp()
+    runner = await run_webapp(bot=bot)  # bot нужен в app['bot'] для рассылки напоминаний
     logging.info("Бот и Mini App запущены в polling-режиме.")
     try:
         await dp.start_polling(bot)

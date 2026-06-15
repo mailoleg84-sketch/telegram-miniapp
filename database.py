@@ -88,6 +88,10 @@ async def init_db() -> None:
         await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS english_level TEXT DEFAULT 'beginner'")
         await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS level_test_score INTEGER")
         await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS level_test_completed_at TIMESTAMP")
+        # Напоминания ботом (opt-in): выключены по умолчанию; last_reminded_at —
+        # страж от повторной отправки в один день.
+        await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS reminders_enabled BOOLEAN DEFAULT FALSE")
+        await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_reminded_at TIMESTAMP")
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS words (
                 id           SERIAL PRIMARY KEY,
@@ -1729,6 +1733,57 @@ async def get_learning_streak(user_id: int) -> dict:
         "today_completed": today in completed_set,
         "last_completed_date": completed_dates[0].isoformat() if completed_dates else "",
     }
+
+
+async def get_reminder_candidates(window_days: int = 14) -> list:
+    """Кому слать ежедневное напоминание: включил напоминания, был активен за
+    последние window_days дней, но сегодня ещё не занимался и сегодня не напоминали.
+    Активность — по любому из учебных действий (уроки/тренировки/слова/чат)."""
+    pool = await _get_pool()
+    rows = await pool.fetch("""
+        SELECT u.user_id, u.name
+        FROM users u
+        WHERE u.reminders_enabled = TRUE
+          AND (u.last_reminded_at IS NULL OR u.last_reminded_at < CURRENT_DATE)
+          AND EXISTS (
+            SELECT 1 FROM daily_lessons dl
+              WHERE dl.user_id = u.user_id AND dl.lesson_date >= CURRENT_DATE - $1::int
+            UNION ALL SELECT 1 FROM training_attempts ta
+              WHERE ta.user_id = u.user_id AND ta.created_at >= CURRENT_DATE - $1::int
+            UNION ALL SELECT 1 FROM vocabulary_sessions vs
+              WHERE vs.user_id = u.user_id AND vs.created_at >= CURRENT_DATE - $1::int
+            UNION ALL SELECT 1 FROM conversations c
+              WHERE c.user_id = u.user_id AND c.created_at >= CURRENT_DATE - $1::int
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM daily_lessons dl
+              WHERE dl.user_id = u.user_id AND dl.lesson_date = CURRENT_DATE
+            UNION ALL SELECT 1 FROM training_attempts ta
+              WHERE ta.user_id = u.user_id AND ta.created_at >= CURRENT_DATE
+            UNION ALL SELECT 1 FROM vocabulary_sessions vs
+              WHERE vs.user_id = u.user_id AND vs.created_at >= CURRENT_DATE
+            UNION ALL SELECT 1 FROM conversations c
+              WHERE c.user_id = u.user_id AND c.created_at >= CURRENT_DATE
+          )
+        ORDER BY u.user_id
+    """, int(window_days))
+    return list(rows)
+
+
+async def set_reminder_sent(user_id: int) -> None:
+    """Отметить, что напоминание отправлено сегодня (страж от дублей)."""
+    pool = await _get_pool()
+    await pool.execute("UPDATE users SET last_reminded_at = NOW() WHERE user_id = $1", user_id)
+
+
+async def set_reminders_enabled(user_id: int, enabled: bool) -> None:
+    """Вкл/выкл напоминания для пользователя (тумблер в Настройках; авто-выкл
+    при блокировке бота)."""
+    pool = await _get_pool()
+    await pool.execute(
+        "UPDATE users SET reminders_enabled = $2 WHERE user_id = $1",
+        user_id, bool(enabled),
+    )
 
 
 async def update_daily_lesson_progress(user_id: int, completed_steps: int, total_steps: int):

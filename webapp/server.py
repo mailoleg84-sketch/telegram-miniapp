@@ -43,7 +43,7 @@ from webapp.vocabulary_visualizer import (
     is_sensitive_word,
 )
 from webapp.free_images import fetch_word_illustration
-from webapp import storage
+from webapp import reminders, storage
 # Чистка локальных кэшей вынесена в webapp/storage.py (шаг 3e-1). Реэкспорт —
 # вызовы внутри server.py и возможные импорты в тестах не меняются.
 from webapp.storage import _evict_cache_dir
@@ -673,6 +673,7 @@ async def api_me(request: web.Request):
             "level_test_score": _record_value(user, "level_test_score"),
             "level_test_completed": bool(_record_value(user, "level_test_completed_at")),
             "points":     user["points"],
+            "reminders_enabled": bool(_record_value(user, "reminders_enabled")),
         },
         "stats": {
             "words_learned": stats["words_learned"],
@@ -680,6 +681,29 @@ async def api_me(request: web.Request):
             "total_wrong":   stats["total_wrong"],
         },
     })
+
+
+async def api_settings(request: web.Request):
+    """Сохранить пользовательские настройки (пока — тумблер напоминаний)."""
+    user_id = request["tg_user"]["id"]
+    body = await _safe_json(request)
+    if "reminders_enabled" not in body:
+        return web.json_response({"error": "Нет поля reminders_enabled"}, status=400)
+    enabled = bool(body.get("reminders_enabled"))
+    await database.set_reminders_enabled(user_id, enabled)
+    return web.json_response({"ok": True, "reminders_enabled": enabled})
+
+
+async def api_send_reminders(request: web.Request):
+    """Триггер ежедневной рассылки напоминаний. Вызывается ВНЕШНИМ cron, не
+    Telegram-юзером: путь не /api/, поэтому auth_middleware его не трогает —
+    защита через секрет в заголовке X-Cron-Secret (см. webapp/reminders)."""
+    if not reminders.is_configured():
+        return web.json_response({"error": "reminders not configured"}, status=503)
+    if not reminders.cron_secret_ok(request.headers.get("X-Cron-Secret", "")):
+        return web.json_response({"error": "forbidden"}, status=403)
+    result = await reminders.send_daily_reminders(request.app.get("bot"))
+    return web.json_response(result)
 
 
 async def api_admin_user_detail(request: web.Request):
@@ -1609,9 +1633,15 @@ def create_app(
         middlewares=[hardening_middleware, auth_middleware],
         client_max_size=MAX_AUDIO_BYTES + 1024 * 1024,
     )
+    # Экземпляр бота нужен для проактивной рассылки напоминаний (может быть None
+    # в окружениях без бота — эндпоинт это переживёт).
+    app["bot"] = bot
 
     app.router.add_get("/healthz", healthz_handler)
     app.router.add_get("/readyz", readyz_handler)
+    # Внутренний триггер ежедневных напоминаний (вызывает внешний cron; защита —
+    # секрет в заголовке, не Telegram-auth). Путь не /api/ — мимо auth_middleware.
+    app.router.add_post("/internal/send-reminders", api_send_reminders)
     app.router.add_get("/",        index_handler)
     app.router.add_get("/word-image.svg", word_image_handler)
     app.router.add_get("/vocabulary-visual.svg", vocabulary_visual_handler)
@@ -1628,6 +1658,7 @@ def create_app(
     app.router.add_get("/api/parent/report",            api_parent_report)
     app.router.add_post("/api/results/reset",           api_results_reset)
     app.router.add_post("/api/account/delete",          api_account_delete)
+    app.router.add_post("/api/settings",                api_settings)
     app.router.add_get("/api/activity/history",         api_activity_history)
     app.router.add_get("/api/level/test",               api_level_test)
     app.router.add_post("/api/level/submit",            api_level_submit)

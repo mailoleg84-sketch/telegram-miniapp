@@ -1,0 +1,34 @@
+# Ежедневный триггер напоминаний ботом (см. webapp/reminders.py).
+# Внешний планировщик нужен потому, что Render free засыпает — этот cron и будит
+# сервис, и запускает рассылку.
+#
+# Требуются GitHub Secrets (Settings → Secrets and variables → Actions):
+#   REMINDER_CRON_SECRET — ТО ЖЕ значение, что в Render (env REMINDER_CRON_SECRET)
+#   WEBAPP_URL (опц.)    — базовый URL приложения; иначе берётся прод-URL ниже
+name: daily-reminders
+
+on:
+  schedule:
+    - cron: "0 15 * * *"    # 15:00 UTC ≈ 18:00 МСК, ежедневно
+  workflow_dispatch: {}      # ручной запуск из вкладки Actions (для проверки)
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger reminders endpoint
+        run: |
+          BASE="${{ secrets.WEBAPP_URL }}"
+          if [ -z "$BASE" ]; then BASE="https://telegram-miniapp-1-r0sj.onrender.com"; fi
+          echo "POST $BASE/internal/send-reminders"
+          code=$(curl -sS -o /tmp/resp.json -w "%{http_code}" \
+            --max-time 90 --retry 2 --retry-delay 20 \
+            -X POST "$BASE/internal/send-reminders" \
+            -H "X-Cron-Secret: ${{ secrets.REMINDER_CRON_SECRET }}")
+          echo "HTTP $code"
+          cat /tmp/resp.json || true
+          echo
+          if [ "$code" != "200" ]; then
+            echo "::error::Reminder trigger failed with HTTP $code"
+            exit 1
+          fi

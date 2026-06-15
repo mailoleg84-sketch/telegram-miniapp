@@ -47,7 +47,15 @@ REDIS_URL = _env("REDIS_URL", "")
 
 # --- Mini App (Telegram WebApp) ---
 WEBAPP_URL = _env("WEBAPP_URL", "https://telegram-miniapp-1-r0sj.onrender.com")
-APP_VERSION = _env("APP_VERSION", "20260615-kids-v142")
+APP_VERSION = _env("APP_VERSION", "20260615-kids-v143")
+
+# --- Напоминания ботом (ежедневная рассылка, opt-in) ---
+# Триггерится внешним cron (GitHub Actions) -> POST /internal/send-reminders с
+# заголовком X-Cron-Secret. Если секрет пустой — эндпоинт выключен (fail-closed),
+# рассылки нет. Задайте одинаковое значение в Render и в GitHub Secrets.
+REMINDER_CRON_SECRET = _env("REMINDER_CRON_SECRET", "")
+# Напоминаем только тем, кто был активен за последние N дней (не теребим ушедших).
+REMINDER_ACTIVITY_WINDOW_DAYS = int(os.getenv("REMINDER_ACTIVITY_WINDOW_DAYS", "14"))
 
 WEBAPP_HOST = os.getenv("WEBAPP_HOST", "0.0.0.0")
 # Render задаёт порт через переменную PORT — читаем её, иначе 8080.

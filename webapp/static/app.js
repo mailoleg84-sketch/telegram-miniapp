@@ -4892,9 +4892,15 @@ async function renderSettings() {
   setBack(renderParentZone);
   tg.MainButton.hide();
   ensureBottomNav("parent");
+  if (!state.me || !state.me.user) { renderMenu(); return; }
   app.innerHTML = `
     <div class="screen">
       <h1>Настройки</h1>
+      <div class="card">
+        <h2>Уведомления</h2>
+        <p class="hint">Напоминание в Telegram, если за день не было занятий. Не чаще одного раза в день.</p>
+        <button class="btn" id="remToggle">Напоминания</button>
+      </div>
       <div class="card">
         <h2>Аккаунт и данные</h2>
         <p class="hint">Сброс результатов обнулит баллы, уровень, выученные слова, тесты и ежедневные уроки. Профиль и чат с репетитором останутся.</p>
@@ -4904,6 +4910,26 @@ async function renderSettings() {
         <button class="btn btn-danger" id="deleteAccount">Удалить профиль и все данные</button>
       </div>
     </div>`;
+  const remBtn = document.getElementById("remToggle");
+  const paintRem = (on) => {
+    remBtn.textContent = on ? "🔔 Напоминания: включены" : "🔕 Напоминания: выключены";
+    remBtn.className = on ? "btn" : "btn btn-secondary";
+  };
+  paintRem(!!(state.me.user && state.me.user.reminders_enabled));
+  remBtn.onclick = async () => {
+    haptic();
+    const next = !(state.me.user && state.me.user.reminders_enabled);
+    remBtn.disabled = true;
+    try {
+      const r = await api("/api/settings", "POST", { reminders_enabled: next });
+      state.me.user.reminders_enabled = r.reminders_enabled;
+      paintRem(r.reminders_enabled);
+    } catch (e) {
+      tg.showAlert(e.message || "Не удалось сохранить настройку");
+    } finally {
+      remBtn.disabled = false;
+    }
+  };
   document.getElementById("resetResults").onclick = async () => {
     haptic("warning");
     const ok = await confirmAction("Обнулить все учебные результаты? Баллы, уровень, тесты и прогресс слов начнутся заново.");
