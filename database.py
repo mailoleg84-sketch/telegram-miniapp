@@ -3,6 +3,9 @@
 Подключение берётся из переменной окружения DATABASE_URL.
 Используется единый пул соединений на всё приложение.
 """
+import hashlib
+import json
+import logging
 import ssl
 from datetime import timedelta
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -12,6 +15,8 @@ import asyncpg
 from config import DATABASE_URL, CHAT_RETENTION_PER_USER
 from data.words import LEARNING_WORDS
 from webapp.vocabulary_visualizer import build_vocabulary_visual
+
+log = logging.getLogger(__name__)
 
 # Глобальный пул соединений
 _pool: asyncpg.Pool | None = None
@@ -334,7 +339,19 @@ async def init_db() -> None:
             CREATE INDEX IF NOT EXISTS training_tokens_expires_idx
             ON training_tokens (expires_at)
         """)
-        await _seed_words(conn)
+        # Метаданные приложения (key-value). Сейчас: хеш засеянного банка слов —
+        # чтобы не ре-сидить 5000 строк на каждом старте, если данные не менялись.
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS app_meta (
+                key   TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
+        # Сид — атомарно: UPSERT + DELETE'ы + запись хеша в одной транзакции,
+        # чтобы краш в середине не оставил заблокированные слова видимыми
+        # (откат → прежнее консистентное состояние → ре-сид на след. старте).
+        async with conn.transaction():
+            await _seed_words(conn)
 
 
 # Защита в глубину: ни одно из этих слов не попадёт в детский банк, даже если
@@ -428,6 +445,19 @@ async def _seed_words(conn) -> None:
             visual["needs_review"],
             visual["generation_status"],
         ))
+    # Хеш-гард: на холодном старте/деплое не ре-сидим 5000 строк, если итоговые
+    # данные не изменились. Хешируем сами seed_rows (слова + результат
+    # build_vocabulary_visual) → любое изменение данных/визуал-логики/блок-листа
+    # меняет хеш. count-гард ловит пустую/повреждённую таблицу.
+    seed_hash = hashlib.sha256(
+        json.dumps(seed_rows, ensure_ascii=False, default=str).encode("utf-8")
+    ).hexdigest()
+    stored_hash = await conn.fetchval("SELECT value FROM app_meta WHERE key = 'words_seed_hash'")
+    word_count = await conn.fetchval("SELECT COUNT(*) FROM words")
+    if stored_hash == seed_hash and word_count == len(seed_rows):
+        log.info("Банк слов не изменился (%d слов) — сид пропущен", len(seed_rows))
+        return
+
     await conn.executemany(
         """
         INSERT INTO words (
@@ -485,6 +515,16 @@ async def _seed_words(conn) -> None:
         "DELETE FROM words WHERE NOT (word = ANY($1::text[]))",
         active_words,
     )
+    # Хеш пишем ТОЛЬКО после успешного сида: если сид упал — на след. старте
+    # повторится (хеш не сохранён).
+    await conn.execute(
+        """
+        INSERT INTO app_meta (key, value) VALUES ('words_seed_hash', $1)
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+        """,
+        seed_hash,
+    )
+    log.info("Банк слов засеян/обновлён (%d слов)", len(seed_rows))
 
 
 # ---------- Пользователи ----------
