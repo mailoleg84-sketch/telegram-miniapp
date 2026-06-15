@@ -732,13 +732,17 @@ async def api_admin_user_detail(request: web.Request):
     user = await database.get_user(target_user_id)
     if not user:
         return web.json_response({"error": "Пользователь не найден"}, status=404)
-    stats = await database.get_user_stats(target_user_id)
-    report = await database.get_parent_report(target_user_id)
-    dictionary_summary = await database.get_dictionary_summary(target_user_id)
-    problem_words = await database.get_problem_words(target_user_id, limit=8)
-    history = await database.get_activity_history(target_user_id, limit=12)
-    ai_today = await database.get_ai_usage_today(target_user_id)
-    streak = await database.get_learning_streak(target_user_id)
+    # Независимые запросы (только по target_user_id) — параллельно (пул max_size=5
+    # => идут «в 5 потоков», без дедлока: каждый сам берёт/отдаёт соединение).
+    stats, report, dictionary_summary, problem_words, history, ai_today, streak = await asyncio.gather(
+        database.get_user_stats(target_user_id),
+        database.get_parent_report(target_user_id),
+        database.get_dictionary_summary(target_user_id),
+        database.get_problem_words(target_user_id, limit=8),
+        database.get_activity_history(target_user_id, limit=12),
+        database.get_ai_usage_today(target_user_id),
+        database.get_learning_streak(target_user_id),
+    )
     return web.json_response(_admin_user_detail_payload(
         user,
         stats,
@@ -772,10 +776,13 @@ async def api_leaderboard(request: web.Request):
 async def api_learning_path(request: web.Request):
     user_id = request["tg_user"]["id"]
     user = await _current_user_or_404(request)
-    daily_status = await database.get_daily_lesson_status(user_id)
-    stats = await database.get_user_stats(user_id)
-    dictionary_summary = await database.get_dictionary_summary(user_id)
-    report = await database.get_parent_report(user_id)
+    # Независимые запросы (только по user_id) — параллельно.
+    daily_status, stats, dictionary_summary, report = await asyncio.gather(
+        database.get_daily_lesson_status(user_id),
+        database.get_user_stats(user_id),
+        database.get_dictionary_summary(user_id),
+        database.get_parent_report(user_id),
+    )
     return web.json_response(
         _learning_path_payload(user, daily_status, stats, dictionary_summary, report)
     )
@@ -784,10 +791,13 @@ async def api_learning_path(request: web.Request):
 async def api_motivation_status(request: web.Request):
     user_id = request["tg_user"]["id"]
     user = await _current_user_or_404(request)
-    stats = await database.get_user_stats(user_id)
-    dictionary_summary = await database.get_dictionary_summary(user_id)
-    report = await database.get_parent_report(user_id)
-    streak = await database.get_learning_streak(user_id)
+    # Независимые запросы (только по user_id) — параллельно.
+    stats, dictionary_summary, report, streak = await asyncio.gather(
+        database.get_user_stats(user_id),
+        database.get_dictionary_summary(user_id),
+        database.get_parent_report(user_id),
+        database.get_learning_streak(user_id),
+    )
     return web.json_response(
         _motivation_payload(user, stats, dictionary_summary, report, streak)
     )
@@ -894,11 +904,14 @@ async def api_level_submit(request: web.Request):
 async def api_parent_report(request: web.Request):
     user_id = request["tg_user"]["id"]
     user = await _current_user_or_404(request)
-    report = await database.get_parent_report(user_id)
-    week = await database.get_parent_report_week(user_id, 7)
-    stats = await database.get_user_stats(user_id)
-    dictionary_summary = await database.get_dictionary_summary(user_id)
-    problem_word_rows = await database.get_problem_words(user_id, limit=6)
+    # Независимые запросы (только по user_id) — параллельно, латентность ≈ макс, не сумма.
+    report, week, stats, dictionary_summary, problem_word_rows = await asyncio.gather(
+        database.get_parent_report(user_id),
+        database.get_parent_report_week(user_id, 7),
+        database.get_user_stats(user_id),
+        database.get_dictionary_summary(user_id),
+        database.get_problem_words(user_id, limit=6),
+    )
     problem_words = [_problem_word_dict(row) for row in problem_word_rows]
     level = _level_for_user(user)
     report_payload = {
