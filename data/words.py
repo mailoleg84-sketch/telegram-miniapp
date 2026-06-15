@@ -1611,8 +1611,50 @@ def _with_examples(entries: list[Entry6]) -> list[Entry6]:
     ]
 
 
+# Курированная реклассификация тем (высокая точность, обратимо). Переносим
+# однозначно конкретные слова из мусорных тем (everyday/verbs/people/abstract…) в
+# темы-колоды (VOCAB_TOPIC_LABELS) — это (1) наполняет тематические колоды и
+# (2) даёт конкретным существительным визуал «object» вместо «situation»
+# (тема не в CONCRETE_TOPICS → situation). Каждое слово сверено с переводом из
+# банка; омонимы исключены вручную (rock=рок, seal=печать, sink=тонуть, cup=посуда,
+# back=назад, goal=цель, garden→оставлен в nature). Источник single_words_5000 не
+# меняем — правка применяется при сборке LEARNING_WORDS, её легко откатить.
+_TOPIC_RECLASSIFY = {
+    "animals": "bat bull dragon eagle rat rooster",
+    "food": "bacon beans butter candy cherry chocolate corn honey jam meal pepper salt sugar",
+    "body": "bone brain chest lip lips neck shoulder skin stomach teeth",
+    "colors": "gold grey silver",
+    "clothes": "belt boot boots cap jacket pants shirt shoes suit tie uniform",
+    "transport": "boat rocket scooter ship taxi train truck van",
+    "family": "grandfather husband wife",
+    "home": "bathroom bed couch door floor key mirror plate roof wall",
+    "school": "crayon paper",
+    "nature": "beach bush cave desert hill island leaves lightning mountain rose sand stone storm thunder wave",
+    "sports": "baseball boxing cricket golf hockey medal rugby trophy",
+    "music": "piano",
+    "toys": "blocks puzzle",
+}
+_TOPIC_OVERRIDE = {
+    word: topic
+    for topic, words in _TOPIC_RECLASSIFY.items()
+    for word in words.split()
+}
+
+
+def _reclassify_topics(entries: list[Entry6]) -> list[Entry6]:
+    """Меняет только поле topic по курированному override (см. _TOPIC_RECLASSIFY);
+    остальные слова без изменений. Применяется ДО генерации примеров, чтобы их
+    категория совпадала с исправленной темой."""
+    return [
+        (word, translation, example, _TOPIC_OVERRIDE.get(word.lower(), topic), age_group, transcription)
+        for word, translation, example, topic, age_group, transcription in entries
+    ]
+
+
 LEARNING_WORDS = tuple(
     _with_examples(
-        [item for item in _with_transcriptions(list(SINGLE_WORDS_5000)) if _is_single_word(item[0])]
+        _reclassify_topics(
+            [item for item in _with_transcriptions(list(SINGLE_WORDS_5000)) if _is_single_word(item[0])]
+        )
     )
 )
