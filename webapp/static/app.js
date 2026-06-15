@@ -1319,7 +1319,9 @@ function renderParentCabinet() {
           <small>уроки, слова, тесты</small>
         </button>
       </div>
+      <button class="btn btn-secondary mt-12" id="backToProfile">← Назад</button>
     </div>`;
+  document.getElementById("backToProfile").onclick = () => { haptic(); renderParentZone(); };
   document.getElementById("pcReport").onclick = () => { haptic(); renderParentReport(); };
   document.getElementById("pcHistory").onclick = () => { haptic(); renderActivityHistory(); };
 }
@@ -1339,7 +1341,9 @@ function renderSubscription() {
         <b>Расширенный доступ — скоро</b>
         <p class="hint mt-8">Больше занятий с голосовым репетитором, генерация картинок к словам и подробные отчёты для родителей. Мы сообщим, когда подписку можно будет подключить.</p>
       </div>
+      <button class="btn btn-secondary mt-12" id="backToProfile">← Назад</button>
     </div>`;
+  document.getElementById("backToProfile").onclick = () => { haptic(); renderParentZone(); };
 }
 
 function renderHelp() {
@@ -1358,7 +1362,9 @@ function renderHelp() {
         <p class="hint mt-8">Напишите боту @my_eng_tutor777_bot. Команды: /start — открыть приложение, /help — справка.</p>
       </div>
       <p class="hint mt-12">Занятия безопасны и подобраны по возрасту. Личные данные ребёнка приложение не запрашивает.</p>
+      <button class="btn btn-secondary mt-12" id="backToProfile">← Назад</button>
     </div>`;
+  document.getElementById("backToProfile").onclick = () => { haptic(); renderParentZone(); };
 }
 
 async function renderLevelTestIntro({ afterRegistration = false } = {}) {
@@ -4930,7 +4936,9 @@ async function renderProfile() {
           <div class="stat-row"><span>Уровень</span><b>${esc(u.level_label || "Beginner / A1")}</b></div>
           <div class="stat-row"><span>Тест уровня</span><b>${u.level_test_completed ? `${u.level_test_score}%` : "не пройден"}</b></div>
         </div>
+        <button class="btn btn-secondary mt-12" id="backToProfile">← Назад</button>
       </div>`;
+    document.getElementById("backToProfile").onclick = () => { haptic(); renderParentZone(); };
   } catch (e) {
     renderError(e.message);
   }
@@ -4957,7 +4965,9 @@ async function renderSettings() {
         <p class="hint mt-12">Удаление навсегда стирает профиль, прогресс, историю и все диалоги с репетитором. Отменить нельзя.</p>
         <button class="btn btn-danger" id="deleteAccount">Удалить профиль и все данные</button>
       </div>
+      <button class="btn btn-secondary mt-12" id="backToProfile">← Назад</button>
     </div>`;
+  document.getElementById("backToProfile").onclick = () => { haptic(); renderParentZone(); };
   const remBtn = document.getElementById("remToggle");
   const paintRem = (on) => {
     remBtn.textContent = on ? "🔔 Напоминания: включены" : "🔕 Напоминания: выключены";
