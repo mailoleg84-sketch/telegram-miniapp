@@ -304,6 +304,14 @@ async def init_db() -> None:
             CREATE INDEX IF NOT EXISTS words_age_group_idx
             ON words (age_group)
         """)
+        # Композитный индекс под выборки тематических колод:
+        # WHERE age_group=$1 AND topic=$2 (get_words_by_topic) и
+        # WHERE age_group=$1 GROUP BY topic (get_topic_counts). Покрывает и
+        # запросы только по age_group (leftmost-префикс).
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS words_age_topic_idx
+            ON words (age_group, topic)
+        """)
         # Одноразовые токены тренировок (анти-накрутка прогресса). Раньше жили
         # in-memory и терялись при рестарте/масштабе; теперь — в Neon.
         await conn.execute("""
