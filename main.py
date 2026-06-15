@@ -13,6 +13,7 @@ from config import (
     BOT_RUN_MODE,
     BOT_TOKEN,
     DATABASE_URL,
+    LOG_LEVEL,
     TELEGRAM_WEBHOOK_SECRET,
     WEBAPP_URL,
     WEBHOOK_PATH,
@@ -31,7 +32,7 @@ def _webhook_url() -> str:
 
 async def main() -> None:
     logging.basicConfig(
-        level=logging.INFO,
+        level=getattr(logging, LOG_LEVEL, logging.INFO),
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
     )
 

@@ -2495,9 +2495,10 @@ function tutorAvatarHtml() {
   // Обе картинки: статичное фото + свечение по состоянию + мягкое «дыхание» (CSS).
   const ageGroup = state.me?.user?.age_group || "";
   const isKids = CHARACTER_AGE_GROUPS.includes(ageGroup);
+  const v = window.APP_VERSION || "";
   const src = isKids
-    ? "/static/assets/tutor-kids-5_10.jpg?v=20260606-kids-v115"
-    : "/static/assets/tutor-teen-11_18.jpg?v=20260606-kids-v115";
+    ? `/static/assets/tutor-kids-5_10.jpg?v=${v}`
+    : `/static/assets/tutor-teen-11_18.jpg?v=${v}`;
   return `
     <div class="tutor-face idle is-photo" id="tutorFace" data-state="idle" aria-hidden="true">
       <img class="tutor-avatar-img" src="${src}" alt="">
