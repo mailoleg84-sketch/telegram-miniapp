@@ -144,15 +144,21 @@ class OpenAISafetyTests(unittest.TestCase):
             start = app_js.index(marker)
             self.assertIn("setBack(renderProgressHub)", app_js[start:start + 180], marker)
 
-        # Отчёт, история и профиль живут в кабинете родителя и возвращаются в него.
-        parent_zone_back_screens = (
-            "async function renderParentReport",
-            "async function renderActivityHistory",
+        # Подразделы «Профиля» возвращаются в хаб «Профиль» (renderParentZone).
+        profile_hub_back_screens = (
             "async function renderProfile",
+            "function renderParentCabinet",
+            "async function renderSettings",
+            "function renderSubscription",
+            "function renderHelp",
         )
-        for marker in parent_zone_back_screens:
+        for marker in profile_hub_back_screens:
             start = app_js.index(marker)
             self.assertIn("setBack(renderParentZone)", app_js[start:start + 180], marker)
+        # Отчёт и история — внутри «Родительского кабинета», возвращаются в него.
+        for marker in ("async function renderParentReport", "async function renderActivityHistory"):
+            start = app_js.index(marker)
+            self.assertIn("setBack(renderParentCabinet)", app_js[start:start + 180], marker)
 
         self.assertIn("function renderParentZone()", app_js)
         # Родительский раздел открывается без пароля: гейта/PIN нет.

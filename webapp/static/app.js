@@ -1067,7 +1067,7 @@ const NAV_ITEMS = [
   { key: "learn", icon: "🏠", label: "Учёба", go: () => renderMenu() },
   { key: "tutor", icon: "🎙", label: "Репетитор", go: () => renderChat() },
   { key: "progress", icon: "📈", label: "Прогресс", go: () => renderProgressHub() },
-  { key: "parent", icon: "👨‍👩‍👧", label: "Родителям", go: () => renderParentZone() },
+  { key: "parent", icon: "👤", label: "Профиль", go: () => renderParentZone() },
 ];
 
 function removeBottomNav() {
@@ -1134,9 +1134,9 @@ function renderMenu() {
           <small>серии, бейджи, рейтинг</small>
         </button>
         <button class="action-tile profile" id="parentZone">
-          <i class="tile-ic ic-parent">👨‍👩‍👧</i>
-          <b>Кабинет родителя</b>
-          <small>отчёт, история, аккаунт</small>
+          <i class="tile-ic ic-parent">👤</i>
+          <b>Профиль</b>
+          <small>ребёнок, кабинет, настройки</small>
         </button>
       </div>
       ${state.me.is_admin ? `
@@ -1258,44 +1258,107 @@ function renderParentZone() {
   const u = state.me.user;
   app.innerHTML = `
     <div class="screen">
-      <h1>Кабинет родителя</h1>
+      <h1>Профиль</h1>
       <div class="card">
         <b>${esc(u.child_name)}</b>
         <p class="hint mt-8">${esc(ageYearsLabel(u.child_age))} · Уровень - ${esc(u.level_label || "Beginner / A1")}</p>
         <div class="stat-row"><span>Баллы</span><b>${u.points}</b></div>
-        <div class="stat-row"><span>Тест уровня</span><b>${u.level_test_completed ? "пройден" : "не пройден"}</b></div>
       </div>
 
-      <div class="section-label">Прогресс ребёнка</div>
-      <div class="hub-grid">
-        <button class="action-tile report" id="pzReport">
-          <i class="tile-ic ic-review">📋</i>
-          <b>Отчёт</b>
-          <small>что получается и что повторить</small>
-        </button>
-        <button class="action-tile history" id="pzHistory">
-          <i class="tile-ic ic-dict">📅</i>
-          <b>История занятий</b>
-          <small>уроки, слова, тесты</small>
-        </button>
-      </div>
-
-      <div class="section-label">Аккаунт</div>
       <div class="action-list">
-        <button class="action-row profile" id="pzProfile">
-          <i class="tile-ic ic-parent">👤</i>
-          <div class="action-row-text">
-            <b>Профиль и данные</b>
-            <small>уровень, сброс результатов, выход</small>
-          </div>
+        <button class="action-row" id="pzChild">
+          <i class="tile-ic">🧒</i>
+          <div class="action-row-text"><b>Профиль ребёнка</b><small>имя, возраст, уровень</small></div>
+        </button>
+        <button class="action-row" id="pzCabinet">
+          <i class="tile-ic">📊</i>
+          <div class="action-row-text"><b>Родительский кабинет</b><small>отчёт и история занятий</small></div>
+        </button>
+        <button class="action-row" id="pzSub">
+          <i class="tile-ic">⭐</i>
+          <div class="action-row-text"><b>Подписка</b><small>тариф и доступ</small></div>
+        </button>
+        <button class="action-row" id="pzSettings">
+          <i class="tile-ic">⚙️</i>
+          <div class="action-row-text"><b>Настройки</b><small>сброс, выход, удаление</small></div>
+        </button>
+        <button class="action-row" id="pzHelp">
+          <i class="tile-ic">❓</i>
+          <div class="action-row-text"><b>Помощь</b><small>как пользоваться, поддержка</small></div>
         </button>
       </div>
 
       <p class="hint mt-12">Занятия безопасны и подобраны по возрасту. Личные данные ребёнка приложение не запрашивает.</p>
     </div>`;
-  document.getElementById("pzReport").onclick = () => { haptic(); renderParentReport(); };
-  document.getElementById("pzHistory").onclick = () => { haptic(); renderActivityHistory(); };
-  document.getElementById("pzProfile").onclick = () => { haptic(); renderProfile(); };
+  document.getElementById("pzChild").onclick = () => { haptic(); renderProfile(); };
+  document.getElementById("pzCabinet").onclick = () => { haptic(); renderParentCabinet(); };
+  document.getElementById("pzSub").onclick = () => { haptic(); renderSubscription(); };
+  document.getElementById("pzSettings").onclick = () => { haptic(); renderSettings(); };
+  document.getElementById("pzHelp").onclick = () => { haptic(); renderHelp(); };
+}
+
+// Подразделы «Профиля».
+
+function renderParentCabinet() {
+  setBack(renderParentZone);
+  tg.MainButton.hide();
+  ensureBottomNav("parent");
+  app.innerHTML = `
+    <div class="screen">
+      <h1>Родительский кабинет</h1>
+      <p class="hint">Прогресс ребёнка: что получается и где нужна поддержка.</p>
+      <div class="hub-grid">
+        <button class="action-tile report" id="pcReport">
+          <i class="tile-ic ic-review">📋</i>
+          <b>Отчёт</b>
+          <small>что получается и что повторить</small>
+        </button>
+        <button class="action-tile history" id="pcHistory">
+          <i class="tile-ic ic-dict">📅</i>
+          <b>История занятий</b>
+          <small>уроки, слова, тесты</small>
+        </button>
+      </div>
+    </div>`;
+  document.getElementById("pcReport").onclick = () => { haptic(); renderParentReport(); };
+  document.getElementById("pcHistory").onclick = () => { haptic(); renderActivityHistory(); };
+}
+
+function renderSubscription() {
+  setBack(renderParentZone);
+  tg.MainButton.hide();
+  ensureBottomNav("parent");
+  app.innerHTML = `
+    <div class="screen">
+      <h1>Подписка</h1>
+      <div class="card">
+        <h2>Тариф: Бесплатный</h2>
+        <p class="hint">Доступны слова, тренировки, игры, тесты и общение с ИИ-репетитором.</p>
+      </div>
+      <div class="card">
+        <b>Расширенный доступ — скоро</b>
+        <p class="hint mt-8">Больше занятий с голосовым репетитором, генерация картинок к словам и подробные отчёты для родителей. Мы сообщим, когда подписку можно будет подключить.</p>
+      </div>
+    </div>`;
+}
+
+function renderHelp() {
+  setBack(renderParentZone);
+  tg.MainButton.hide();
+  ensureBottomNav("parent");
+  app.innerHTML = `
+    <div class="screen">
+      <h1>Помощь</h1>
+      <div class="card">
+        <b>Как пользоваться</b>
+        <p class="hint mt-8">«Учёба» — слова, тренировки и игры. «Репетитор» — разговор и голос. «Прогресс» — баллы, серии и достижения. «Профиль» — данные ребёнка, отчёт родителю, подписка и настройки.</p>
+      </div>
+      <div class="card">
+        <b>Поддержка</b>
+        <p class="hint mt-8">Напишите боту @my_eng_tutor777_bot. Команды: /start — открыть приложение, /help — справка.</p>
+      </div>
+      <p class="hint mt-12">Занятия безопасны и подобраны по возрасту. Личные данные ребёнка приложение не запрашивает.</p>
+    </div>`;
 }
 
 async function renderLevelTestIntro({ afterRegistration = false } = {}) {
@@ -4225,7 +4288,7 @@ async function renderMotivation() {
 }
 
 async function renderParentReport() {
-  setBack(renderParentZone);
+  setBack(renderParentCabinet);
   loading();
   try {
     const data = await api("/api/parent/report", "GET");
@@ -4329,7 +4392,7 @@ function groupHistoryEvents(events) {
 }
 
 async function renderActivityHistory() {
-  setBack(renderParentZone);
+  setBack(renderParentCabinet);
   loading();
   try {
     const data = await api("/api/activity/history", "GET");
@@ -4807,7 +4870,7 @@ async function renderProfile() {
     const u = state.me.user;
     app.innerHTML = `
       <div class="screen">
-        <h1>Профиль</h1>
+        <h1>Профиль ребёнка</h1>
         <div class="card center">
           <h2>${esc(u.child_name)}</h2>
           <p class="hint">Возраст — ${esc(ageYearsLabel(u.child_age))}</p>
@@ -4819,51 +4882,59 @@ async function renderProfile() {
           <div class="stat-row"><span>Уровень</span><b>${esc(u.level_label || "Beginner / A1")}</b></div>
           <div class="stat-row"><span>Тест уровня</span><b>${u.level_test_completed ? `${u.level_test_score}%` : "не пройден"}</b></div>
         </div>
-        <div class="card">
-          <h2>Аккаунт и данные</h2>
-          <p class="hint">Сброс результатов обнулит баллы, уровень, выученные слова, тесты и ежедневные уроки. Профиль и чат с репетитором останутся.</p>
-          <button class="btn btn-danger" id="resetResults">Обнулить результаты</button>
-          <button class="btn btn-secondary" id="logout">Выйти из аккаунта</button>
-          <p class="hint mt-12">Удаление навсегда стирает профиль, прогресс, историю и все диалоги с репетитором. Отменить нельзя.</p>
-          <button class="btn btn-danger" id="deleteAccount">Удалить профиль и все данные</button>
-        </div>
-        <button class="btn btn-secondary" id="profileHome">В меню</button>
       </div>`;
-    document.getElementById("resetResults").onclick = async () => {
-      haptic("warning");
-      const ok = await confirmAction("Обнулить все учебные результаты? Баллы, уровень, тесты и прогресс слов начнутся заново.");
-      if (!ok) return;
-      try {
-        const result = await api("/api/results/reset", "POST", { confirm: "reset_results" });
-        state.me.user.points = result.user.points;
-        state.me.stats = result.stats;
-        tg.showAlert("Результаты обнулены. Можно начать обучение заново.");
-        renderProfile();
-      } catch (e) {
-        renderError(e.message);
-      }
-    };
-    document.getElementById("logout").onclick = async () => {
-      haptic("warning");
-      const ok = await confirmAction("Выйти из аккаунта на этом устройстве? Для другого аккаунта переключитесь в Telegram и откройте приложение снова.");
-      if (ok) logoutFromApp();
-    };
-    document.getElementById("deleteAccount").onclick = async () => {
-      haptic("warning");
-      const ok = await confirmAction("Удалить профиль и ВСЕ данные ребёнка навсегда? Прогресс, история и диалоги будут стёрты без возможности восстановления.");
-      if (!ok) return;
-      try {
-        await api("/api/account/delete", "POST", { confirm: "delete_account" });
-        tg.showAlert("Профиль и все данные удалены.");
-        logoutFromApp();
-      } catch (e) {
-        renderError(e.message);
-      }
-    };
-    document.getElementById("profileHome").onclick = () => { haptic(); renderMenu(); };
   } catch (e) {
     renderError(e.message);
   }
+}
+
+async function renderSettings() {
+  setBack(renderParentZone);
+  tg.MainButton.hide();
+  ensureBottomNav("parent");
+  app.innerHTML = `
+    <div class="screen">
+      <h1>Настройки</h1>
+      <div class="card">
+        <h2>Аккаунт и данные</h2>
+        <p class="hint">Сброс результатов обнулит баллы, уровень, выученные слова, тесты и ежедневные уроки. Профиль и чат с репетитором останутся.</p>
+        <button class="btn btn-danger" id="resetResults">Обнулить результаты</button>
+        <button class="btn btn-secondary" id="logout">Выйти из аккаунта</button>
+        <p class="hint mt-12">Удаление навсегда стирает профиль, прогресс, историю и все диалоги с репетитором. Отменить нельзя.</p>
+        <button class="btn btn-danger" id="deleteAccount">Удалить профиль и все данные</button>
+      </div>
+    </div>`;
+  document.getElementById("resetResults").onclick = async () => {
+    haptic("warning");
+    const ok = await confirmAction("Обнулить все учебные результаты? Баллы, уровень, тесты и прогресс слов начнутся заново.");
+    if (!ok) return;
+    try {
+      const result = await api("/api/results/reset", "POST", { confirm: "reset_results" });
+      state.me.user.points = result.user.points;
+      state.me.stats = result.stats;
+      tg.showAlert("Результаты обнулены. Можно начать обучение заново.");
+      renderSettings();
+    } catch (e) {
+      renderError(e.message);
+    }
+  };
+  document.getElementById("logout").onclick = async () => {
+    haptic("warning");
+    const ok = await confirmAction("Выйти из аккаунта на этом устройстве? Для другого аккаунта переключитесь в Telegram и откройте приложение снова.");
+    if (ok) logoutFromApp();
+  };
+  document.getElementById("deleteAccount").onclick = async () => {
+    haptic("warning");
+    const ok = await confirmAction("Удалить профиль и ВСЕ данные ребёнка навсегда? Прогресс, история и диалоги будут стёрты без возможности восстановления.");
+    if (!ok) return;
+    try {
+      await api("/api/account/delete", "POST", { confirm: "delete_account" });
+      tg.showAlert("Профиль и все данные удалены.");
+      logoutFromApp();
+    } catch (e) {
+      renderError(e.message);
+    }
+  };
 }
 
 function renderLoggedOut() {
