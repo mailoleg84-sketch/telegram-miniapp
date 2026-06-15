@@ -559,14 +559,30 @@ def _motivation_payload(user, stats, dictionary_summary, report, streak) -> dict
     today_completed = bool((streak or {}).get("today_completed"))
 
     badges = [
+        # Серия дней (привычка)
         _motivation_badge("first_lesson", "Первый урок", "Завершить один ежедневный урок.", completed_lessons, 1, "daily"),
         _motivation_badge("three_day_streak", "Три дня подряд", "Учиться три дня без перерыва.", current_streak, 3, "daily"),
         _motivation_badge("seven_day_streak", "Неделя английского", "Собрать серию из семи дней.", current_streak, 7, "daily"),
+        _motivation_badge("two_week_streak", "Две недели", "Заниматься 14 дней подряд.", current_streak, 14, "daily"),
+        _motivation_badge("month_streak", "Месяц подряд", "Серия из 30 дней — настоящая привычка!", current_streak, 30, "daily"),
+        # Уроки (всего)
+        _motivation_badge("ten_lessons", "10 уроков", "Завершить десять ежедневных уроков.", completed_lessons, 10, "daily"),
+        _motivation_badge("thirty_lessons", "30 уроков", "Завершить тридцать уроков.", completed_lessons, 30, "daily"),
+        # Словарь
         _motivation_badge("word_collector", "10 слов", "Добавить первые десять слов в обучение.", words_learned, 10, "vocab"),
         _motivation_badge("word_builder", "50 слов", "Уверенно расширять словарь.", words_learned, 50, "vocab"),
+        _motivation_badge("word_explorer", "100 слов", "Собрать сотню слов в обучении.", words_learned, 100, "vocab"),
+        _motivation_badge("word_master", "250 слов", "Большой словарь — 250 слов!", words_learned, 250, "vocab"),
+        # Тесты
         _motivation_badge("test_starter", "Первый тест", "Пройти тест по новым словам.", completed_word_tests, 1, "vocab"),
+        _motivation_badge("test_regular", "10 тестов", "Пройти десять тестов по словам.", completed_word_tests, 10, "vocab"),
+        # Игры
         _motivation_badge("game_player", "Игровая практика", "Закрепить слова в игровой практике.", completed_games, 3, "learn"),
+        _motivation_badge("game_fan", "10 игр", "Сыграть в десять обучающих игр.", completed_games, 10, "learn"),
+        # Точность (верные ответы)
         _motivation_badge("careful_answer", "30 верных ответов", "Набрать 30 правильных ответов.", total_correct, 30, "training"),
+        _motivation_badge("sharp_answer", "100 верных ответов", "Набрать 100 правильных ответов.", total_correct, 100, "training"),
+        _motivation_badge("expert_answer", "250 верных ответов", "Набрать 250 правильных ответов.", total_correct, 250, "training"),
     ]
     unlocked_count = sum(1 for badge in badges if badge["unlocked"])
 

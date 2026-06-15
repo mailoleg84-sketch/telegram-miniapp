@@ -1137,6 +1137,28 @@ input[type="text"]:focus { border-color: var(--button); }
   background: var(--green);
   color: #fff;
 }
+@keyframes badgePop {
+  0% { transform: scale(0.9); }
+  45% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+.badge-card.badge-unlock {
+  animation: badgePop 0.55s ease-out both;
+}
+.badge-card.badge-unlock .badge-mark {
+  animation: badgePop 0.7s ease-out both;
+}
+.badge-new {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--green);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  vertical-align: middle;
+}
 .badge-main {
   min-width: 0;
   flex: 1;

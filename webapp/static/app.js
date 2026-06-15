@@ -4230,18 +4230,36 @@ async function renderChat() {
   }
 }
 
-function motivationBadgeHtml(badge) {
+function motivationBadgeHtml(badge, isNew = false) {
   const progress = Math.max(0, Math.min(100, Number(badge.progress_percent) || 0));
   return `
-    <div class="badge-card ${badge.unlocked ? "unlocked" : ""}">
+    <div class="badge-card ${badge.unlocked ? "unlocked" : ""} ${isNew ? "badge-unlock" : ""}">
       <div class="badge-mark">${badge.unlocked ? "✓" : progress + "%"}</div>
       <div class="badge-main">
-        <b>${esc(badge.title)}</b>
+        <b>${esc(badge.title)}${isNew ? ` <span class="badge-new">Новое!</span>` : ""}</b>
         <p>${esc(badge.text)}</p>
         <div class="mini-progress"><span style="width:${progress}%"></span></div>
         <small>${Number(badge.value) || 0}/${Number(badge.target) || 0}</small>
       </div>
     </div>`;
+}
+
+// Какие бейджи разблокированы ВПЕРВЫЕ с прошлого просмотра (для анимации).
+// Первый заход «сидит» молча — не празднуем задним числом уже открытые.
+function diffNewlyUnlocked(badges) {
+  const unlockedIds = (badges || []).filter(b => b.unlocked).map(b => b.id);
+  let seen = null;
+  try { seen = JSON.parse(localStorage.getItem("seenBadges") || "null"); } catch (_) { seen = null; }
+  if (!Array.isArray(seen)) {
+    try { localStorage.setItem("seenBadges", JSON.stringify(unlockedIds)); } catch (_) {}
+    return new Set();
+  }
+  const seenSet = new Set(seen);
+  const fresh = new Set(unlockedIds.filter(id => !seenSet.has(id)));
+  if (fresh.size) {
+    try { localStorage.setItem("seenBadges", JSON.stringify(unlockedIds)); } catch (_) {}
+  }
+  return fresh;
 }
 
 async function renderMotivation() {
@@ -4253,6 +4271,7 @@ async function renderMotivation() {
     const summary = data.summary || {};
     const streak = data.streak || {};
     const badges = data.badges || [];
+    const freshBadges = diffNewlyUnlocked(badges);
     app.innerHTML = `
       <div class="screen">
         <h1>${esc(data.title || "Достижения")}</h1>
@@ -4276,10 +4295,11 @@ async function renderMotivation() {
           <button class="btn mt-12" id="motivationAction">${esc(suggestedActionLabel(data.next_action))}</button>
         </div>
         <div class="badge-grid">
-          ${badges.map(motivationBadgeHtml).join("")}
+          ${badges.map(b => motivationBadgeHtml(b, freshBadges.has(b.id))).join("")}
         </div>
         <button class="btn btn-secondary mt-12" id="motivationHome">К прогрессу</button>
       </div>`;
+    if (freshBadges.size) haptic("success");
     bindSuggestedActionButton("motivationAction", data.next_action);
     document.getElementById("motivationHome").onclick = () => { haptic(); renderProgressHub(); };
   } catch (e) {
