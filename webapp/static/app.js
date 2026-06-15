@@ -4466,23 +4466,37 @@ async function renderLeaderboard() {
   loading();
   try {
     const data = await api("/api/leaderboard", "GET");
+    const rowsHtml = (list) => (list || []).length
+      ? list.map(leader => `
+          <div class="leader-row ${leader.is_me ? "me" : ""}">
+            <div class="leader-rank">${leader.rank}</div>
+            <div class="leader-main">
+              <b>${esc(leader.name)}</b>
+              <span>${esc(leader.age_label)}</span>
+            </div>
+            <div class="leader-points">${leader.points} 💎</div>
+          </div>`).join("")
+      : `<p class="hint center">Рейтинг появится после первых тренировок.</p>`;
+    const lists = { all: data.leaders, age: data.age_leaders };
+    const ageLabel = data.age_label || "Мой возраст";
     app.innerHTML = `
       <div class="screen">
         <h1>Рейтинг</h1>
-        <div class="card leaderboard">
-          ${(data.leaders || []).length ? data.leaders.map(leader => `
-            <div class="leader-row ${leader.is_me ? "me" : ""}">
-              <div class="leader-rank">${leader.rank}</div>
-              <div class="leader-main">
-                <b>${esc(leader.name)}</b>
-                <span>${esc(leader.age_label)}</span>
-              </div>
-              <div class="leader-points">${leader.points} 💎</div>
-            </div>
-          `).join("") : `<p class="hint center">Рейтинг появится после первых тренировок.</p>`}
+        <div class="seg-toggle">
+          <button class="seg-btn active" data-scope="all">Все</button>
+          <button class="seg-btn" data-scope="age">${esc(ageLabel)}</button>
         </div>
+        <div class="card leaderboard" id="lbList">${rowsHtml(lists.all)}</div>
         <button class="btn btn-secondary" id="leaderboardHome">К прогрессу</button>
       </div>`;
+    const listBox = document.getElementById("lbList");
+    document.querySelectorAll(".seg-btn").forEach(btn => {
+      btn.onclick = () => {
+        haptic();
+        document.querySelectorAll(".seg-btn").forEach(b => b.classList.toggle("active", b === btn));
+        listBox.innerHTML = rowsHtml(lists[btn.dataset.scope]);
+      };
+    });
     document.getElementById("leaderboardHome").onclick = () => { haptic(); renderProgressHub(); };
   } catch (e) {
     renderError(e.message);

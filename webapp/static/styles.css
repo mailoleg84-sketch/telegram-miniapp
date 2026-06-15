@@ -475,6 +475,30 @@ input[type="text"]:focus { border-color: var(--button); }
   padding: 8px;
 }
 
+.seg-toggle {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 12px;
+  background: var(--secondary-bg);
+  border-radius: 12px;
+}
+.seg-btn {
+  flex: 1;
+  padding: 9px 8px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.seg-btn.active {
+  background: var(--button);
+  color: var(--button-text, #fff);
+}
+
 .leader-row {
   display: flex;
   align-items: center;

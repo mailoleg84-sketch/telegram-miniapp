@@ -757,20 +757,32 @@ async def api_admin_user_detail(request: web.Request):
 
 async def api_leaderboard(request: web.Request):
     user_id = request["tg_user"]["id"]
-    rows = await database.get_leaderboard(limit=10)
+    user = await _current_user_or_404(request)
+    age_group = _normalized_age_group_for_user(user)
+    # Глобальный и возрастной срезы — независимы, параллельно.
+    global_rows, age_rows = await asyncio.gather(
+        database.get_leaderboard(limit=10),
+        database.get_leaderboard(limit=10, age_group=age_group),
+    )
 
-    leaders = []
-    for index, row in enumerate(rows, start=1):
-        age_label = next((l for l, v in AGE_GROUPS if v == row["age_group"]), row["age_group"])
-        leaders.append({
-            "rank": index,
-            "name": row["name"],
-            "age_label": age_label,
-            "points": row["points"],
-            "is_me": row["user_id"] == user_id,
-        })
+    def to_leaders(rows):
+        result = []
+        for index, row in enumerate(rows, start=1):
+            age_label = next((l for l, v in AGE_GROUPS if v == row["age_group"]), row["age_group"])
+            result.append({
+                "rank": index,
+                "name": row["name"],
+                "age_label": age_label,
+                "points": row["points"],
+                "is_me": row["user_id"] == user_id,
+            })
+        return result
 
-    return web.json_response({"leaders": leaders})
+    return web.json_response({
+        "leaders": to_leaders(global_rows),
+        "age_leaders": to_leaders(age_rows),
+        "age_label": _age_label(age_group),
+    })
 
 
 async def api_learning_path(request: web.Request):

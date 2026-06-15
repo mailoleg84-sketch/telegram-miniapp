@@ -97,6 +97,9 @@ async def init_db() -> None:
         # страж от повторной отправки в один день.
         await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS reminders_enabled BOOLEAN DEFAULT FALSE")
         await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_reminded_at TIMESTAMP")
+        # Чистка: PIN родительского раздела был добавлен и затем убран — снимаем
+        # осиротевшую колонку, если осталась в проде (IF EXISTS = no-op иначе).
+        await conn.execute("ALTER TABLE users DROP COLUMN IF EXISTS parent_pin_hash")
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS words (
                 id           SERIAL PRIMARY KEY,
@@ -849,41 +852,18 @@ async def get_topic_counts(age_group: str):
 
 
 async def get_words_for_age(age_group: str, count: int, topic: str | None = None):
+    """Слова для возраста: при заданной теме — её слова первыми, добор остальными
+    словами того же возраста. Один запрос вместо каскада из 2–3 (меньше round-trip
+    к Neon; WHERE по age_group использует композитный индекс). Семантика прежняя:
+    выборка только в пределах age_group, тема приоритетна. topic в банке не NULL
+    (DEFAULT 'basic'), поэтому (topic = $2) даёт TRUE/FALSE без NULL-сортировки."""
     pool = await _get_pool()
-    rows = []
-    if topic:
-        rows = await pool.fetch("""
-            SELECT * FROM words
-            WHERE age_group = $1 AND topic = $2
-            ORDER BY RANDOM()
-            LIMIT $3
-        """, age_group, topic, count)
-        if len(rows) >= count:
-            return rows
-    rows = list(rows)
-    seen_ids = {row["id"] for row in rows}
-    age_rows = await pool.fetch("""
+    return await pool.fetch("""
         SELECT * FROM words
         WHERE age_group = $1
-        ORDER BY RANDOM()
-        LIMIT $2
-    """, age_group, count)
-    for row in age_rows:
-        if row["id"] not in seen_ids:
-            rows.append(row)
-            seen_ids.add(row["id"])
-        if len(rows) >= count:
-            return rows
-
-    fallback_rows = await pool.fetch("""
-        SELECT * FROM words
-        WHERE id != ALL($1::INTEGER[])
-          AND age_group = $3
-        ORDER BY RANDOM()
-        LIMIT $2
-    """, list(seen_ids), count - len(rows), age_group)
-    rows.extend(fallback_rows)
-    return rows
+        ORDER BY (topic = $2) DESC, RANDOM()
+        LIMIT $3
+    """, age_group, topic, count)
 
 
 async def get_word_options(word_id: int, age_group: str, count: int = 3):
@@ -1481,8 +1461,16 @@ async def add_training_attempt(user_id: int, mode: str, focus: str, correct: boo
     """, user_id, mode, focus, correct)
 
 
-async def get_leaderboard(limit: int = 10):
+async def get_leaderboard(limit: int = 10, age_group: str | None = None):
     pool = await _get_pool()
+    if age_group:
+        return await pool.fetch("""
+            SELECT user_id, name, age_group, points
+            FROM users
+            WHERE age_group = $2
+            ORDER BY points DESC, registered_at ASC
+            LIMIT $1
+        """, limit, age_group)
     return await pool.fetch("""
         SELECT
             user_id,
