@@ -1,6 +1,7 @@
 """Точка входа: запускает aiogram polling и aiohttp-сервер Mini App вместе."""
 import asyncio
 import logging
+import signal
 import sys
 from urllib.parse import urlsplit, urlunsplit
 
@@ -77,9 +78,22 @@ async def main() -> None:
             secret_token=TELEGRAM_WEBHOOK_SECRET or None,
         )
         logging.info("Бот и Mini App запущены в webhook-режиме: %s", webhook_url)
+        # Graceful shutdown: Render при деплое шлёт SIGTERM. По умолчанию он убил
+        # бы процесс мимо finally (без дренажа in-flight). Ставим обработчики,
+        # которые разблокируют stop_event → выполнится cleanup (дренаж до
+        # shutdown_timeout). На Windows add_signal_handler не поддержан → фолбэк
+        # на KeyboardInterrupt (обрабатывается в __main__).
+        stop_event = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(sig, stop_event.set)
+            except (NotImplementedError, AttributeError):
+                pass
         try:
-            await asyncio.Event().wait()
+            await stop_event.wait()
         finally:
+            logging.info("Останавливаемся: дренаж активных запросов и закрытие ресурсов…")
             await runner.cleanup()
             await bot.session.close()
             await close_pool()

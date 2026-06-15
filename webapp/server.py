@@ -1753,8 +1753,12 @@ async def run_webapp(
     dispatcher=None,
     webhook_path: str | None = None,
     webhook_secret: str | None = None,
+    shutdown_timeout: float = 15.0,
 ) -> web.AppRunner:
-    """Запускает aiohttp в текущем event loop. Возвращает runner для cleanup."""
+    """Запускает aiohttp в текущем event loop. Возвращает runner для cleanup.
+    shutdown_timeout: на runner.cleanup() даём in-flight запросам (озвучка,
+    генерация картинок, webhook-апдейт) до N секунд завершиться — в пределах
+    grace-периода Render перед SIGKILL."""
     app = create_app(
         bot=bot,
         dispatcher=dispatcher,
@@ -1763,7 +1767,7 @@ async def run_webapp(
     )
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, WEBAPP_HOST, WEBAPP_PORT)
+    site = web.TCPSite(runner, WEBAPP_HOST, WEBAPP_PORT, shutdown_timeout=shutdown_timeout)
     await site.start()
     log.info("Mini App сервер слушает http://%s:%s", WEBAPP_HOST, WEBAPP_PORT)
     return runner
