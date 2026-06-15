@@ -39,8 +39,9 @@ class TopicReclassifyTests(unittest.TestCase):
         for word, topic in _TOPIC_OVERRIDE.items():
             self.assertIn(topic, DECK_TOPICS, f"{word} -> {topic}")
 
-    def test_word_count_unchanged(self):
-        self.assertEqual(len(LEARNING_WORDS), 5000)
+    def test_word_count(self):
+        # 5000 базовых + 6 целевых слов из topic_plans (см. data/words._TOPIC_PLAN_WORDS).
+        self.assertEqual(len(LEARNING_WORDS), 5006)
 
 
 if __name__ == "__main__":

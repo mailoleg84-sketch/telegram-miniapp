@@ -777,8 +777,10 @@ class OpenAISafetyTests(unittest.TestCase):
             "nude", "naked", "penis", "vagina", "boobs", "tits", "rape", "damn",
         }
 
-        self.assertEqual(len(LEARNING_WORDS), 5000)
-        self.assertEqual(by_age, {"5_7": 1250, "8_10": 1250, "11_13": 1250, "14_18": 1250})
+        # 5000 базовых (single_words_5000) + 6 целевых слов из topic_plans
+        # (doll/sunny/rainy: 5_7; playlist: 11_13; luggage/booking: 14_18).
+        self.assertEqual(len(LEARNING_WORDS), 5006)
+        self.assertEqual(by_age, {"5_7": 1253, "8_10": 1250, "11_13": 1251, "14_18": 1252})
         self.assertFalse(forbidden_words & words)
         self.assertFalse(profanity & words, f"profanity in word bank: {sorted(profanity & words)}")
         self.assertIn("moon", words)

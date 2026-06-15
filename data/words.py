@@ -1651,10 +1651,26 @@ def _reclassify_topics(entries: list[Entry6]) -> list[Entry6]:
     ]
 
 
+# Целевые слова из topic_plans, которых не было в банке (уроки на них не могли
+# дать карточку/перевод/озвучку). Добавляем дополнением к LEARNING_WORDS; источник
+# single_words_5000 и INITIAL_WORDS (=5000) не трогаем. age_group совпадает с
+# секцией topic_plans, где слово используется как целевое (иначе слово не попадёт
+# нужному возрасту из-за фильтра по возрасту).
+_TOPIC_PLAN_WORDS: list[Entry5] = [
+    ("doll", "кукла", "Let's learn the word doll.", "toys", "5_7"),
+    ("sunny", "солнечный", "Let's learn the word sunny.", "nature", "5_7"),
+    ("rainy", "дождливый", "Let's learn the word rainy.", "nature", "5_7"),
+    ("playlist", "плейлист", "Let's learn the word playlist.", "music", "11_13"),
+    ("luggage", "багаж", "Let's learn the word luggage.", "travel", "14_18"),
+    ("booking", "бронирование", "Let's learn the word booking.", "travel", "14_18"),
+]
+
+
 LEARNING_WORDS = tuple(
     _with_examples(
         _reclassify_topics(
             [item for item in _with_transcriptions(list(SINGLE_WORDS_5000)) if _is_single_word(item[0])]
+            + _with_transcriptions(_TOPIC_PLAN_WORDS)
         )
     )
 )
