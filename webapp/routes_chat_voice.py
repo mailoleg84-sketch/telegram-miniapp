@@ -21,6 +21,7 @@ from aiohttp import web
 import database
 from config import (
     AI_DAILY_MESSAGE_LIMIT,
+    OPENAI_DAILY_COST_LIMIT_USD,
     CHAT_HISTORY_LIMIT,
     OPENAI_REALTIME_MODEL,
     OPENAI_REALTIME_SESSION_COST,
@@ -191,6 +192,26 @@ def _ai_limit_message() -> str:
     )
 
 
+async def _ai_budget_exceeded() -> bool:
+    """True, если суммарные расходы OpenAI за сегодня превысили глобальный потолок
+    (OPENAI_DAILY_COST_LIMIT_USD). Защита от runaway-затрат по всем пользователям.
+    Сбой подсчёта не блокирует пользователя (fail-open: учёт ≠ доступность)."""
+    if OPENAI_DAILY_COST_LIMIT_USD <= 0:
+        return False
+    try:
+        total = await database.get_ai_cost_today_total()
+    except Exception:
+        log.exception("Не удалось посчитать суточные расходы OpenAI")
+        return False
+    if total >= OPENAI_DAILY_COST_LIMIT_USD:
+        log.critical(
+            "Достигнут суточный потолок расходов OpenAI: $%.2f >= $%.2f — AI приостановлен",
+            total, OPENAI_DAILY_COST_LIMIT_USD,
+        )
+        return True
+    return False
+
+
 # ---------- API: чат с репетитором ----------
 
 async def api_chat_history(request: web.Request):
@@ -222,7 +243,7 @@ async def api_chat_send(request: web.Request):
         database.get_ai_usage_today(user_id),
         database.get_user(user_id),
     )
-    if _ai_daily_limit_reached(stats):
+    if _ai_daily_limit_reached(stats) or await _ai_budget_exceeded():
         return web.json_response({
             "reply": _ai_limit_message(),
             "usage": _chat_usage_payload(stats),
@@ -328,6 +349,11 @@ async def api_audio_speech(request: web.Request):
                 },
             )
 
+    # Cache miss → новый синтез тратит OpenAI. При превышении суточного бюджета
+    # не запускаем синтез (кэш-озвучка выше уже отдана бесплатно — слова учить можно).
+    if await _ai_budget_exceeded():
+        return web.json_response({"error": _ai_limit_message()}, status=429)
+
     # Cache miss → stream from OpenAI and tee chunks into the disk cache.
     # Pull the first chunk before prepare() so an immediate failure still returns JSON.
     gen = synthesize_speech_stream(text, mode=mode, speed=speed)
@@ -389,7 +415,7 @@ async def _voice_text_turn_payload(user_id: int, text: str) -> dict:
         database.get_ai_usage_today(user_id),
         database.get_user(user_id),
     )
-    if _ai_daily_limit_reached(stats):
+    if _ai_daily_limit_reached(stats) or await _ai_budget_exceeded():
         lesson_state = await _ensure_voice_lesson_state(user_id, user)
         return {
             "text": text,
@@ -571,7 +597,7 @@ async def api_realtime_token(request: web.Request):
     user_id = request["tg_user"]["id"]
     user = await _current_user_or_404(request)
     gate_stats = await database.get_ai_usage_today(user_id)
-    if _ai_daily_limit_reached(gate_stats):
+    if _ai_daily_limit_reached(gate_stats) or await _ai_budget_exceeded():
         return web.json_response({
             "limit_reached": True,
             "error": _ai_limit_message(),

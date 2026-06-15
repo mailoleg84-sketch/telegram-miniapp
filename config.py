@@ -95,6 +95,10 @@ CHAT_RETENTION_PER_USER = int(os.getenv("CHAT_RETENTION_PER_USER", "50"))
 CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "240"))
 VOICE_MAX_TOKENS = int(os.getenv("VOICE_MAX_TOKENS", "400"))
 AI_DAILY_MESSAGE_LIMIT = int(os.getenv("AI_DAILY_MESSAGE_LIMIT", "0"))
+# Глобальный суточный потолок расходов OpenAI по ВСЕМ пользователям (USD). Защита
+# от runaway-затрат (баг/абьюз): при превышении AI-эндпоинты временно отдают
+# «лимит на сегодня». 0 = выключено. Задайте в Render под свой бюджет (напр. 10).
+OPENAI_DAILY_COST_LIMIT_USD = float(os.getenv("OPENAI_DAILY_COST_LIMIT_USD", "0"))
 # Отдельный жёсткий суточный лимит на старт дорогих Realtime-сессий (per-user).
 # Защищает от cost-amplification: ~$0.05 за сессию. 0 = выключено.
 REALTIME_DAILY_SESSION_LIMIT = int(os.getenv("REALTIME_DAILY_SESSION_LIMIT", "40"))

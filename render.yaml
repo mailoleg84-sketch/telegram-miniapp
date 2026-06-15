@@ -24,7 +24,10 @@ services:
       - key: OPENAI_MODEL
         value: gpt-4o-mini # дёшево + быстро (без reasoning-паузы) + грамотно для коротких реплик
       - key: AI_DAILY_MESSAGE_LIMIT
-        value: "0"         # 0 = без дневного лимита сообщений
+        value: "0"         # 0 = без дневного лимита сообщений (per-user)
+      - key: OPENAI_DAILY_COST_LIMIT_USD
+        value: "0"         # ВАЖНО: задайте под свой бюджет (напр. 10) — глобальный
+                           # суточный потолок расходов OpenAI; 0 = выключено (без защиты)
       - key: API_RATE_LIMIT_PER_MINUTE
         value: "120"       # базовая защита API от спама
       - key: AI_RATE_LIMIT_PER_MINUTE

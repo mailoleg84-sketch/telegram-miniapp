@@ -139,6 +139,8 @@ from webapp.routes_training import (
 from webapp.routes_chat_voice import (
     MAX_AUDIO_BYTES,
     _record_ai_cost,
+    _ai_budget_exceeded,
+    _ai_limit_message,
     _word_audio_cache_name,
     _voice_text_turn_payload,
     api_chat_history,
@@ -1036,6 +1038,18 @@ async def api_vocab_image_generate(request: web.Request):
                 "image_review": {},
                 "cached": True,
             })
+
+    # Глобальный потолок расходов: генерация картинки — самый дорогой вызов
+    # (gpt-image-1). Кэш выше уже отдан бесплатно; новую генерацию при превышении
+    # бюджета не запускаем (клиент покажет SVG-фолбэк).
+    if await _ai_budget_exceeded():
+        return web.json_response({
+            "error": _ai_limit_message(),
+            "image_url": fallback_image_url,
+            "fallback_image_url": fallback_image_url,
+            "generation_status": "missing",
+            "image_review": {},
+        }, status=429)
 
     try:
         result = await asyncio.wait_for(generate_vocabulary_image(word_payload, user_id), timeout=75)

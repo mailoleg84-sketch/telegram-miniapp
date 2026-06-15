@@ -1614,6 +1614,18 @@ async def get_ai_usage_today(user_id: int):
     """, user_id)
 
 
+async def get_ai_cost_today_total() -> float:
+    """Суммарные расходы OpenAI по ВСЕМ пользователям за сегодня (USD) —
+    для глобального суточного потолка (защита от runaway-затрат)."""
+    pool = await _get_pool()
+    total = await pool.fetchval("""
+        SELECT COALESCE(SUM(cost_usd), 0)::FLOAT
+        FROM ai_usage
+        WHERE created_at >= DATE_TRUNC('day', NOW())
+    """)
+    return float(total or 0.0)
+
+
 async def get_model_requests_today(user_id: int, model: str) -> int:
     """Сколько раз за сегодня учтён расход по конкретной модели (per-user).
 
