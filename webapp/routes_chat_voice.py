@@ -15,6 +15,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 
 from aiohttp import web
 
@@ -63,6 +64,53 @@ AUDIO_CACHE_DIR = getattr(storage.word_audio_storage, "base_dir", None)
 AUDIO_CACHE_MAX_FILES = int(os.getenv("AUDIO_CACHE_MAX_FILES", "4000"))
 MAX_AUDIO_BYTES = 8 * 1024 * 1024
 MAX_SDP_BYTES = 16 * 1024  # реальный WebRTC SDP < 4 КБ; жёсткий предел тела
+
+
+# ---------- Контент-фильтр озвучки (детская безопасность) ----------
+# Курированный список «никогда не озвучивать»: мат, грубые оскорбления, явный 18+
+# и слёрсы. Намеренно НЕ включаем контекстно-нормальные учебные слова (nightmare,
+# scandal, bar, kiss, date, naked eye, pussy-cat, cock=петух, ass=осёл, chink=щель),
+# чтобы не блокировать легитимные уроки/чат-ответы/примеры. Совпадение — по
+# границам слова (\b), регистронезависимо: «class/assist/grape/method/spice» не
+# ловятся. Применяется в api_audio_speech до синтеза и до кэша.
+_TTS_BLOCKED_WORDS = frozenset({
+    # мат / грубые ругательства
+    "fuck", "fucks", "fucked", "fucker", "fuckers", "fucking", "fuckin",
+    "motherfucker", "motherfucking",
+    "shit", "shits", "shitty", "shitting", "bullshit", "shite",
+    "bitch", "bitches", "bitching", "bitchy",
+    "bastard", "bastards",
+    "asshole", "assholes", "asshat", "arse", "arsehole", "arseholes",
+    "dick", "dickhead", "dickheads", "dickwad",
+    "prick", "pricks", "cunt", "cunts", "twat", "twats",
+    "wank", "wanker", "wankers", "bollocks", "douche", "douchebag",
+    # NB: «piss*» намеренно НЕ блокируем — «pissed» (=разозлился) есть в словаре
+    # как учебное слово 11–13 (data/single_words_5000.py), фильтр сломал бы урок.
+    # явный 18+ / сексуальное
+    "sex", "sexy", "sexual", "sexting",
+    "porn", "porno", "pornography",
+    "nude", "nudes", "penis", "penises", "vagina",
+    "boobs", "boobies", "tits", "titties", "titty",
+    "horny", "orgasm", "orgasms",
+    "masturbate", "masturbating", "masturbation",
+    "blowjob", "blowjobs", "handjob",
+    "whore", "whores", "slut", "sluts", "slutty",
+    "hooker", "hookers", "prostitute", "prostitutes", "prostitution",
+    "rape", "raped", "raping", "rapist", "rapists",
+    "boner", "dildo", "dildos", "cum", "cumming", "jizz",
+    # оскорбления групп / слёрсы
+    "nigger", "niggers", "nigga", "niggas",
+    "faggot", "faggots", "fag", "fags",
+    "retard", "retarded", "retards",
+    "spic", "spics", "kike", "kikes",
+    "wetback", "gook", "tranny", "trannies",
+    # наркотики (однозначные)
+    "cocaine", "heroin", "marijuana", "meth", "methamphetamine",
+})
+_TTS_BLOCKED_RE = re.compile(
+    r"\b(?:" + "|".join(re.escape(w) for w in sorted(_TTS_BLOCKED_WORDS)) + r")\b",
+    re.IGNORECASE,
+)
 
 
 # ---------- Кэш озвучки и валидация аудио ----------
@@ -332,6 +380,14 @@ async def api_audio_speech(request: web.Request):
         return web.json_response({"error": "Нет текста для озвучки"}, status=400)
     if len(text) > 1200:
         text = text[:1200]
+
+    # Контент-фильтр (детская безопасность): эндпоинт авторизован, но пользователь
+    # может слать произвольный текст напрямую (минуя UI). Не синтезируем мат/
+    # оскорбления/явный 18+. Проверка ДО кэша — чтобы и кэш-хит недопустимого
+    # текста не отдавался. Логируем без самого текста (PII/мат в логи не пишем).
+    if _TTS_BLOCKED_RE.search(text):
+        log.warning("TTS-фильтр: отклонён текст с недопустимым словом (len=%d, mode=%s)", len(text), mode)
+        return web.json_response({"error": "Текст содержит недопустимое слово."}, status=400)
 
     cache_name = _word_audio_cache_name(text, mode, speed)
     if cache_name:
