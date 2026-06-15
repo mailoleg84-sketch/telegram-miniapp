@@ -46,8 +46,13 @@ async def _get_pool() -> asyncpg.Pool:
             parts.fragment,
         ))
         ssl_arg = ssl.create_default_context() if need_ssl else None
+        # command_timeout: предохранитель от «зависших» запросов (иначе один
+        # залипший держит соединение навсегда и исчерпывает пул из 5). 60с не
+        # задевает обычные запросы; тяжёлый сид (_seed_words) переопределяет
+        # таймаут локально (timeout=300), чтобы массовый UPSERT не падал.
         _pool = await asyncpg.create_pool(dsn=dsn, ssl=ssl_arg,
-                                          min_size=1, max_size=5)
+                                          min_size=1, max_size=5,
+                                          command_timeout=60.0)
     return _pool
 
 
@@ -462,6 +467,7 @@ async def _seed_words(conn) -> None:
             generation_status = EXCLUDED.generation_status
         """,
         seed_rows,
+        timeout=300,  # массовый UPSERT ~5000 строк — выше пулового command_timeout
     )
     await conn.execute(
         """
