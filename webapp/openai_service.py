@@ -409,6 +409,18 @@ def _last_user_text(history: list[dict]) -> str:
     return ""
 
 
+def _recent_user_texts(history: list[dict], limit: int = 3) -> list[str]:
+    """Последние ``limit`` реплик пользователя — для guard'а против инъекции,
+    разбитой по нескольким ходам (самая свежая первой)."""
+    out: list[str] = []
+    for message in reversed(history):
+        if message.get("role") == "user":
+            out.append(str(message.get("content") or ""))
+            if len(out) >= limit:
+                break
+    return out
+
+
 def _last_language(text: str) -> str:
     if _has_cyrillic(text):
         return "russian"
@@ -575,9 +587,11 @@ def _sanitize_history_for_model(history: list[dict]) -> list[dict]:
     ]
 
 
-def _safety_guard_reply(last_user_text: str) -> str | None:
-    text = " ".join((last_user_text or "").split())
-    normalized = text.lower()
+def _secret_or_prompt_reply(text: str) -> str | None:
+    """Структурные атаки: выпытать ключи/секреты или системный промпт. Вынесено
+    отдельно, чтобы проверять и текущее сообщение, и окно последних реплик
+    (инъекция, разбитая по нескольким ходам)."""
+    normalized = " ".join((text or "").split()).lower()
     if not normalized:
         return None
     squeezed = _guard_squeeze(text)
@@ -589,6 +603,11 @@ def _safety_guard_reply(last_user_text: str) -> str | None:
         or "token" in normalized and "openai" in normalized
         or any(marker in squeezed for marker in _GUARD_SECRET_MARKERS)
     )
+    if wants_secret:
+        return (
+            "Я не могу показывать или искать API-ключи и секреты. "
+            "Такие вещи должен смотреть только взрослый владелец аккаунта. Давай вернемся к английскому."
+        )
     wants_prompt = (
         "system prompt" in normalized
         or "системн" in normalized and "пром" in normalized
@@ -597,40 +616,62 @@ def _safety_guard_reply(last_user_text: str) -> str | None:
         or bool(_INJECTION_TOKEN_RE.search(text))
         or any(marker in squeezed for marker in _GUARD_PROMPT_MARKERS)
     )
-    shares_personal_data = (
-        "мой адрес" in normalized
-        or "мой телефон" in normalized
-        or "мой номер" in normalized
-        or "my address" in normalized
-        or "my phone" in normalized
-        or re.search(r"\+?\d[\d\s().-]{7,}\d", normalized)
-    )
-    asks_adult_topic = (
-        "взрослые темы" in normalized
-        or "adult topic" in normalized
-        or "18+" in normalized
-    )
-
-    if shares_personal_data:
-        return (
-            "Не отправляй адрес, телефон или личные данные в чат. "
-            "Если это важно, покажи сообщение родителю. Давай лучше потренируем безопасную фразу: I need help — мне нужна помощь."
-        )
-    if wants_secret:
-        return (
-            "Я не могу показывать или искать API-ключи и секреты. "
-            "Такие вещи должен смотреть только взрослый владелец аккаунта. Давай вернемся к английскому."
-        )
     if wants_prompt:
         return (
             "Я не раскрываю скрытые инструкции. "
             "Я здесь, чтобы помогать с английским. Выбери: игра или короткая фраза?"
         )
-    if asks_adult_topic:
-        return (
-            "Эту тему мы не обсуждаем. "
-            "Давай выберем безопасную тему для английского: игры, школа или еда?"
+    return None
+
+
+def _safety_guard_reply(last_user_text: str, recent_user_texts: list[str] | None = None) -> str | None:
+    text = " ".join((last_user_text or "").split())
+    normalized = text.lower()
+
+    # PII — только по ТЕКУЩЕМУ сообщению: телефон/адрес из старой реплики не
+    # должен блокировать новое безобидное сообщение.
+    if normalized:
+        shares_personal_data = (
+            "мой адрес" in normalized
+            or "мой телефон" in normalized
+            or "мой номер" in normalized
+            or "my address" in normalized
+            or "my phone" in normalized
+            or re.search(r"\+?\d[\d\s().-]{7,}\d", normalized)
         )
+        if shares_personal_data:
+            return (
+                "Не отправляй адрес, телефон или личные данные в чат. "
+                "Если это важно, покажи сообщение родителю. Давай лучше потренируем безопасную фразу: I need help — мне нужна помощь."
+            )
+
+    # Секреты/системный промпт — по текущему сообщению И по окну последних реплик
+    # (ловит инъекцию, разбитую на несколько ходов). Маркеры структурные
+    # (jailbreak/ignoreprevious/apikey…), в обычном детском чате не встречаются —
+    # ложных срабатываний практически нет.
+    windows = [text]
+    if recent_user_texts:
+        # Склейка в ХРОНОЛОГИЧЕСКОМ порядке (recent_user_texts идёт свежее-первым),
+        # чтобы разбитая фраза «system»→«prompt» сложилась в «system prompt».
+        joined = " ".join(t for t in reversed(recent_user_texts) if t)
+        if joined:
+            windows.append(joined)
+    for window in windows:
+        reply = _secret_or_prompt_reply(window)
+        if reply:
+            return reply
+
+    if normalized:
+        asks_adult_topic = (
+            "взрослые темы" in normalized
+            or "adult topic" in normalized
+            or "18+" in normalized
+        )
+        if asks_adult_topic:
+            return (
+                "Эту тему мы не обсуждаем. "
+                "Давай выберем безопасную тему для английского: игры, школа или еда?"
+            )
     return None
 
 
@@ -1420,7 +1461,7 @@ async def chat_reply(
         max_output_tokens = VOICE_MAX_TOKENS if mode == "voice" else CHAT_MAX_TOKENS
         model_history = _sanitize_history_for_model(_clean_history_for_mode(history, mode))
         runtime_instructions = _runtime_instructions(user_name, age_label, prompt_context, last_user_text)
-        safety_reply = _safety_guard_reply(last_user_text)
+        safety_reply = _safety_guard_reply(last_user_text, _recent_user_texts(history, 3))
         if safety_reply:
             if mode == "voice":
                 safety_reply = _finalize_voice_reply(safety_reply, last_user_text)
