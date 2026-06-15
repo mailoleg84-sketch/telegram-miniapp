@@ -388,6 +388,29 @@ WORD_EMOJI = {
     # прочее
     "arrow": "➡️", "beans": "🫘", "cabin": "🛖", "horn": "📯",
     "photograph": "🖼️", "lip": "👄",
+    # — расширение под 11–18 (image-тип был почти мёртв) + кросс-возрастные
+    #   пропуски конкретных слов, найденные тем же проходом. Каждый эмодзи сверен
+    #   с переводом из банка; глифы различимы (без коллизий с существующими) —
+    # роли/профессии (различимый глиф)
+    "officer": "👮", "detective": "🕵️", "scientist": "🧑‍🔬", "engineer": "👷",
+    "developer": "🧑‍💻", "king": "🤴", "queen": "👸",
+    # объекты / техника / учёба
+    "newspaper": "🗞️", "calendar": "📅", "telescope": "🔭", "microscope": "🔬",
+    "satellite": "🛰️", "battery": "🔋", "exam": "📝", "mirror": "🪞", "brush": "🖌️",
+    "hammer": "🔨", "gear": "⚙️", "chain": "⛓️", "shield": "🛡️", "flag": "🚩",
+    "bell": "🔔", "lock": "🔒", "coin": "🪙", "dollar": "💵", "diamond": "💎",
+    "crown": "👑", "ring": "💍", "medal": "🏅", "trophy": "🏆", "wheel": "🛞",
+    # еда
+    "cherry": "🍒", "chocolate": "🍫", "pepper": "🌶️", "salt": "🧂",
+    # животные
+    "dragon": "🐉", "rooster": "🐓", "bat": "🦇",
+    # природа / места
+    "factory": "🏭", "galaxy": "🌌", "bridge": "🌉", "castle": "🏰", "tower": "🗼",
+    "island": "🏝️", "desert": "🏜️", "planet": "🪐", "stadium": "🏟️", "bank": "🏦",
+    # спорт
+    "baseball": "⚾", "boxing": "🥊", "golf": "⛳", "fishing": "🎣",
+    # тело / здоровье / прочее
+    "brain": "🧠", "bone": "🦴", "alien": "👽",
 }
 
 
