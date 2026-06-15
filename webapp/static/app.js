@@ -4293,6 +4293,7 @@ async function renderParentReport() {
   try {
     const data = await api("/api/parent/report", "GET");
     const r = data.report;
+    const w = data.week || {};
     const d = data.dictionary || {};
     const recommendations = data.recommendations || [];
     const problemWords = data.problem_words || [];
@@ -4304,6 +4305,16 @@ async function renderParentReport() {
           <p class="hint">${esc(ageYearsLabel(data.child.child_age))} · Уровень - ${esc(data.child.level_label || "Beginner / A1")}</p>
         </div>
         <div class="card">
+          <h2>За 7 дней</h2>
+          <div class="stat-row"><span>Занимался дней</span><b>${w.active_days || 0} из ${w.days || 7}</b></div>
+          <div class="stat-row"><span>Уроков пройдено</span><b>${w.completed_lessons || 0}</b></div>
+          <div class="stat-row"><span>Тестов по словам</span><b>${w.completed_word_tests || 0}</b></div>
+          <div class="stat-row"><span>Средний результат</span><b>${w.avg_word_test_score || 0}%</b></div>
+          <div class="stat-row"><span>Игр пройдено</span><b>${w.completed_games || 0}</b></div>
+          <div class="stat-row"><span>Слов отработано</span><b>${w.words_practiced || 0}</b></div>
+        </div>
+        <div class="card">
+          <h2>За всё время</h2>
           <div class="stat-row"><span>Уроков пройдено</span><b>${r.completed_lessons}</b></div>
           <div class="stat-row"><span>Слов в обучении</span><b>${r.words_learned}</b></div>
           <div class="stat-row"><span>Тестов по словам</span><b>${r.completed_word_tests}</b></div>

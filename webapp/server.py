@@ -879,6 +879,7 @@ async def api_parent_report(request: web.Request):
     user_id = request["tg_user"]["id"]
     user = await _current_user_or_404(request)
     report = await database.get_parent_report(user_id)
+    week = await database.get_parent_report_week(user_id, 7)
     stats = await database.get_user_stats(user_id)
     dictionary_summary = await database.get_dictionary_summary(user_id)
     problem_word_rows = await database.get_problem_words(user_id, limit=6)
@@ -905,6 +906,16 @@ async def api_parent_report(request: web.Request):
             "points": user["points"],
         },
         "report": report_payload,
+        "week": {
+            "days": 7,
+            "active_days": int(week["active_days"]) if week else 0,
+            "completed_lessons": int(week["completed_lessons"]) if week else 0,
+            "completed_word_tests": int(week["completed_word_tests"]) if week else 0,
+            "avg_word_test_score": int(week["avg_word_test_score"]) if week else 0,
+            "completed_games": int(week["completed_games"]) if week else 0,
+            "avg_game_score": int(week["avg_game_score"]) if week else 0,
+            "words_practiced": int(week["words_practiced"]) if week else 0,
+        },
         "dictionary": {
             "total_words": int(dictionary_summary["total_words"] if dictionary_summary else 0),
             "mastered_words": int(dictionary_summary["mastered_words"] if dictionary_summary else 0),

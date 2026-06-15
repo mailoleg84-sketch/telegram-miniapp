@@ -1300,6 +1300,54 @@ async def get_parent_report(user_id: int):
     """, user_id)
 
 
+async def get_parent_report_week(user_id: int, days: int = 7):
+    """Срез активности за последние ``days`` дней (по умолчанию неделя) — для
+    недельного отчёта родителю. Окно по дате; all-time-отчёт не трогаем.
+    Все метрики — скалярные подзапросы, чтобы вернуть одну строку."""
+    pool = await _get_pool()
+    return await pool.fetchrow("""
+        SELECT
+            (SELECT COUNT(*) FROM daily_lessons
+                WHERE user_id = $1 AND completed = TRUE
+                  AND lesson_date >= CURRENT_DATE - ($2::int - 1))::INT AS completed_lessons,
+            (SELECT COUNT(*) FROM vocabulary_sessions
+                WHERE user_id = $1 AND completed = TRUE
+                  AND created_at >= CURRENT_DATE - ($2::int - 1))::INT AS completed_word_tests,
+            (SELECT COALESCE(ROUND(AVG(
+                        CASE WHEN (correct_count + wrong_count) > 0
+                             THEN correct_count::NUMERIC / (correct_count + wrong_count) * 100
+                             ELSE NULL END)), 0)
+                FROM vocabulary_sessions
+                WHERE user_id = $1 AND completed = TRUE
+                  AND created_at >= CURRENT_DATE - ($2::int - 1))::INT AS avg_word_test_score,
+            (SELECT COUNT(*) FROM game_sessions
+                WHERE user_id = $1 AND completed = TRUE
+                  AND created_at >= CURRENT_DATE - ($2::int - 1))::INT AS completed_games,
+            (SELECT COALESCE(ROUND(AVG(
+                        CASE WHEN (correct_count + wrong_count) > 0
+                             THEN correct_count::NUMERIC / (correct_count + wrong_count) * 100
+                             ELSE NULL END)), 0)
+                FROM game_sessions
+                WHERE user_id = $1 AND completed = TRUE
+                  AND created_at >= CURRENT_DATE - ($2::int - 1))::INT AS avg_game_score,
+            (SELECT COUNT(DISTINCT word_id) FROM user_progress
+                WHERE user_id = $1
+                  AND last_seen >= CURRENT_DATE - ($2::int - 1))::INT AS words_practiced,
+            (SELECT COUNT(*) FROM (
+                SELECT lesson_date AS d FROM daily_lessons
+                    WHERE user_id = $1 AND lesson_date >= CURRENT_DATE - ($2::int - 1)
+                UNION SELECT created_at::date FROM vocabulary_sessions
+                    WHERE user_id = $1 AND created_at >= CURRENT_DATE - ($2::int - 1)
+                UNION SELECT created_at::date FROM game_sessions
+                    WHERE user_id = $1 AND created_at >= CURRENT_DATE - ($2::int - 1)
+                UNION SELECT created_at::date FROM training_attempts
+                    WHERE user_id = $1 AND created_at >= CURRENT_DATE - ($2::int - 1)
+                UNION SELECT created_at::date FROM conversations
+                    WHERE user_id = $1 AND created_at >= CURRENT_DATE - ($2::int - 1)
+            ) days_active)::INT AS active_days
+    """, user_id, int(days))
+
+
 async def get_activity_history(user_id: int, limit: int = 30):
     pool = await _get_pool()
     return await pool.fetch("""
