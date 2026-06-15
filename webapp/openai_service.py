@@ -421,6 +421,15 @@ def _recent_user_texts(history: list[dict], limit: int = 3) -> list[str]:
     return out
 
 
+def _safe_prompt_name(name: str) -> str:
+    """Имя ребёнка уходит в КАЖДЫЙ промпт OpenAI — отдаём минимум (COPPA):
+    схлопываем пробелы/переводы строк, убираем спецсимволы (в т.ч. защита от
+    инъекции через поле имени) и режем до 20 символов."""
+    cleaned = " ".join(str(name or "").split())
+    cleaned = re.sub(r"[^\w\s'-]", "", cleaned, flags=re.UNICODE)
+    return cleaned.strip()[:20]
+
+
 def _last_language(text: str) -> str:
     if _has_cyrillic(text):
         return "russian"
@@ -989,6 +998,7 @@ def build_voice_realtime_instructions(
     prompt_context: dict | None = None,
 ) -> str:
     """Builds a structured, age-adaptive prompt for native speech-to-speech Realtime sessions."""
+    user_name = _safe_prompt_name(user_name)
     context = dict(prompt_context or {})
     age_group = _normalize_realtime_age_group(context.get("age_group", "default"), context.get("age"))
     name = user_name or "друг"
@@ -1090,6 +1100,7 @@ def build_realtime_session_config(
     minimal: bool = False,
 ) -> dict:
     """Session payload for OpenAI Realtime WebRTC — fully age-adaptive."""
+    user_name = _safe_prompt_name(user_name)
     profile = _get_realtime_profile(prompt_context)
     session_config = {
         "type": "realtime",
@@ -1448,6 +1459,7 @@ async def chat_reply(
     history: список сообщений вида [{"role": "user"/"assistant", "content": "..."}].
     Возвращает текст ответа репетитора.
     """
+    user_name = _safe_prompt_name(user_name)
     if _client is None:
         return ChatReply(
             text=("⚠️ Репетитор пока не настроен: не задан ключ OPENAI_API_KEY. "
