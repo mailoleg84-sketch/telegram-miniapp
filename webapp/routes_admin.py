@@ -61,6 +61,7 @@ def _admin_overview_payload(overview: dict) -> dict:
     words = overview.get("words")
     learning = overview.get("learning")
     ai_today = overview.get("ai_today")
+    ai_week = overview.get("ai_week")
     openai_status = openai_config_status()
     admin_ids_count = len(ADMIN_USER_IDS)
     failed_images = _safe_int(words, "failed_images")
@@ -125,6 +126,11 @@ def _admin_overview_payload(overview: dict) -> dict:
             "output_tokens": _safe_int(ai_today, "output_tokens"),
             "total_tokens": _safe_int(ai_today, "total_tokens"),
             "cost_usd": round(_safe_float(ai_today, "cost_usd"), 6),
+        },
+        "ai_week": {
+            "requests": _safe_int(ai_week, "requests"),
+            "total_tokens": _safe_int(ai_week, "total_tokens"),
+            "cost_usd": round(_safe_float(ai_week, "cost_usd"), 6),
         },
         "cache": {
             "generated_images": _file_cache_summary(_GENERATED_VOCAB_DIR) if _GENERATED_VOCAB_DIR else {"backend": "r2"},

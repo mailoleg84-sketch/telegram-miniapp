@@ -4599,6 +4599,7 @@ async function renderAdminPanel() {
     const learning = data.learning || {};
     const words = data.words || {};
     const ai = data.ai_today || {};
+    const aiWeek = data.ai_week || {};
     const cache = data.cache || {};
     const config = data.config || {};
     const openai = config.openai || {};
@@ -4631,6 +4632,7 @@ async function renderAdminPanel() {
           ${adminStatHtml("Ошибки картинок", formatAdminNumber(words.failed_images), `ожидают: ${formatAdminNumber(words.missing_images)}`)}
           ${adminStatHtml("AI-запросы сегодня", formatAdminNumber(ai.requests), `${formatAdminNumber(ai.total_tokens)} токенов`)}
           ${adminStatHtml("Расход сегодня", formatAdminMoney(ai.cost_usd), "оценка по сохраненным usage")}
+          ${adminStatHtml("Расход за 7 дней", formatAdminMoney(aiWeek.cost_usd), `${formatAdminNumber(aiWeek.requests)} запросов`)}
         </div>
 
         <div class="admin-chart-grid">

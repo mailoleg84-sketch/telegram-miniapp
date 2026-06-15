@@ -694,12 +694,21 @@ async def get_admin_overview() -> dict:
             FROM ai_usage
             WHERE created_at >= DATE_TRUNC('day', NOW())
         """)
+        ai_week = await conn.fetchrow("""
+            SELECT
+                COUNT(*)::INT AS requests,
+                COALESCE(SUM(total_tokens), 0)::INT AS total_tokens,
+                COALESCE(SUM(cost_usd), 0)::FLOAT AS cost_usd
+            FROM ai_usage
+            WHERE created_at >= DATE_TRUNC('day', NOW()) - INTERVAL '6 days'
+        """)
     return {
         "users": users,
         "active_today": int(active_today or 0),
         "words": words,
         "learning": learning,
         "ai_today": ai_today,
+        "ai_week": ai_week,
     }
 
 

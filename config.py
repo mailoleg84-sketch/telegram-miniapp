@@ -47,7 +47,7 @@ REDIS_URL = _env("REDIS_URL", "")
 
 # --- Mini App (Telegram WebApp) ---
 WEBAPP_URL = _env("WEBAPP_URL", "https://telegram-miniapp-1-r0sj.onrender.com")
-APP_VERSION = _env("APP_VERSION", "20260615-kids-v147")
+APP_VERSION = _env("APP_VERSION", "20260615-kids-v148")
 
 # --- Напоминания ботом (ежедневная рассылка, opt-in) ---
 # Триггерится внешним cron (GitHub Actions) -> POST /internal/send-reminders с
