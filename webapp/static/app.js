@@ -1098,6 +1098,7 @@ function renderMenu() {
   setBack(null);
   tg.MainButton.hide();
   ensureBottomNav("learn");
+  if (!state.me?.user) { renderError("Не удалось загрузить профиль"); return; }
   const u = state.me.user;
   app.innerHTML = `
     <div class="screen dashboard">
@@ -1164,6 +1165,7 @@ function renderLearningHub() {
   setBack(renderMenu);
   tg.MainButton.hide();
   ensureBottomNav("learn");
+  if (!state.me?.user) { renderError("Не удалось загрузить профиль"); return; }
   const u = state.me.user;
   app.innerHTML = `
     <div class="screen">
@@ -1255,6 +1257,7 @@ function renderParentZone() {
   setBack(renderMenu);
   tg.MainButton.hide();
   ensureBottomNav("parent");
+  if (!state.me?.user) { renderError("Не удалось загрузить профиль"); return; }
   const u = state.me.user;
   app.innerHTML = `
     <div class="screen">
@@ -1501,6 +1504,7 @@ async function renderVocabStart() {
             <small>случайный набор</small>
           </button>
         </div>
+        ${topics.length === 0 ? '<p class="hint mt-12">Темы появятся, когда наберётся больше слов. Пока выбери «Любые слова».</p>' : ''}
       </div>`;
     document.querySelectorAll(".vocab-topic").forEach(btn => {
       btn.onclick = () => { haptic(); renderVocabWords(btn.dataset.topic || null); };
@@ -1517,6 +1521,7 @@ async function renderVocabWords(topic) {
   try {
     const data = await api("/api/vocab/start", "POST", topic ? { topic } : {});
     state.vocab = data;
+    state.vocabTopic = topic;
     app.innerHTML = `
       <div class="screen">
         <h1>Новые слова</h1>
@@ -1535,7 +1540,7 @@ async function renderVocabWords(topic) {
 }
 
 async function renderVocabQuiz() {
-  setBack(renderVocabStart);
+  setBack(() => renderVocabWords(state.vocabTopic ?? null));
   loading();
   try {
     state.quiz = await api("/api/vocab/quiz", "POST", { session_id: state.vocab.session_id });
@@ -1698,6 +1703,7 @@ function finishVocabRound() {
 }
 
 async function finishVocabQuiz() {
+  setBack(renderLearningHub);
   loading();
   try {
     const result = await api("/api/vocab/finish", "POST", {
@@ -1806,6 +1812,7 @@ function renderWordHuntRound(index) {
 }
 
 async function finishWordHunt() {
+  if (!state.game?.data) { renderGamesMenu(); return; }
   setBack(renderGamesMenu);
   loading();
   try {
@@ -2077,7 +2084,7 @@ function renderChoiceTrainingTask(task, session) {
       ${task.review_empty ? `<div class="card"><p class="hint">Ошибок для повторения пока нет, поэтому даю обычное слово.</p></div>` : ""}
       ${wordStudyCard(task, { compact: true, showTranslation: false, showLearningDetails: false })}
       <div class="training-options">
-        ${task.options.map(option => `
+        ${(task.options || []).map(option => `
           <button class="btn btn-secondary choice-answer" data-id="${option.id}">${esc(option.translation)}</button>
         `).join("")}
       </div>
@@ -2221,6 +2228,7 @@ function finishTrainingRound() {
 }
 
 function renderTrainingSessionComplete(session) {
+  setBack(() => renderLearningHub());
   const total = session.totalCorrect + session.totalWrong;
   const score = total ? Math.round(session.totalCorrect / total * 100) : 0;
   app.innerHTML = `
@@ -2295,8 +2303,10 @@ async function renderDailyLesson() {
           </div>
         </div>
         <button class="btn" id="dailyStart">${status.completed ? "Потренироваться еще" : "Начать с новых слов"}</button>
+        <button class="btn btn-secondary" id="dailyHome">К учёбе</button>
       </div>`;
     document.getElementById("dailyStart").onclick = () => { haptic(); renderDailyWords(); };
+    document.getElementById("dailyHome").onclick = () => { haptic(); renderLearningHub(); };
   } catch (e) {
     renderError(e.message);
   }
@@ -2310,7 +2320,7 @@ async function renderDailyWords() {
     state.dailyVocab = data;
     state.dailyQuiz = null;
     state.dailyAnswers = [];
-    const words = data.words.slice(0, Math.min(4, data.words.length));
+    const words = (data.words || []).slice(0, 4);
     app.innerHTML = `
       <div class="screen">
         <h1>Урок: новые слова</h1>
@@ -2344,7 +2354,7 @@ async function renderDailyQuiz() {
   loading();
   try {
     state.dailyQuiz = await api("/api/vocab/quiz", "POST", { session_id: state.dailyVocab.session_id });
-    state.dailyQuiz.questions = state.dailyQuiz.questions.slice(0, Math.min(3, state.dailyQuiz.questions.length));
+    state.dailyQuiz.questions = (state.dailyQuiz.questions || []).slice(0, 3);
     state.dailyAnswers = [];
     renderDailyQuizQuestion(0);
   } catch (e) {
@@ -3873,7 +3883,7 @@ async function renderChat() {
           updateVoiceModeUi("Повтори, пожалуйста", "repeat");
           if (!wasAuto && !shortVoiceHintShown) {
             shortVoiceHintShown = true;
-            bubble("assistant", "Я не успел расслышать. Нажми микрофон и скажи фразу чуть дольше.");
+            bubble("assistant", "Я не успела расслышать. Нажми микрофон и скажи фразу чуть дольше.");
           }
           setFace("correcting");
           if (wasAuto) scheduleVoiceListen(700);
@@ -4228,6 +4238,9 @@ async function renderChat() {
       renderMenu();
     });
     document.getElementById("reset").onclick = async () => {
+      const resetBtn = document.getElementById("reset");
+      if (resetBtn.disabled) return;
+      resetBtn.disabled = true;
       cleanupChat();
       await api("/api/chat/reset", "POST");
       renderChat();
@@ -4379,9 +4392,9 @@ async function renderParentReport() {
             `).join("")}
           </div>
         ` : ""}
-        <button class="btn btn-secondary" id="reportHome">К прогрессу</button>
+        <button class="btn btn-secondary" id="reportHome">← Назад</button>
       </div>`;
-    document.getElementById("reportHome").onclick = () => { haptic(); renderProgressHub(); };
+    document.getElementById("reportHome").onclick = () => { haptic(); renderParentCabinet(); };
   } catch (e) {
     renderError(e.message);
   }
@@ -4460,9 +4473,9 @@ async function renderActivityHistory() {
             <p class="hint">Заверши урок, тренировку, тест или игру — результат появится здесь.</p>
           </div>
         `}
-        <button class="btn btn-secondary" id="historyHome">К прогрессу</button>
+        <button class="btn btn-secondary" id="historyHome">← Назад</button>
       </div>`;
-    document.getElementById("historyHome").onclick = () => { haptic(); renderProgressHub(); };
+    document.getElementById("historyHome").onclick = () => { haptic(); renderParentCabinet(); };
   } catch (e) {
     renderError(e.message);
   }
@@ -4900,6 +4913,8 @@ async function renderAdminUserDetail(userId) {
       haptic("warning");
       const ok = await confirmAction(`Обнулить учебные результаты ученика ${u.child_name || userId}?`);
       if (!ok) return;
+      const resetBtn = document.getElementById("adminDetailReset");
+      if (resetBtn) resetBtn.disabled = true;
       try {
         await api("/api/admin/users/reset-results", "POST", {
           user_id: Number(u.id || userId),
@@ -4909,6 +4924,7 @@ async function renderAdminUserDetail(userId) {
         renderAdminUserDetail(userId);
       } catch (e) {
         tg.showAlert(e.message);
+        if (resetBtn) resetBtn.disabled = false;
       }
     };
   } catch (e) {
