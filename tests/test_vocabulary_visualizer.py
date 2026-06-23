@@ -207,6 +207,107 @@ class VocabularyVisualizerTests(unittest.TestCase):
         self.assertEqual(witness["visual_type"], "situation")
         self.assertTrue(witness["needs_review"])
 
+    def test_card_archetype_layer_is_present_and_mapped(self):
+        """build_vocabulary_visual отдаёт учебный слой и относит слова к понятным
+        типам карточек (предмет / действие / контраст / эмоция / схема / …)."""
+        expected_archetype = {
+            "run": "action_scene_card",
+            "jump": "action_scene_card",
+            "eat": "action_scene_card",
+            "big": "contrast_card",
+            "small": "contrast_card",
+            "clean": "contrast_card",
+            "dirty": "contrast_card",
+            "happy": "emotion_scene_card",
+            "sad": "emotion_scene_card",
+            "worried": "context_scene_card",
+            "proud": "context_scene_card",
+            "in": "position_diagram_card",
+            "on": "position_diagram_card",
+            "under": "position_diagram_card",
+            "behind": "position_diagram_card",
+            "between": "position_diagram_card",
+            "because": "cause_effect_card",
+            "although": "two_panel_card",
+            "however": "two_panel_card",
+            "before": "two_panel_card",
+            "after": "two_panel_card",
+            "while": "two_panel_card",
+            "should": "grammar_context_card",
+            "must": "grammar_context_card",
+            "would": "grammar_context_card",
+            "can": "grammar_context_card",
+        }
+        for word, archetype in expected_archetype.items():
+            with self.subTest(word=word):
+                visual = build_vocabulary_visual(word, "перевод", "", "basic", "8_10")
+                self.assertEqual(visual["card_archetype"], archetype)
+                for key in (
+                    "card_archetype",
+                    "question_archetype",
+                    "visual_confidence_label",
+                    "visual_learning_note",
+                ):
+                    self.assertIn(key, visual)
+                    self.assertTrue(visual[key], key)
+
+    def test_emotion_words_are_emotion_or_context_scene(self):
+        """happy/sad/worried/proud — эмоция или контекстная сцена (что безопаснее)."""
+        for word in ("happy", "sad", "worried", "proud"):
+            with self.subTest(word=word):
+                visual = build_vocabulary_visual(word, "перевод", "", "basic", "8_10")
+                self.assertIn(visual["card_archetype"], {"emotion_scene_card", "context_scene_card"})
+
+    def test_function_and_grammar_words_use_complete_sentence_question(self):
+        """the/a/an/of/to и модальные: главное задание — вставить слово в пример,
+        а НЕ image-вопрос «что на картинке»."""
+        for word in ("the", "a", "an", "of", "to", "should", "must", "would", "can"):
+            with self.subTest(word=word):
+                visual = build_vocabulary_visual(word, "перевод", "", "basic", "8_10")
+                self.assertIn(visual["card_archetype"], {"context_only_card", "grammar_context_card"})
+                self.assertEqual(visual["question_archetype"], "complete_the_sentence")
+
+    def test_question_archetypes_match_card_type(self):
+        cases = {
+            "apple": ("object_card", "what_is_it"),
+            "run": ("action_scene_card", "what_is_the_action"),
+            "big": ("contrast_card", "choose_the_description"),
+            "happy": ("emotion_scene_card", "what_feeling"),
+            "in": ("position_diagram_card", "where_is_it"),
+            "because": ("cause_effect_card", "why_or_result"),
+            "although": ("two_panel_card", "connect_the_ideas"),
+        }
+        for word, (archetype, question) in cases.items():
+            with self.subTest(word=word):
+                visual = build_vocabulary_visual(word, "перевод", "", "basic", "8_10")
+                self.assertEqual(visual["card_archetype"], archetype)
+                self.assertEqual(visual["question_archetype"], question)
+
+    def test_visual_confidence_labels_reflect_picture_strength(self):
+        cases = {
+            "apple": "high",
+            "run": "high",
+            "big": "high",
+            "in": "high",
+            "happy": "medium",
+            "brave": "medium",
+            "because": "medium",
+            "should": "low",
+            "although": "low",
+            "the": "low",
+        }
+        for word, label in cases.items():
+            with self.subTest(word=word):
+                visual = build_vocabulary_visual(word, "перевод", "", "basic", "8_10")
+                self.assertEqual(visual["visual_confidence_label"], label)
+
+    def test_learning_notes_are_friendly_not_technical(self):
+        for word in ("apple", "run", "big", "happy", "in", "because", "although", "should", "the"):
+            with self.subTest(word=word):
+                note = build_vocabulary_visual(word, "перевод", "", "basic", "8_10")["visual_learning_note"]
+                self.assertTrue(note)
+                self.assertNotIn("Условная сцена", note)
+
 
 if __name__ == "__main__":
     unittest.main()

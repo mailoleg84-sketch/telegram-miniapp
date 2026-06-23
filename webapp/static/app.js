@@ -691,7 +691,12 @@ function wordStudyCard(wordData, options = {}) {
   const showLearningDetails = options.showLearningDetails !== false;
   const example = wordData.example_sentence || wordData.example || "";
   const showRussianHint = wordData.show_russian_hint !== false && wordData.russian_hint;
+  const confidenceLabel = wordData.visual_confidence_label || "";
   const conditionalVisual = wordData.image_needs_review || wordData.needs_review || Number(wordData.image_confidence || 1) < 0.7;
+  // Мягкая подсказка по типу карточки (предмет / действие / контраст / ситуация / …)
+  // вместо прежней технической фразы. Для старого кэша без поля — дружелюбный фолбэк.
+  const learningNote = wordData.visual_learning_note
+    || (conditionalVisual ? "Картинка помогает запомнить ситуацию. Смотри пример." : "");
   return `
     <div class="card word-card ${options.compact ? "compact" : ""}">
       <div class="word-card-top">
@@ -699,7 +704,7 @@ function wordStudyCard(wordData, options = {}) {
         ${pronunciationButtonHtml(wordData.word)}
       </div>
       ${options.showImage ? wordImageHtml(wordData) : ""}
-      ${options.showImage && conditionalVisual ? `<div class="visual-note">Условная сцена: смотри пример и подсказку</div>` : ""}
+      ${options.showImage && learningNote ? `<div class="visual-note" data-confidence="${esc(confidenceLabel)}">${esc(learningNote)}</div>` : ""}
       <div class="word-main">${esc(wordData.word)}</div>
       ${wordData.transcription ? `<div class="word-transcription">${esc(wordData.transcription)}</div>` : ""}
       ${showTranslation && wordData.translation ? `<div class="word-translation">${esc(wordData.translation)}</div>` : ""}

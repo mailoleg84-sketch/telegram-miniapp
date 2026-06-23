@@ -371,6 +371,19 @@ def _pick_distractors(pool, correct_id, count: int = 3) -> list:
     return random.sample(eligible, count)
 
 
+# Тексты картинкового вопроса по question_archetype слова — чтобы image-вопрос не
+# был одинаковым «Что на картинке?». В квизе показывается ОДИН эмодзи-глиф, поэтому
+# осмысленны только варианты под одиночную картинку: предмет → «Что это?», действие →
+# «Что делает герой?», эмоция → «Что чувствует герой?». Остальные archetype'ы
+# (контраст/схема/два кадра) подразумевают сложную сцену и для одиночного эмодзи
+# звучали бы криво (напр. «clean» 🧹) → для них остаётся обобщённое «Что на картинке?».
+IMAGE_QUESTION_PROMPTS = {
+    "what_is_it": "Что это?",
+    "what_is_the_action": "Что делает герой?",
+    "what_feeling": "Что чувствует герой?",
+}
+
+
 async def _build_vocab_question(word, age_group: str, index: int = 0, pool=None, qtype: str | None = None) -> dict:
     """Строит вопрос теста по словам. Тип задаётся явно (qtype) или чередуется по
     позиции. Разнообразие:
@@ -401,8 +414,10 @@ async def _build_vocab_question(word, age_group: str, index: int = 0, pool=None,
     # «Картинка» — только для слов с эмодзи (чёткий мгновенный глиф, без машинерии
     # генерации и без нечестных абстрактных сцен); иначе обычный перевод.
     emoji = ""
+    word_meta = None
     if qtype == "image":
-        emoji = (_word_dict(word).get("emoji") or "")
+        word_meta = _word_dict(word)
+        emoji = (word_meta.get("emoji") or "")
         if not emoji:
             qtype = "translation"
 
@@ -448,7 +463,11 @@ async def _build_vocab_question(word, age_group: str, index: int = 0, pool=None,
         payload["prompt"] = "Послушай и выбери перевод"
     elif qtype == "image":
         payload["emoji"] = emoji
-        payload["prompt"] = "Что на картинке?"
+        # Предмет -> «Что это?», действие -> «Что делает герой?» (по question_archetype);
+        # если archetype не распознан, остаётся обобщённое «Что на картинке?».
+        payload["prompt"] = IMAGE_QUESTION_PROMPTS.get(
+            (word_meta or {}).get("question_archetype"), "Что на картинке?"
+        )
     else:  # word / gap — ответ английское слово; показываем перевод/пропуск как вопрос
         payload["translation"] = word["translation"]
         payload["gap_text"] = gap_text if qtype == "gap" else ""

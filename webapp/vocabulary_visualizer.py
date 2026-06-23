@@ -28,6 +28,88 @@ COMPLEX_VISUAL_TYPES = {
     "no_good_visual",
 }
 
+# Учебный слой поверх visual_type: понятный детям тип карточки (archetype), тип
+# вопроса в квизе, ярлык уверенности картинки и дружелюбная подсказка. Идея —
+# не «больше картинок», а «правильный тип карточки»: предмет показываем, действие
+# показываем, а у служебных/грамматических слов главным делаем пример, а не фото.
+CARD_ARCHETYPES = {
+    "object": "object_card",
+    "action": "action_scene_card",
+    "contrast": "contrast_card",
+    "emotion": "emotion_scene_card",
+    "spatial_relation": "position_diagram_card",
+    "situation": "context_scene_card",
+    "cause_effect": "cause_effect_card",
+    "two_panel_comic": "two_panel_card",
+    "grammar_diagram": "grammar_context_card",
+    "no_good_visual": "context_only_card",
+}
+
+# Тип задания в квизе под каждый archetype. Для grammar_context_card и
+# context_only_card картинка НЕ главная → задание «вставь слово в предложение»,
+# а не «что на картинке».
+QUESTION_ARCHETYPES = {
+    "object_card": "what_is_it",
+    "action_scene_card": "what_is_the_action",
+    "contrast_card": "choose_the_description",
+    "emotion_scene_card": "what_feeling",
+    "position_diagram_card": "where_is_it",
+    "context_scene_card": "choose_the_description",
+    "cause_effect_card": "why_or_result",
+    "two_panel_card": "connect_the_ideas",
+    "grammar_context_card": "complete_the_sentence",
+    "context_only_card": "complete_the_sentence",
+}
+
+# Ярлык уверенности картинки: high — картинка почти прямо объясняет слово
+# (apple, run); medium — помогает через ситуацию (brave, worried); low — слово
+# учим прежде всего через пример (although, the, of).
+VISUAL_CONFIDENCE_LABELS = {
+    "object": "high",
+    "action": "high",
+    "contrast": "high",
+    "emotion": "medium",
+    "spatial_relation": "high",
+    "situation": "medium",
+    "cause_effect": "medium",
+    "two_panel_comic": "low",
+    "grammar_diagram": "low",
+    "no_good_visual": "low",
+}
+
+# Дружелюбные подсказки ребёнку (вместо технических фраз) — по типу карточки.
+VISUAL_LEARNING_NOTES = {
+    "object_card": "Картинка показывает предмет.",
+    "action_scene_card": "Картинка показывает действие. Смотри, что делает герой.",
+    "contrast_card": "Сравни две части картинки.",
+    "emotion_scene_card": "Смотри на лицо, позу и ситуацию.",
+    "position_diagram_card": "Смотри, где находится предмет.",
+    "context_scene_card": "Картинка помогает запомнить ситуацию. Смотри пример.",
+    "cause_effect_card": "Одна часть показывает причину, другая — результат.",
+    "two_panel_card": "Две картинки помогают понять связь между идеями.",
+    "grammar_context_card": "Это слово-помощник. Главное — пример.",
+    "context_only_card": "У этого слова нет одной точной картинки. Учим через пример.",
+}
+
+_DEFAULT_LEARNING_NOTE = "У этого слова нет одной точной картинки. Учим через пример."
+
+
+def card_archetype_for(visual_type: str) -> str:
+    return CARD_ARCHETYPES.get(visual_type, "context_only_card")
+
+
+def question_archetype_for(card_archetype: str) -> str:
+    return QUESTION_ARCHETYPES.get(card_archetype, "complete_the_sentence")
+
+
+def visual_confidence_label_for(visual_type: str) -> str:
+    return VISUAL_CONFIDENCE_LABELS.get(visual_type, "low")
+
+
+def visual_learning_note_for(card_archetype: str) -> str:
+    return VISUAL_LEARNING_NOTES.get(card_archetype, _DEFAULT_LEARNING_NOTE)
+
+
 BASE_IMAGE_STYLE = (
     "premium friendly educational illustration, soft 3D/cartoon style, "
     "clean light background, warm colors, clear subject, child-safe, modern "
@@ -628,15 +710,27 @@ def create_image_prompt(word: str, visual_type: str, age_group: str = "") -> str
     if word in SCENE_PROMPTS:
         scene = SCENE_PROMPTS[word]
     elif visual_type == "object":
-        scene = f"A single clearly recognizable {word} as the main subject"
+        scene = f"A single clearly recognizable {word} as the main subject, centered, simple uncluttered background"
     elif visual_type == "action":
-        scene = f"A cheerful child clearly performing the action {word}, dynamic pose"
+        scene = (
+            f"A cheerful child caught in the middle of performing the action {word}, "
+            "dynamic full-body pose so the action itself is the obvious focus, motion shown through posture"
+        )
     elif visual_type == "contrast":
-        scene = f"Two safe familiar objects showing a very clear visual contrast for the idea {word}"
+        scene = (
+            "Two of the same familiar safe object placed side by side, one clearly showing the quality and one "
+            f"clearly showing its opposite, so the visual contrast for the idea {word} is the obvious focus"
+        )
     elif visual_type == "emotion":
-        scene = f"A child with a clear facial expression and body pose showing {word}"
+        scene = (
+            f"A child whose face and body pose clearly express the feeling {word}, "
+            "with a small everyday reason for that feeling visible nearby in the scene"
+        )
     elif visual_type == "spatial_relation":
-        scene = f"A red ball and two blue boxes arranged to clearly show the spatial relationship {word}"
+        scene = (
+            f"One red ball and one blue box, the same two objects, arranged in a clean simple diagram-like "
+            f"composition that clearly shows the spatial relationship {word}"
+        )
     elif visual_type == "situation":
         scene = (
             f"A concrete safe everyday situation for the vocabulary idea {word}; "
@@ -644,13 +738,25 @@ def create_image_prompt(word: str, visual_type: str, age_group: str = "") -> str
             "not as a single labeled object and not as a generic portrait"
         )
     elif visual_type == "cause_effect":
-        scene = "A clear two-step scene where rain causes a child with an umbrella to get wet"
+        scene = (
+            "A clear left-to-right two-step scene: the cause on one side and its result on the other, "
+            f"for the idea {word}, for example rain on the left and a child opening an umbrella on the right"
+        )
     elif visual_type == "two_panel_comic":
-        scene = f"A simple two-panel scene showing the contrast or time relationship for {word}"
+        scene = (
+            f"A simple two-panel scene showing the contrast or time relationship for {word}: "
+            "the first panel one moment and the second panel the opposite or following moment"
+        )
     elif visual_type == "grammar_diagram":
-        scene = f"A safe everyday situation where the grammar idea {word} is naturally useful"
+        scene = (
+            f"A safe everyday situation where the grammar idea {word} is naturally useful, "
+            "shown through a child's action and context rather than an abstract symbol"
+        )
     else:
-        scene = "A simple context-learning scene with a child, two objects, and a clear relationship"
+        scene = (
+            "A simple context-learning scene with a child, two objects, and a clear relationship "
+            "that helps remember how the word is used"
+        )
     support_note = (
         "The picture is only a memory cue; it must support the example sentence, "
         "simple meaning, and Russian hint rather than replace the translation."
@@ -697,6 +803,10 @@ def build_vocabulary_visual(
     translation = _clean(translation)
     part_of_speech = determine_part_of_speech(word, translation, topic)
     visual_type = determine_visual_type(word, part_of_speech, topic)
+    card_archetype = card_archetype_for(visual_type)
+    question_archetype = question_archetype_for(card_archetype)
+    visual_confidence_label = visual_confidence_label_for(visual_type)
+    visual_learning_note = visual_learning_note_for(card_archetype)
     confidence = image_confidence_for(visual_type, word)
     needs_review = confidence < 0.7
     if is_complex_visual_type(visual_type):
@@ -710,6 +820,10 @@ def build_vocabulary_visual(
         "translation": translation,
         "part_of_speech": part_of_speech,
         "visual_type": visual_type,
+        "card_archetype": card_archetype,
+        "question_archetype": question_archetype,
+        "visual_confidence_label": visual_confidence_label,
+        "visual_learning_note": visual_learning_note,
         "image_prompt": create_image_prompt(word, visual_type, age_group),
         "image_url": vocabulary_image_url(word, visual_type, topic),
         "image_alt": create_image_alt(word, visual_type),
