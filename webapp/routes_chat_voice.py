@@ -21,6 +21,7 @@ from aiohttp import web
 
 import database
 from config import (
+    _env_int,
     AI_DAILY_MESSAGE_LIMIT,
     OPENAI_DAILY_COST_LIMIT_USD,
     CHAT_HISTORY_LIMIT,
@@ -61,7 +62,7 @@ log = logging.getLogger(__name__)
 # производное от storage, не разделяемое состояние). Для S3/R2 — None.
 AUDIO_CACHE_DIR = getattr(storage.word_audio_storage, "base_dir", None)
 # Кэши на эфемерном диске Render не должны расти бесконечно (QA-аудит).
-AUDIO_CACHE_MAX_FILES = int(os.getenv("AUDIO_CACHE_MAX_FILES", "4000"))
+AUDIO_CACHE_MAX_FILES = _env_int("AUDIO_CACHE_MAX_FILES", 4000)
 MAX_AUDIO_BYTES = 8 * 1024 * 1024
 MAX_SDP_BYTES = 16 * 1024  # реальный WebRTC SDP < 4 КБ; жёсткий предел тела
 

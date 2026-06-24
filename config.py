@@ -25,6 +25,26 @@ def _env(name: str, default: str = "") -> str:
     value = os.getenv(name, default)
     return value.strip().strip('"').strip("'")
 
+
+def _env_int(name: str, default: int) -> int:
+    """Числовой env: пустая строка/пробелы/мусор -> default (а не ValueError).
+    Render может хранить переменную пустой ('') -> голый int(os.getenv()) ронял
+    импорт приложения на старте деплоя (Exited status 1)."""
+    raw = (os.getenv(name) or "").strip().strip('"').strip("'")
+    try:
+        return int(raw)
+    except ValueError:
+        return int(default)
+
+
+def _env_float(name: str, default: float) -> float:
+    """То же, что _env_int, для float-параметров (стоимости/лимиты OpenAI)."""
+    raw = (os.getenv(name) or "").strip().strip('"').strip("'")
+    try:
+        return float(raw)
+    except ValueError:
+        return float(default)
+
 # --- Telegram бот ---
 BOT_TOKEN = _env("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 BOT_RUN_MODE = _env("BOT_RUN_MODE", "webhook" if (os.getenv("RENDER") or os.getenv("PORT")) else "polling")
@@ -55,14 +75,14 @@ APP_VERSION = _env("APP_VERSION", "20260624-kids-v152")
 # рассылки нет. Задайте одинаковое значение в Render и в GitHub Secrets.
 REMINDER_CRON_SECRET = _env("REMINDER_CRON_SECRET", "")
 # Напоминаем только тем, кто был активен за последние N дней (не теребим ушедших).
-REMINDER_ACTIVITY_WINDOW_DAYS = int(os.getenv("REMINDER_ACTIVITY_WINDOW_DAYS", "14"))
+REMINDER_ACTIVITY_WINDOW_DAYS = _env_int("REMINDER_ACTIVITY_WINDOW_DAYS", 14)
 
 # Уровень логирования (DEBUG/INFO/WARNING/ERROR) — управляем из окружения.
 LOG_LEVEL = _env("LOG_LEVEL", "INFO").upper()
 
 WEBAPP_HOST = os.getenv("WEBAPP_HOST", "0.0.0.0")
 # Render задаёт порт через переменную PORT — читаем её, иначе 8080.
-WEBAPP_PORT = int(os.getenv("PORT", os.getenv("WEBAPP_PORT", "8080")))
+WEBAPP_PORT = _env_int("PORT", _env_int("WEBAPP_PORT", 8080))
 
 # --- OpenAI API ---
 OPENAI_API_KEY = _env("OPENAI_API_KEY", "")
@@ -85,7 +105,7 @@ OPENAI_IMAGE_SIZE = _env("OPENAI_IMAGE_SIZE", "1024x1024")
 OPENAI_IMAGE_QUALITY = _env("OPENAI_IMAGE_QUALITY", "medium")
 OPENAI_IMAGE_FORMAT = _env("OPENAI_IMAGE_FORMAT", "png")
 OPENAI_IMAGE_VISION_MODEL = _env("OPENAI_IMAGE_VISION_MODEL", OPENAI_MODEL)
-OPENAI_IMAGE_MAX_RETRIES = int(os.getenv("OPENAI_IMAGE_MAX_RETRIES", "1"))
+OPENAI_IMAGE_MAX_RETRIES = _env_int("OPENAI_IMAGE_MAX_RETRIES", 1)
 # Авто-генерация платных gpt-image-1 картинок для слов. По умолчанию ВЫКЛ:
 # карточки используют бесплатные эмодзи + SVG-сцены. Включить = "1"/"true".
 VOCAB_AI_IMAGES = _env("VOCAB_AI_IMAGES", "0").lower() in {"1", "true", "yes", "on"}
@@ -100,33 +120,33 @@ PIXABAY_API_KEY = _env("PIXABAY_API_KEY", "")
 OPENAI_REASONING_EFFORT = _env("OPENAI_REASONING_EFFORT", "medium")
 OPENAI_VOICE_REASONING_EFFORT = _env("OPENAI_VOICE_REASONING_EFFORT", "low")
 OPENAI_REALTIME_REASONING_EFFORT = _env("OPENAI_REALTIME_REASONING_EFFORT", "low")
-CHAT_HISTORY_LIMIT = int(os.getenv("CHAT_HISTORY_LIMIT", "8"))
+CHAT_HISTORY_LIMIT = _env_int("CHAT_HISTORY_LIMIT", 8)
 # Ретенция истории чата: храним последние N сообщений на пользователя, старше —
 # чистим при записи (таблица conversations иначе растёт без предела). Приложение
 # читает максимум CHAT_HISTORY_LIMIT*2, так что 50 — с большим запасом. 0 = выкл.
-CHAT_RETENTION_PER_USER = int(os.getenv("CHAT_RETENTION_PER_USER", "50"))
-CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "240"))
-VOICE_MAX_TOKENS = int(os.getenv("VOICE_MAX_TOKENS", "400"))
-AI_DAILY_MESSAGE_LIMIT = int(os.getenv("AI_DAILY_MESSAGE_LIMIT", "0"))
+CHAT_RETENTION_PER_USER = _env_int("CHAT_RETENTION_PER_USER", 50)
+CHAT_MAX_TOKENS = _env_int("CHAT_MAX_TOKENS", 240)
+VOICE_MAX_TOKENS = _env_int("VOICE_MAX_TOKENS", 400)
+AI_DAILY_MESSAGE_LIMIT = _env_int("AI_DAILY_MESSAGE_LIMIT", 0)
 # Глобальный суточный потолок расходов OpenAI по ВСЕМ пользователям (USD). Защита
 # от runaway-затрат (баг/абьюз): при превышении AI-эндпоинты временно отдают
 # «лимит на сегодня». 0 = выключено. Задайте в Render под свой бюджет (напр. 10).
-OPENAI_DAILY_COST_LIMIT_USD = float(os.getenv("OPENAI_DAILY_COST_LIMIT_USD", "0"))
+OPENAI_DAILY_COST_LIMIT_USD = _env_float("OPENAI_DAILY_COST_LIMIT_USD", 0.0)
 # Отдельный жёсткий суточный лимит на старт дорогих Realtime-сессий (per-user).
 # Защищает от cost-amplification: ~$0.05 за сессию. 0 = выключено.
-REALTIME_DAILY_SESSION_LIMIT = int(os.getenv("REALTIME_DAILY_SESSION_LIMIT", "40"))
+REALTIME_DAILY_SESSION_LIMIT = _env_int("REALTIME_DAILY_SESSION_LIMIT", 40)
 # Общий бюджет на выдачу Realtime-токена (с учётом retry). Раньше два запроса по
 # 25с могли держать ребёнка ~50с на «застывшем» экране. 0 = без общего лимита.
-REALTIME_TOKEN_TIMEOUT_SEC = int(os.getenv("REALTIME_TOKEN_TIMEOUT_SEC", "30"))
-API_RATE_LIMIT_PER_MINUTE = int(os.getenv("API_RATE_LIMIT_PER_MINUTE", "120"))
-AI_RATE_LIMIT_PER_MINUTE = int(os.getenv("AI_RATE_LIMIT_PER_MINUTE", "30"))
-OPENAI_INPUT_COST_PER_1M = float(os.getenv("OPENAI_INPUT_COST_PER_1M", "0.75"))
-OPENAI_OUTPUT_COST_PER_1M = float(os.getenv("OPENAI_OUTPUT_COST_PER_1M", "4.50"))
+REALTIME_TOKEN_TIMEOUT_SEC = _env_int("REALTIME_TOKEN_TIMEOUT_SEC", 30)
+API_RATE_LIMIT_PER_MINUTE = _env_int("API_RATE_LIMIT_PER_MINUTE", 120)
+AI_RATE_LIMIT_PER_MINUTE = _env_int("AI_RATE_LIMIT_PER_MINUTE", 30)
+OPENAI_INPUT_COST_PER_1M = _env_float("OPENAI_INPUT_COST_PER_1M", 0.75)
+OPENAI_OUTPUT_COST_PER_1M = _env_float("OPENAI_OUTPUT_COST_PER_1M", 4.50)
 # Оценочные стоимости для учёта расходов на TTS / картинки / Realtime в админке.
 # Приблизительные значения для видимости трат — уточняй под свой тариф OpenAI.
-OPENAI_TTS_COST_PER_1K_CHARS = float(os.getenv("OPENAI_TTS_COST_PER_1K_CHARS", "0.015"))
-OPENAI_IMAGE_COST_PER_CALL = float(os.getenv("OPENAI_IMAGE_COST_PER_CALL", "0.02"))
-OPENAI_REALTIME_SESSION_COST = float(os.getenv("OPENAI_REALTIME_SESSION_COST", "0.05"))
+OPENAI_TTS_COST_PER_1K_CHARS = _env_float("OPENAI_TTS_COST_PER_1K_CHARS", 0.015)
+OPENAI_IMAGE_COST_PER_CALL = _env_float("OPENAI_IMAGE_COST_PER_CALL", 0.02)
+OPENAI_REALTIME_SESSION_COST = _env_float("OPENAI_REALTIME_SESSION_COST", 0.05)
 
 # --- Настройки репетитора для Prompt Variables ---
 TUTOR_DEFAULT_LEVEL = _env("TUTOR_DEFAULT_LEVEL", "beginner")
@@ -138,9 +158,9 @@ TUTOR_LANGUAGE_BALANCE = _env("TUTOR_LANGUAGE_BALANCE", "отвечать на �
 # --- Геймификация ---
 POINTS_CORRECT = 10
 POINTS_WRONG = -3
-GAME_POINTS_CORRECT = int(os.getenv("GAME_POINTS_CORRECT", "8"))
-GAME_PERFECT_BONUS_POINTS = int(os.getenv("GAME_PERFECT_BONUS_POINTS", "10"))
-DAILY_LESSON_REWARD_POINTS = int(os.getenv("DAILY_LESSON_REWARD_POINTS", "25"))
+GAME_POINTS_CORRECT = _env_int("GAME_POINTS_CORRECT", 8)
+GAME_PERFECT_BONUS_POINTS = _env_int("GAME_PERFECT_BONUS_POINTS", 10)
+DAILY_LESSON_REWARD_POINTS = _env_int("DAILY_LESSON_REWARD_POINTS", 25)
 DAILY_LESSON_STEPS = 4
 
 # --- Возрастные группы детей ---

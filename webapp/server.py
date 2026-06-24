@@ -14,6 +14,7 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 
 import database
 from config import (
+    _env_int,
     AGE_GROUPS,
     APP_VERSION,
     DAILY_LESSON_REWARD_POINTS,
@@ -57,9 +58,9 @@ STATIC_DIR = Path(__file__).parent / "static"
 # Для локального backend — каталог (Path); для S3/R2 — None (нет локального пути).
 GENERATED_VOCAB_DIR = getattr(storage.vocab_image_storage, "base_dir", None)
 VOCAB_PHOTO_CACHE_DIR = getattr(storage.vocab_photo_storage, "base_dir", None)
-VOCAB_PHOTO_CACHE_MAX_FILES = int(os.getenv("VOCAB_PHOTO_CACHE_MAX_FILES", "800"))
+VOCAB_PHOTO_CACHE_MAX_FILES = _env_int("VOCAB_PHOTO_CACHE_MAX_FILES", 800)
 # Кэши на эфемерном диске Render не должны расти бесконечно (QA-аудит).
-VOCAB_IMAGE_CACHE_MAX_FILES = int(os.getenv("VOCAB_IMAGE_CACHE_MAX_FILES", "4000"))
+VOCAB_IMAGE_CACHE_MAX_FILES = _env_int("VOCAB_IMAGE_CACHE_MAX_FILES", 4000)
 PUBLIC_API_PATHS = {"/api/me", "/api/register"}
 # Лимитирование вынесено в webapp/rate_limiter.py. Реэкспорт только нужного:
 # тело server.py зовёт rate_limit_ok/_rate_limit_key/photo_rate_limit_ok,
