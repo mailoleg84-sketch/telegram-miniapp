@@ -1597,11 +1597,24 @@ function quizPromptCard(q, badge = "") {
       </div>`;
   }
   if (q.type === "image") {
-    // Картинка (эмодзи) -> выбрать перевод.
+    // Картинка: эмодзи-глиф ИЛИ учебная SVG-сцена слова (для слов без эмодзи) -> перевод.
+    let visualHtml;
+    if (q.emoji) {
+      visualHtml = `<div class="quiz-emoji" role="img" aria-label="картинка">${esc(q.emoji)}</div>`;
+    } else if (q.image_url) {
+      // Переиспользуем готовый бокс учебной сцены (.word-visual.loaded + .word-image):
+      // src задаётся сразу, плейсхолдер скрыт классом loaded, JS-обвязка не нужна.
+      visualHtml = `
+        <div class="word-visual loaded">
+          <img class="word-image" src="${esc(q.image_url)}" alt="${esc(q.prompt || "картинка")}" loading="lazy">
+        </div>`;
+    } else {
+      visualHtml = `<div class="quiz-emoji" role="img" aria-label="картинка">🖼️</div>`;
+    }
     return `
       <div class="card word-card compact">
         <div class="word-card-top">${badgeHtml}<span></span></div>
-        <div class="quiz-emoji" role="img" aria-label="картинка">${esc(q.emoji)}</div>
+        ${visualHtml}
         <p class="hint mt-12">${esc(q.prompt)}</p>
       </div>`;
   }

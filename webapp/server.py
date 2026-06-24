@@ -372,11 +372,11 @@ def _pick_distractors(pool, correct_id, count: int = 3) -> list:
 
 
 # Тексты картинкового вопроса по question_archetype слова — чтобы image-вопрос не
-# был одинаковым «Что на картинке?». В квизе показывается ОДИН эмодзи-глиф, поэтому
-# осмысленны только варианты под одиночную картинку: предмет → «Что это?», действие →
-# «Что делает герой?», эмоция → «Что чувствует герой?». Остальные archetype'ы
-# (контраст/схема/два кадра) подразумевают сложную сцену и для одиночного эмодзи
-# звучали бы криво (напр. «clean» 🧹) → для них остаётся обобщённое «Что на картинке?».
+# был одинаковым «Что на картинке?». В квизе показывается либо эмодзи-глиф, либо
+# безопасная учебная SVG-сцена слова (для слов без эмодзи), поэтому осмысленны
+# вопросы под все «картинкуемые» archetype'ы: предмет → «Что это?», действие →
+# «Что делает герой?», ситуация → «Что означает эта ситуация?» и т.д. Grammar/
+# context-only (complete_the_sentence) сюда не входят — у них главным остаётся пример.
 IMAGE_QUESTION_PROMPTS = {
     "what_is_it": "Что это?",
     "what_is_the_action": "Что делает герой?",
@@ -388,6 +388,9 @@ IMAGE_QUESTION_PROMPTS = {
     "connect_the_ideas": "Какое слово связывает две части ситуации?",
 }
 NON_IMAGE_QUESTION_ARCHETYPES = {"complete_the_sentence"}
+# Archetype'ы, для которых image-вопрос осмыслен. Слово без эмодзи остаётся
+# image-вопросом, только если его archetype здесь И есть безопасная сцена.
+IMAGE_QUESTION_ARCHETYPES = set(IMAGE_QUESTION_PROMPTS)
 
 
 async def _build_vocab_question(word, age_group: str, index: int = 0, pool=None, qtype: str | None = None) -> dict:
@@ -397,7 +400,7 @@ async def _build_vocab_question(word, age_group: str, index: int = 0, pool=None,
     - word: показываем перевод -> выбрать английское слово;
     - gap: пример с пропуском -> выбрать пропущенное слово (не для 5-7);
     - listen: озвучка слова -> выбрать перевод (аудирование);
-    - image: эмодзи-картинка слова -> выбрать перевод (только «картинкуемые» слова).
+    - image: эмодзи/учебная SVG-сцена слова -> выбрать перевод («картинкуемые» слова).
     Во всех типах правильный вариант — тот, чей id == word_id, поэтому логика
     подсчёта на /api/vocab/finish не меняется.
     """
@@ -417,20 +420,26 @@ async def _build_vocab_question(word, age_group: str, index: int = 0, pool=None,
     if qtype == "gap" and not (gap_text and age_group != "5_7"):
         qtype = "word"
 
-    # «Картинка» — только для слов с эмодзи/чёткой одиночной сценой. Если учебный
+    # «Картинка»: эмодзи-глиф ИЛИ безопасная учебная SVG-сцена слова. Если учебный
     # archetype говорит, что главное — пример с пропуском (grammar/context only),
     # image-вопрос не задаём: мягко откатываемся в gap/word.
     emoji = ""
+    scene_url = ""
     word_meta = None
     if qtype == "image":
         word_meta = _word_dict(word)
         question_archetype = word_meta.get("question_archetype") or ""
+        emoji = word_meta.get("emoji") or ""
+        scene_url = word_meta.get("image_url") or ""
         if question_archetype in NON_IMAGE_QUESTION_ARCHETYPES:
+            # grammar/context-only (the, a…): картинка не главная → «вставь слово».
             qtype = "gap" if gap_text and age_group != "5_7" else "word"
+        elif emoji:
+            pass  # есть эмодзи → картинка-глиф (как раньше)
+        elif scene_url and question_archetype in IMAGE_QUESTION_ARCHETYPES:
+            pass  # нет эмодзи, но есть безопасная учебная сцена → показываем её
         else:
-            emoji = (word_meta.get("emoji") or "")
-            if not emoji:
-                qtype = "translation"
+            qtype = "translation"  # ни эмодзи, ни сцены — не показываем пустую картинку
 
     # Варианты: переводы (читаем/слушаем/смотрим -> перевод) или англ. слова (word/gap).
     answer_is_translation = qtype in {"translation", "listen", "image"}
@@ -474,8 +483,11 @@ async def _build_vocab_question(word, age_group: str, index: int = 0, pool=None,
         payload["prompt"] = "Послушай и выбери перевод"
     elif qtype == "image":
         payload["emoji"] = emoji
-        # Предмет -> «Что это?», действие -> «Что делает герой?» (по question_archetype);
-        # если archetype не распознан, остаётся обобщённое «Что на картинке?».
+        # Слово без эмодзи показываем как учебную SVG-сцену (emoji-слова рендерят глиф).
+        if not emoji:
+            payload["image_url"] = scene_url
+        # Предмет -> «Что это?», действие -> «Что делает герой?», ситуация -> «Что
+        # означает эта ситуация?» (по question_archetype); иначе «Что на картинке?».
         payload["prompt"] = IMAGE_QUESTION_PROMPTS.get(
             (word_meta or {}).get("question_archetype"), "Что на картинке?"
         )
