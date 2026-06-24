@@ -2555,6 +2555,23 @@ h1::after {
   font-size: 34px;
   filter: none;
 }
+/* Эмодзи как маленький декоративный бейдж в углу сцены (единый стиль карточек:
+   основная картинка — всегда SVG, эмодзи лишь подсказка-иконка). */
+.word-emoji-badge {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  font-size: 24px;
+  line-height: 1;
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 2px 5px rgba(24, 39, 75, 0.22));
+}
+.word-visual.small .word-emoji-badge {
+  font-size: 16px;
+  right: 5px;
+  bottom: 5px;
+}
 
 .word-visual.loading .word-image,
 .word-visual.failed .word-image {

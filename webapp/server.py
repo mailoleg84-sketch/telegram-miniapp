@@ -488,9 +488,9 @@ async def _build_vocab_question(word, age_group: str, index: int = 0, pool=None,
         payload["prompt"] = "Послушай и выбери перевод"
     elif qtype == "image":
         payload["emoji"] = emoji
-        # Слово без эмодзи показываем как учебную SVG-сцену (emoji-слова рендерят глиф).
-        if not emoji:
-            payload["image_url"] = scene_url
+        # Единый стиль: основная картинка — ВСЕГДА учебная SVG-сцена; эмодзи (если есть)
+        # фронт показывает маленьким бейджем поверх, не вместо картинки.
+        payload["image_url"] = scene_url
         # Предмет -> «Что это?», действие -> «Что делает герой?», ситуация -> «Что
         # означает эта ситуация?» (по question_archetype); иначе «Что на картинке?».
         payload["prompt"] = IMAGE_QUESTION_PROMPTS.get(

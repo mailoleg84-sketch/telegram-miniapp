@@ -387,6 +387,7 @@ SCENE_PROMPTS = {
     "lesson": "A friendly classroom lesson scene with a teacher and students learning together, notebooks and a board-like shape visible but no readable text",
     "class": "A small group of students sitting together with a teacher in a bright classroom, clearly showing a class learning together, no readable text",
     "visited": "A child arriving at a zoo entrance with family and happily looking around, clearly showing the action of visiting a place, no readable text",
+    "answer": "A child confidently raising one hand and speaking to a friendly teacher in class, clearly giving an answer, no test sheets or forms, no readable text",
 }
 
 

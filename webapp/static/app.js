@@ -661,18 +661,17 @@ function wordImageHtml(wordData, small = false) {
   const promptHash = wordData?.image_prompt_hash || "";
   const label = wordData?.image_alt || wordData?.word || wordData?.translation || "word";
   const emoji = wordData?.emoji || "";
-  if (emoji) {
-    // Бесплатная «картинка»: нативный цветной эмодзи, без генерации и без запросов.
-    return `
-      <div class="word-visual word-emoji-box loaded ${small ? "small" : ""}" data-word-id="${esc(wordId)}">
-        <span class="word-emoji" role="img" aria-label="${esc(label)}">${esc(emoji)}</span>
-      </div>`;
-  }
+  // Единый стиль: основная картинка — ВСЕГДА учебная SVG-сцена. Эмодзи (если есть)
+  // показываем маленьким декоративным бейджем поверх сцены, НЕ вместо неё.
+  const emojiBadge = emoji
+    ? `<span class="word-emoji-badge" role="img" aria-label="${esc(label)}">${esc(emoji)}</span>`
+    : "";
   if (!src) {
     return `
       <div class="word-visual failed ${small ? "small" : ""}" data-word-id="${esc(wordId)}" data-generate="${canGenerate}" data-generation-status="${esc(generationStatus)}" data-prompt-hash="${esc(promptHash)}" data-fallback-src="${esc(fallbackSrc)}">
         <div class="word-image-placeholder">Сцена появится позже</div>
         <div class="word-image-status" hidden></div>
+        ${emojiBadge}
       </div>`;
   }
   return `
@@ -681,6 +680,7 @@ function wordImageHtml(wordData, small = false) {
       <div class="word-image-placeholder">Готовим сцену…</div>
       <div class="word-image-status" hidden></div>
       <button type="button" class="word-image-retry">Загрузить картинку ещё раз</button>
+      ${emojiBadge}
     </div>`;
 }
 
@@ -1597,17 +1597,20 @@ function quizPromptCard(q, badge = "") {
       </div>`;
   }
   if (q.type === "image") {
-    // Картинка: эмодзи-глиф ИЛИ учебная SVG-сцена слова (для слов без эмодзи) -> перевод.
+    // Единый стиль: основная картинка — всегда учебная SVG-сцена (q.image_url);
+    // эмодзи, если есть, — маленький бейдж поверх, не отдельный большой эмодзи-блок.
+    const emojiBadge = q.emoji
+      ? `<span class="word-emoji-badge" role="img" aria-label="картинка">${esc(q.emoji)}</span>`
+      : "";
     let visualHtml;
-    if (q.emoji) {
-      visualHtml = `<div class="quiz-emoji" role="img" aria-label="картинка">${esc(q.emoji)}</div>`;
-    } else if (q.image_url) {
-      // Переиспользуем готовый бокс учебной сцены (.word-visual.loaded + .word-image):
-      // src задаётся сразу, плейсхолдер скрыт классом loaded, JS-обвязка не нужна.
+    if (q.image_url) {
       visualHtml = `
         <div class="word-visual loaded">
           <img class="word-image" src="${esc(q.image_url)}" alt="${esc(q.prompt || "картинка")}" loading="lazy">
+          ${emojiBadge}
         </div>`;
+    } else if (q.emoji) {
+      visualHtml = `<div class="quiz-emoji" role="img" aria-label="картинка">${esc(q.emoji)}</div>`;
     } else {
       visualHtml = `<div class="quiz-emoji" role="img" aria-label="картинка">🖼️</div>`;
     }

@@ -16,58 +16,30 @@ SVG = "/vocabulary-visual.svg?w=x&v=object"
 
 
 class VocabCardImageUrlTests(unittest.TestCase):
-    def setUp(self):
-        # Делаем поведение детерминированным независимо от .env.
-        # Патчим там, где имя ИЩЕТСЯ: _vocab_card_image_url живёт в word_payloads.
-        self._p = patch("webapp.word_payloads.VOCAB_FREE_PHOTOS", True)
-        self._p.start()
+    """Карточки слов больше НЕ используют фотосток: _vocab_card_image_url всегда
+    возвращает контролируемый SVG/AI fallback — для любого слова и независимо от эмодзи."""
 
-    def tearDown(self):
-        self._p.stop()
-
-    def test_concrete_object_gets_photo_with_topic(self):
-        url = server._vocab_card_image_url("table", SVG, emoji="", visual_type="object", topic="home")
-        self.assertTrue(url.startswith("/vocabulary-photo?"))
-        self.assertIn("w=table", url)
-        self.assertIn("t=home", url)
-
-    def test_action_word_falls_back_to_svg(self):
-        # Действия больше НЕ тянут случайное фото (visited -> жираф) — учебная сцена.
-        for w in ("visited", "travel", "run"):
-            with self.subTest(word=w):
-                url = server._vocab_card_image_url(w, SVG, emoji="", visual_type="action", topic="travel")
+    def test_card_image_is_never_a_photo(self):
+        cases = [
+            ("table", "", "object", "home"),        # бывший «можно фото» — теперь SVG
+            ("apple", "🍎", "object", "food"),       # эмодзи-слово — основная картинка SVG
+            ("visited", "", "action", "travel"),
+            ("lesson", "", "situation", "school"),
+            ("answer", "", "situation", "school"),
+            ("because", "", "cause_effect", "grammar"),
+            ("the", "", "no_good_visual", "basic"),
+            ("knife", "", "object", "home"),
+        ]
+        for word, emoji, vt, topic in cases:
+            with self.subTest(word=word):
+                url = server._vocab_card_image_url(word, SVG, emoji=emoji, visual_type=vt, topic=topic)
                 self.assertEqual(url, SVG)
+                self.assertNotIn("/vocabulary-photo", url)
 
-    def test_low_confidence_noun_falls_back_to_svg(self):
-        # Неконкретные существительные (lesson/class) не тянут случайное фото и
-        # классифицируются как учебная ситуация, а не как одиночный предмет.
-        for w, t in (("lesson", "school"), ("class", "school")):
-            with self.subTest(word=w):
-                self.assertEqual(determine_visual_type(w, determine_part_of_speech(w), t), "situation")
-                url = server._vocab_card_image_url(w, SVG, emoji="", visual_type="situation", topic=t)
-                self.assertEqual(url, SVG)
-
-    def test_abstract_situation_falls_back_to_svg(self):
-        url = server._vocab_card_image_url("reason", SVG, emoji="", visual_type="situation", topic="abstract")
-        self.assertEqual(url, SVG)
-
-    def test_grammar_type_falls_back_to_svg(self):
-        url = server._vocab_card_image_url("because", SVG, emoji="", visual_type="cause_effect", topic="grammar")
-        self.assertEqual(url, SVG)
-
-    def test_emoji_word_keeps_svg_fallback(self):
-        # Слово с эмодзи рисуется глифом на клиенте -> фото не тянем.
-        url = server._vocab_card_image_url("apple", SVG, emoji="🍎", visual_type="object", topic="food")
-        self.assertEqual(url, SVG)
-
-    def test_sensitive_word_never_fetches_photo(self):
-        url = server._vocab_card_image_url("knife", SVG, emoji="", visual_type="object", topic="home")
-        self.assertEqual(url, SVG)
-
-    def test_photos_disabled_falls_back(self):
-        with patch("webapp.word_payloads.VOCAB_FREE_PHOTOS", False):
-            url = server._vocab_card_image_url("table", SVG, emoji="", visual_type="object", topic="home")
-        self.assertEqual(url, SVG)
+    def test_scene_words_stay_situation_not_object(self):
+        # lesson/class остаются учебной ситуацией (не object) — основа единой сцены.
+        for w in ("lesson", "class"):
+            self.assertEqual(determine_visual_type(w, determine_part_of_speech(w), "school"), "situation")
 
 
 class TopicCategoryTests(unittest.TestCase):
@@ -178,6 +150,35 @@ class VocabularyPhotoHandlerTests(unittest.TestCase):
                     resp = asyncio.run(server.vocabulary_photo_handler(self._request(word)))
                 self.assertIsInstance(resp, web.HTTPFound)
                 self.assertIn("/vocabulary-visual.svg", resp.location)
+
+
+class UnifiedCardImageTests(unittest.TestCase):
+    """Единый визуальный язык: основная картинка карточки (_word_dict) — SVG-сцена для
+    ВСЕХ слов (вкл. apple/cat/dog), никогда не фотосток; эмодзи остаётся как бейдж."""
+
+    @staticmethod
+    def _row(word, translation, topic, example=""):
+        return {"id": 1, "word": word, "translation": translation, "transcription": "",
+                "example": example, "topic": topic, "age_group": "8_10"}
+
+    def test_all_words_card_image_is_svg_scene_not_photo(self):
+        cases = [("apple", "яблоко", "food"), ("cat", "кошка", "animals"),
+                 ("dog", "собака", "animals"), ("car", "машина", "transport"),
+                 ("book", "книга", "reading"), ("lesson", "урок", "school"),
+                 ("answer", "ответ", "school"), ("visited", "посетил", "travel"),
+                 ("because", "потому что", "grammar")]
+        for word, tr, topic in cases:
+            with self.subTest(word=word):
+                d = server._word_dict(self._row(word, tr, topic))
+                self.assertTrue(d["image_url"].startswith("/vocabulary-visual.svg"),
+                                f"{word}: {d['image_url']}")
+                self.assertNotIn("/vocabulary-photo", d["image_url"])
+
+    def test_emoji_word_keeps_svg_image_and_emoji_badge(self):
+        # apple: основная картинка — SVG-сцена, а эмодзи остаётся в payload (бейдж).
+        d = server._word_dict(self._row("apple", "яблоко", "food"))
+        self.assertTrue(d["image_url"].startswith("/vocabulary-visual.svg"))
+        self.assertTrue(d["emoji"], "эмодзи остаётся как декоративный бейдж")
 
 
 if __name__ == "__main__":

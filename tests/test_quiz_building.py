@@ -176,14 +176,17 @@ class BuildVocabImageQuestionTests(unittest.IsolatedAsyncioTestCase):
         expected = "Вставь пропущенное слово" if q["type"] == "gap" else "Выбери английское слово"
         self.assertEqual(q["prompt"], expected)
 
-    async def test_apple_with_emoji_keeps_glyph(self):
+    async def test_apple_image_has_svg_scene_and_emoji_badge(self):
+        # Единый стиль: даже у apple основная картинка — SVG-сцена; эмодзи остаётся
+        # как бейдж (не подменяет картинку), фотосток не используется.
         q = await self._image_question(
             _img_word(1, "apple", "яблоко", "food", "I eat an apple every day.")
         )
         self.assertEqual(q["type"], "image")
         self.assertEqual(q["prompt"], "Что это?")
-        self.assertTrue(q["emoji"], "у apple должен быть эмодзи-глиф")
-        self.assertEqual(q["image_url"], "", "emoji-слова показывают глиф, не сцену")
+        self.assertTrue(q["emoji"], "эмодзи остаётся как бейдж")
+        self.assertTrue(q["image_url"].startswith("/vocabulary-visual.svg"), q["image_url"])
+        self.assertNotIn("/vocabulary-photo", q["image_url"])
 
     async def test_answer_stays_image_scene_not_photo(self):
         # answer теперь учебная сцена (не object-фото руки/анкеты): остаётся image
