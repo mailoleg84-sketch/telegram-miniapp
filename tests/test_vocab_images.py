@@ -36,10 +36,12 @@ class VocabCardImageUrlTests(unittest.TestCase):
                 self.assertEqual(url, SVG)
 
     def test_low_confidence_noun_falls_back_to_svg(self):
-        # Неконкретные существительные (lesson/class) не тянут случайное фото.
+        # Неконкретные существительные (lesson/class) не тянут случайное фото и
+        # классифицируются как учебная ситуация, а не как одиночный предмет.
         for w, t in (("lesson", "school"), ("class", "school")):
             with self.subTest(word=w):
-                url = server._vocab_card_image_url(w, SVG, emoji="", visual_type="object", topic=t)
+                self.assertEqual(determine_visual_type(w, determine_part_of_speech(w), t), "situation")
+                url = server._vocab_card_image_url(w, SVG, emoji="", visual_type="situation", topic=t)
                 self.assertEqual(url, SVG)
 
     def test_abstract_situation_falls_back_to_svg(self):

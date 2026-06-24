@@ -54,7 +54,7 @@ QUESTION_ARCHETYPES = {
     "contrast_card": "choose_the_description",
     "emotion_scene_card": "what_feeling",
     "position_diagram_card": "where_is_it",
-    "context_scene_card": "choose_the_description",
+    "context_scene_card": "choose_the_meaning",
     "cause_effect_card": "why_or_result",
     "two_panel_card": "connect_the_ideas",
     "grammar_context_card": "complete_the_sentence",
@@ -193,8 +193,8 @@ CONCRETE_TOPICS = {
 AMBIGUOUS_NOUNS = {
     "advice", "amount", "balance", "blow", "case", "change", "choice",
     "deal", "effect", "effort", "event", "fact", "idea", "issue",
-    "matter", "mind", "opinion", "options", "point", "problem", "purpose",
-    "reason", "result", "solution", "thought", "truth", "witness",
+    "lesson", "class", "course", "matter", "mind", "opinion", "options", "point",
+    "problem", "purpose", "reason", "result", "solution", "thought", "truth", "witness",
 }
 SENSITIVE_WORDS = {
     "fuck", "shit", "piss", "torture", "theft", "scandal", "nightmare",
@@ -273,6 +273,9 @@ EXAMPLES = {
     "although": "Although it is raining, he is happy.",
     "however": "It is raining. However, she goes outside.",
     "because": "He is wet because it is raining.",
+    "lesson": "We have an English lesson today.",
+    "class": "Our class is learning new words.",
+    "visited": "She visited the zoo with her family.",
     "should": "You should wear a helmet.",
     "must": "You must stop at the red light.",
     "would": "I would like some water.",
@@ -311,6 +314,9 @@ SIMPLE_MEANINGS = {
     "already": "It happened earlier than now or expected.",
     "yet": "It has not happened up to now.",
     "usually": "It happens most of the time.",
+    "lesson": "A lesson is a time when you learn something.",
+    "class": "A class is a group of students learning together, or their lesson time.",
+    "visited": "Visited means went to a place or person and spent time there.",
 }
 
 RUSSIAN_HINTS = {
@@ -343,6 +349,9 @@ RUSSIAN_HINTS = {
     "already": "Это уже произошло.",
     "yet": "Это ещё не произошло.",
     "usually": "Так происходит обычно, большую часть времени.",
+    "lesson": "Урок — время, когда учитель и ученики учатся вместе.",
+    "class": "Класс — группа учеников или занятие, где дети учатся вместе.",
+    "visited": "Посетила — сходила куда-то и провела там время.",
 }
 
 SCENE_PROMPTS = {
@@ -364,6 +373,9 @@ SCENE_PROMPTS = {
     "vulnerable": "A younger child being gently protected with an umbrella in light rain, showing need for care",
     "worried": "A child looking at a clock while waiting safely at a bus stop, worried expression",
     "lazy": "A child resting on a sofa while a school bag and tidy task wait nearby",
+    "lesson": "A friendly classroom lesson scene with a teacher and students learning together, notebooks and a board-like shape visible but no readable text",
+    "class": "A small group of students sitting together with a teacher in a bright classroom, clearly showing a class learning together, no readable text",
+    "visited": "A child arriving at a zoo entrance with family and happily looking around, clearly showing the action of visiting a place, no readable text",
 }
 
 

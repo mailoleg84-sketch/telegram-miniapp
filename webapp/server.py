@@ -380,8 +380,14 @@ def _pick_distractors(pool, correct_id, count: int = 3) -> list:
 IMAGE_QUESTION_PROMPTS = {
     "what_is_it": "Что это?",
     "what_is_the_action": "Что делает герой?",
+    "choose_the_description": "Какое слово лучше описывает картинку?",
     "what_feeling": "Что чувствует герой?",
+    "where_is_it": "Где находится предмет?",
+    "choose_the_meaning": "Что означает эта ситуация?",
+    "why_or_result": "Какое слово объясняет причину или результат?",
+    "connect_the_ideas": "Какое слово связывает две части ситуации?",
 }
+NON_IMAGE_QUESTION_ARCHETYPES = {"complete_the_sentence"}
 
 
 async def _build_vocab_question(word, age_group: str, index: int = 0, pool=None, qtype: str | None = None) -> dict:
@@ -411,15 +417,20 @@ async def _build_vocab_question(word, age_group: str, index: int = 0, pool=None,
     if qtype == "gap" and not (gap_text and age_group != "5_7"):
         qtype = "word"
 
-    # «Картинка» — только для слов с эмодзи (чёткий мгновенный глиф, без машинерии
-    # генерации и без нечестных абстрактных сцен); иначе обычный перевод.
+    # «Картинка» — только для слов с эмодзи/чёткой одиночной сценой. Если учебный
+    # archetype говорит, что главное — пример с пропуском (grammar/context only),
+    # image-вопрос не задаём: мягко откатываемся в gap/word.
     emoji = ""
     word_meta = None
     if qtype == "image":
         word_meta = _word_dict(word)
-        emoji = (word_meta.get("emoji") or "")
-        if not emoji:
-            qtype = "translation"
+        question_archetype = word_meta.get("question_archetype") or ""
+        if question_archetype in NON_IMAGE_QUESTION_ARCHETYPES:
+            qtype = "gap" if gap_text and age_group != "5_7" else "word"
+        else:
+            emoji = (word_meta.get("emoji") or "")
+            if not emoji:
+                qtype = "translation"
 
     # Варианты: переводы (читаем/слушаем/смотрим -> перевод) или англ. слова (word/gap).
     answer_is_translation = qtype in {"translation", "listen", "image"}

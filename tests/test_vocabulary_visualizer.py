@@ -229,6 +229,8 @@ class VocabularyVisualizerTests(unittest.TestCase):
             "behind": "position_diagram_card",
             "between": "position_diagram_card",
             "because": "cause_effect_card",
+            "lesson": "context_scene_card",
+            "class": "context_scene_card",
             "although": "two_panel_card",
             "however": "two_panel_card",
             "before": "two_panel_card",
@@ -276,6 +278,8 @@ class VocabularyVisualizerTests(unittest.TestCase):
             "happy": ("emotion_scene_card", "what_feeling"),
             "in": ("position_diagram_card", "where_is_it"),
             "because": ("cause_effect_card", "why_or_result"),
+            "lesson": ("context_scene_card", "choose_the_meaning"),
+            "class": ("context_scene_card", "choose_the_meaning"),
             "although": ("two_panel_card", "connect_the_ideas"),
         }
         for word, (archetype, question) in cases.items():
@@ -318,8 +322,8 @@ class VocabularyVisualizerTests(unittest.TestCase):
         for word, visual_type in (
             ("visited", "action"),
             ("run", "action"),
-            ("lesson", "object"),
-            ("class", "object"),
+            ("lesson", "situation"),
+            ("class", "situation"),
             ("because", "cause_effect"),
             ("the", "no_good_visual"),
         ):
