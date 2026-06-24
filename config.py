@@ -47,7 +47,7 @@ REDIS_URL = _env("REDIS_URL", "")
 
 # --- Mini App (Telegram WebApp) ---
 WEBAPP_URL = _env("WEBAPP_URL", "https://telegram-miniapp-1-r0sj.onrender.com")
-APP_VERSION = _env("APP_VERSION", "20260624-kids-v151")
+APP_VERSION = _env("APP_VERSION", "20260624-kids-v152")
 
 # --- Напоминания ботом (ежедневная рассылка, opt-in) ---
 # Триггерится внешним cron (GitHub Actions) -> POST /internal/send-reminders с
@@ -89,10 +89,12 @@ OPENAI_IMAGE_MAX_RETRIES = int(os.getenv("OPENAI_IMAGE_MAX_RETRIES", "1"))
 # Авто-генерация платных gpt-image-1 картинок для слов. По умолчанию ВЫКЛ:
 # карточки используют бесплатные эмодзи + SVG-сцены. Включить = "1"/"true".
 VOCAB_AI_IMAGES = _env("VOCAB_AI_IMAGES", "0").lower() in {"1", "true", "yes", "on"}
-# Бесплатные картинки для слов без эмодзи (Pixabay, safesearch, illustration->photo,
-# сенситив-слова исключены). По умолчанию ВКЛ, но работает только при заданном
-# PIXABAY_API_KEY — иначе мягкий откат на SVG-сцену. Выключить совсем = "0".
-VOCAB_FREE_PHOTOS = _env("VOCAB_FREE_PHOTOS", "1").lower() in {"1", "true", "yes", "on"}
+# Бесплатные фото для слов (Pixabay). По умолчанию ВЫКЛ: для детского словаря
+# фотосток ненадёжен — показывает связанный объект/действие, а не значение слова
+# (lesson -> рука с карандашом, answer -> заполнение анкеты). Даже при "1" фото
+# отдаётся ТОЛЬКО для слов из allowlist PHOTO_SAFE_OBJECTS (однозначные конкретные
+# предметы) — см. allows_free_photo. Для учебного режима держим выключенным.
+VOCAB_FREE_PHOTOS = _env("VOCAB_FREE_PHOTOS", "0").lower() in {"1", "true", "yes", "on"}
 # Бесплатный ключ Pixabay (https://pixabay.com/api/docs/). Задаётся в Render env.
 PIXABAY_API_KEY = _env("PIXABAY_API_KEY", "")
 OPENAI_REASONING_EFFORT = _env("OPENAI_REASONING_EFFORT", "medium")

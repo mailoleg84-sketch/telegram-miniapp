@@ -41,6 +41,7 @@ from webapp.vocabulary_visualizer import (
     build_vocabulary_visual,
     vocabulary_image_url,
     is_sensitive_word,
+    allows_free_photo,
 )
 from webapp.free_images import fetch_word_illustration
 from webapp import reminders, storage
@@ -197,11 +198,10 @@ async def vocabulary_photo_handler(request: web.Request):
     raw = (request.query.get("w") or "").strip().lower()
     word = "".join(ch for ch in raw if ch.isalpha() or ch in " '-").strip()[:40].strip()
     topic = " ".join((request.query.get("t") or "").split()).lower()[:32]
+    visual = build_vocabulary_visual(word=word or "word", translation="", topic=topic)
 
     def svg_fallback():
-        safe = word or "word"
-        visual = build_vocabulary_visual(word=safe, translation="", topic=topic)
-        url = visual.get("image_url") or vocabulary_image_url(safe, "no_good_visual", topic)
+        url = visual.get("image_url") or vocabulary_image_url(word or "word", "no_good_visual", topic)
         return web.HTTPFound(location=url)
 
     def serve(body: bytes, cache_state: str):
@@ -211,7 +211,11 @@ async def vocabulary_photo_handler(request: web.Request):
             "X-Content-Type-Options": "nosniff",
         })
 
-    if not VOCAB_FREE_PHOTOS or not word or is_sensitive_word(word):
+    # Жёсткий гейт на уровне публичного хэндлера: фото только для allowlist-предметов
+    # (allows_free_photo). Даже прямой/закэшированный /vocabulary-photo?w=lesson
+    # вернёт SVG-сцену, а не фотосток — запрет не только в payload, но и здесь.
+    if (not VOCAB_FREE_PHOTOS or not word or is_sensitive_word(word)
+            or not allows_free_photo(word, visual.get("visual_type", ""))):
         return svg_fallback()
 
     if not await photo_rate_limit_ok(request.remote or ""):

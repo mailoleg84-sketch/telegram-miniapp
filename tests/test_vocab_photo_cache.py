@@ -48,8 +48,10 @@ class VocabPhotoHandlerTests(unittest.IsolatedAsyncioTestCase):
         read_mock.assert_awaited_once_with(expected)
 
     async def test_none_marker_redirects_to_svg(self):
-        req = make_mocked_request("GET", "/vocabulary-photo?w=ghost")
-        none_name = server._vocab_photo_cache_name("ghost") + ".none"
+        # allowlist-предмет (table) проходит фото-гейт и доходит до .none-маркера;
+        # слова вне PHOTO_SAFE_OBJECTS отсекаются раньше (см. test_vocab_images).
+        req = make_mocked_request("GET", "/vocabulary-photo?w=table")
+        none_name = server._vocab_photo_cache_name("table") + ".none"
         exists_mock = AsyncMock(return_value=True)  # маркер «фото нет» есть
         with patch("webapp.server.VOCAB_FREE_PHOTOS", True), \
              patch("webapp.server.photo_rate_limit_ok", AsyncMock(return_value=True)), \

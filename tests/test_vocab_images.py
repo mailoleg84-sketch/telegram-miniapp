@@ -1,7 +1,10 @@
 """Тесты выбора бесплатной картинки слова: фото только для конкретных типов,
 проброс топика, маппинг топик->Pixabay-категория."""
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
+from types import SimpleNamespace
+
+from aiohttp import web
 
 from webapp import server
 from webapp.free_images import _TOPIC_CATEGORY, fetch_word_illustration
@@ -155,6 +158,26 @@ class StopwordClassificationTests(unittest.TestCase):
         for w in ("paper", "door", "letter", "monster", "shower", "flower", "silver"):
             with self.subTest(word=w):
                 self.assertEqual(determine_visual_type(w, determine_part_of_speech(w)), "object")
+
+
+class VocabularyPhotoHandlerTests(unittest.TestCase):
+    """Публичный /vocabulary-photo не тянет Pixabay для слов вне PHOTO_SAFE_OBJECTS:
+    даже при включённом фотостоке возвращает SVG-редирект (запрет на уровне роута,
+    не только в payload)."""
+
+    @staticmethod
+    def _request(w, t=""):
+        return SimpleNamespace(query={"w": w, "t": t}, remote="127.0.0.1")
+
+    def test_disallowed_words_redirect_to_svg_without_pixabay(self):
+        no_pixabay = AsyncMock(side_effect=AssertionError("Pixabay must not be called"))
+        for word in ("lesson", "answer", "visited", "because", "the"):
+            with self.subTest(word=word):
+                with patch("webapp.server.VOCAB_FREE_PHOTOS", True), \
+                     patch("webapp.server.fetch_word_illustration", new=no_pixabay):
+                    resp = asyncio.run(server.vocabulary_photo_handler(self._request(word)))
+                self.assertIsInstance(resp, web.HTTPFound)
+                self.assertIn("/vocabulary-visual.svg", resp.location)
 
 
 if __name__ == "__main__":

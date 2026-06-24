@@ -134,6 +134,16 @@ COMMON_CONCRETE_NOUNS = {
     "sheets", "sister", "son", "sons", "stairs", "student", "teacher",
     "teeth", "teen", "teens", "tooth", "wallet", "woman", "women", "zoo",
 }
+# Единственный источник правды для разрешения бесплатного фото (Pixabay): узкий
+# ручной allowlist однозначных конкретных предметов, у которых фото показывает
+# именно значение слова, а не связанный объект/действие. Любое слово ВНЕ набора
+# фото не получает — даже если классифицировано как object. Лучше меньше фото,
+# но без ошибок (см. allows_free_photo). Большинство из них и так имеют эмодзи →
+# фактически фото остаётся только для предметов без эмодзи (table, chair, cup…).
+PHOTO_SAFE_OBJECTS = {
+    "apple", "banana", "orange", "cat", "dog", "car", "bus", "ball",
+    "book", "chair", "table", "bed", "cup", "phone",
+}
 ACTION_WORDS = {
     "run", "jump", "eat", "sleep", "read", "swim", "walk", "write", "draw",
     "play", "open", "carry", "choose", "clean", "create", "dance", "drink",
@@ -191,10 +201,11 @@ CONCRETE_TOPICS = {
     "travel", "people",
 }
 AMBIGUOUS_NOUNS = {
-    "advice", "amount", "balance", "blow", "case", "change", "choice",
-    "deal", "effect", "effort", "event", "fact", "idea", "issue",
-    "lesson", "class", "course", "matter", "mind", "opinion", "options", "point",
-    "problem", "purpose", "reason", "result", "solution", "thought", "truth", "witness",
+    "advice", "amount", "answer", "balance", "blow", "case", "change", "choice",
+    "course", "deal", "effect", "effort", "event", "exam", "fact", "homework",
+    "idea", "issue", "lesson", "class", "matter", "mind", "opinion", "options",
+    "point", "problem", "purpose", "question", "reason", "result", "solution",
+    "test", "thought", "truth", "witness",
 }
 SENSITIVE_WORDS = {
     "fuck", "shit", "piss", "torture", "theft", "scandal", "nightmare",
@@ -546,13 +557,18 @@ def is_complex_visual_type(visual_type: str) -> bool:
 
 
 def allows_free_photo(word: str, visual_type: str) -> bool:
-    """True только для конкретных, узнаваемых ПО НАЗВАНИЮ существительных с высокой
-    уверенностью (курируемые наборы). Цель — убрать случайный фотосток, который
-    сбивает ребёнка: действия (visited -> жираф) и неконкретные существительные
-    (lesson/class -> раскраски) получают учебную SVG-сцену, а не голый поиск фото.
-    Грамматические/служебные/абстрактные слова сюда не попадают по типу карточки."""
+    """Строгий гейт бесплатного фото: разрешено ТОЛЬКО для слов из ручного allowlist
+    PHOTO_SAFE_OBJECTS и только если слово классифицировано как object.
+
+    Случайный фотосток ненадёжен для детского словаря — он показывает связанный
+    объект/действие, а не значение слова (lesson -> рука с карандашом, answer ->
+    заполнение анкеты). Поэтому одного visual_type == "object" недостаточно: слово
+    обязано быть в явном узком списке однозначных предметов. Всё остальное
+    (действия, ситуации, абстрактные, грамматические, любые неоднозначные
+    существительные) получает учебную SVG-сцену. Членство в PHOTO_SAFE_OBJECTS
+    гарантирует object_card / high-confidence / needs_review=False."""
     w = _clean(word).lower()
-    return visual_type == "object" and (w in OBJECT_WORDS or w in COMMON_CONCRETE_NOUNS)
+    return visual_type == "object" and w in PHOTO_SAFE_OBJECTS
 
 
 def _clean(value: str) -> str:

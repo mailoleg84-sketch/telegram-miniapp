@@ -313,22 +313,34 @@ class VocabularyVisualizerTests(unittest.TestCase):
                 self.assertTrue(note)
                 self.assertNotIn("Условная сцена", note)
 
-    def test_allows_free_photo_only_for_curated_concrete_objects(self):
-        # Стоковое фото — только для конкретных узнаваемых существительных.
-        for word in ("table", "room", "customer"):
+    def test_allows_free_photo_only_for_photo_safe_allowlist(self):
+        # Фото — ТОЛЬКО для слов из узкого ручного allowlist PHOTO_SAFE_OBJECTS.
+        for word in ("apple", "table", "cat", "dog", "cup", "book"):
             with self.subTest(word=word):
                 self.assertTrue(allows_free_photo(word, "object"), word)
-        # Действия и неконкретные/служебные слова -> учебная сцена, без случайного фото.
+        # Всё остальное -> учебная сцена, без случайного фото: неоднозначные
+        # существительные (lesson/answer/class/question), бывшие "object" вне
+        # allowlist (room/customer/office), действия, абстрактные и служебные слова.
         for word, visual_type in (
-            ("visited", "action"),
-            ("run", "action"),
-            ("lesson", "situation"),
-            ("class", "situation"),
-            ("because", "cause_effect"),
-            ("the", "no_good_visual"),
+            ("lesson", "situation"), ("answer", "situation"), ("class", "situation"),
+            ("question", "situation"), ("visited", "action"), ("run", "action"),
+            ("because", "cause_effect"), ("the", "no_good_visual"),
+            ("room", "object"), ("customer", "object"), ("office", "object"),
         ):
             with self.subTest(word=word):
                 self.assertFalse(allows_free_photo(word, visual_type), word)
+        # Даже allowlist-слово вне типа object фото не получает.
+        self.assertFalse(allows_free_photo("apple", "situation"))
+
+    def test_ambiguous_school_nouns_are_scene_not_object(self):
+        # answer/question/test/homework/exam — НЕ object_card (иначе тянули бы фото
+        # руки/анкеты вместо значения слова). Учебная сцена + запрет фото.
+        for word in ("answer", "question", "test", "homework", "exam"):
+            with self.subTest(word=word):
+                visual = build_vocabulary_visual(word, "перевод", "Please answer the question.", "school", "8_10")
+                self.assertNotEqual(visual["visual_type"], "object", word)
+                self.assertNotEqual(visual["card_archetype"], "object_card", word)
+                self.assertFalse(allows_free_photo(word, visual["visual_type"]), word)
 
 
 if __name__ == "__main__":

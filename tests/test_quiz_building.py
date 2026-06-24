@@ -185,6 +185,17 @@ class BuildVocabImageQuestionTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(q["emoji"], "у apple должен быть эмодзи-глиф")
         self.assertEqual(q["image_url"], "", "emoji-слова показывают глиф, не сцену")
 
+    async def test_answer_stays_image_scene_not_photo(self):
+        # answer теперь учебная сцена (не object-фото руки/анкеты): остаётся image
+        # с вопросом «что означает ситуация», без /vocabulary-photo.
+        q = await self._image_question(
+            _img_word(1, "answer", "ответ", "school", "Please answer the question.")
+        )
+        self.assertEqual(q["type"], "image")
+        self.assertEqual(q["prompt"], "Что означает эта ситуация?")
+        self.assertTrue(q["image_url"] or q["emoji"], "должна быть сцена или эмодзи")
+        self.assertNotIn("/vocabulary-photo", q["image_url"])
+
 
 if __name__ == "__main__":
     unittest.main()
