@@ -1,12 +1,14 @@
 import unittest
 from pathlib import Path
 
+from config import APP_VERSION
 from data.words import LEARNING_WORDS
 from webapp.vocabulary_visualizer import (
     allows_free_photo,
     build_vocabulary_visual,
     determine_part_of_speech,
     determine_visual_type,
+    vocabulary_image_url,
 )
 
 
@@ -70,6 +72,14 @@ class VocabularyVisualizerTests(unittest.TestCase):
                 self.assertTrue(visual["russian_hint"])
                 self.assertGreaterEqual(visual["image_confidence"], 0)
                 self.assertLessEqual(visual["image_confidence"], 1)
+
+    def test_vocabulary_image_url_is_cache_busted_by_app_version(self):
+        # SVG отдаётся с длинным кэшем; версия iv=APP_VERSION в URL заставляет
+        # браузер/Telegram забрать новую сцену после правки художки.
+        url = vocabulary_image_url("lesson", "situation", "school")
+        self.assertTrue(url.startswith("/vocabulary-visual.svg?"))
+        self.assertIn("iv=", url)
+        self.assertIn(APP_VERSION, url)
 
     def test_image_prompts_are_child_safe_and_text_free(self):
         for word in ("apple", "run", "brave", "although", "should", "usually"):

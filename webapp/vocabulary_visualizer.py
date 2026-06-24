@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from urllib.parse import urlencode
 
+from config import APP_VERSION
+
 
 VISUAL_TYPES = {
     "object",
@@ -823,10 +825,14 @@ def create_image_alt(word: str, visual_type: str) -> str:
 
 
 def vocabulary_image_url(word: str, visual_type: str, topic: str = "") -> str:
+    # iv=APP_VERSION — версия в URL сбрасывает кэш SVG при правке художки. SVG
+    # отдаётся с max-age=604800, поэтому без версии новая сцена не появилась бы
+    # ~неделю. Хэндлер /vocabulary-visual.svg параметр iv игнорирует (читает w/v/t).
     return "/vocabulary-visual.svg?" + urlencode({
         "w": _clean(word).lower()[:48],
         "v": visual_type if visual_type in VISUAL_TYPES else "no_good_visual",
         "t": _clean(topic).lower()[:32],
+        "iv": APP_VERSION,
     })
 
 

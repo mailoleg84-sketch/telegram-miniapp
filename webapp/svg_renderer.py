@@ -3,8 +3,6 @@
 Чистые функции построения SVG: иконки тем, фон/цвет/иконка по слову,
 учебная сцена по visual_type. Без HTTP/БД/состояния — только stdlib.
 """
-import hashlib
-
 
 TOPIC_IMAGE_STYLES = {
     "animals": ("#eaf7ff", "#2f9df4", "paw"),
@@ -44,10 +42,28 @@ TOPIC_IMAGE_STYLES = {
 }
 
 
-FALLBACK_IMAGE_ICONS = (
-    "apple", "paw", "book", "sun", "plane", "home", "game", "laptop",
-    "music", "heart", "shirt", "ball", "bubble", "atom", "clock",
-)
+# Детерминированный вторичный (акцентный) цвет: гармоничный компаньон основного
+# цвета темы. Раньше accent = срез SHA1-хэша слова → у каждой карточки случайный,
+# часто кричащий второй цвет (особенно заметно в сценах: мяч in/on/under, вторая
+# фигурка в situation, круг результата в because). Теперь акцент зависит ТОЛЬКО от
+# палитры темы → карточки одной темы согласованы, «резкая разница» убрана.
+TOPIC_ACCENTS = {
+    "#2481cc": "#ff9f43",  # синий → тёплый оранжевый
+    "#2f9df4": "#ffc04d",  # небесно-синий → янтарный
+    "#ff5c8a": "#9b6cff",  # розовый → мягкий фиолетовый
+    "#ff7a45": "#2f9dc9",  # коралл-оранжевый → сине-бирюзовый
+    "#7c5cff": "#ff9aa2",  # фиолетовый → мягкий коралл
+    "#2ec4b6": "#ff9f68",  # бирюзовый → тёплый коралл
+    "#ff9500": "#3aa0ff",  # оранжевый → синий
+    "#34c759": "#ffb84d",  # зелёный → янтарный
+}
+_DEFAULT_ACCENT = "#ff9f43"
+
+
+def _accent_for(color: str) -> str:
+    """Гармоничный вторичный цвет к основному цвету темы (детерминирован, без хэша)."""
+    return TOPIC_ACCENTS.get(str(color or "").strip().lower(), _DEFAULT_ACCENT)
+
 
 WORD_ICON_OVERRIDES = {
     "airport": "plane",
@@ -164,11 +180,14 @@ def _word_image_icon(word: str) -> str:
     return WORD_ICON_OVERRIDES.get(str(word or "").strip().lower(), "")
 
 
-def _word_image_style(word: str, topic: str, seed: str):
-    bg, color, icon = TOPIC_IMAGE_STYLES.get(topic, ("#eef8ff", "#2481cc", ""))
-    icon = _word_image_icon(word) or icon
-    if not icon or icon == "star":
-        icon = FALLBACK_IMAGE_ICONS[int(seed[:2], 16) % len(FALLBACK_IMAGE_ICONS)]
+def _word_image_style(word: str, topic: str):
+    bg, color, topic_icon = TOPIC_IMAGE_STYLES.get(topic, ("#eef8ff", "#2481cc", ""))
+    # Приоритет: иконка слова → иконка темы → единый нейтральный плейсхолдер.
+    # Раньше при отсутствии иконки бралась случайная по хэшу (FALLBACK_IMAGE_ICONS):
+    # object-слову без оверрайда показывался чужой предмет (spoon → атом). Теперь
+    # детерминированно и осмысленно — тема даёт иконку, а на совсем пустой случай
+    # спокойный нейтральный 'book' (учебный контекст), без «не того» предмета.
+    icon = _word_image_icon(word) or topic_icon or "book"
     return bg, color, icon
 
 
@@ -480,9 +499,8 @@ def _topic_icon_svg(icon: str, color: str) -> str:
 def _word_image_svg(word: str, topic: str) -> str:
     clean_word = " ".join(str(word or "word").split())[:48]
     clean_topic = " ".join(str(topic or "basic").split())[:32]
-    seed = hashlib.sha1(f"{clean_word}:{clean_topic}".encode("utf-8")).hexdigest()
-    bg, color, icon = _word_image_style(clean_word, clean_topic, seed)
-    accent = f"#{seed[:6]}"
+    bg, color, icon = _word_image_style(clean_word, clean_topic)
+    accent = _accent_for(color)
     icon_svg = _topic_icon_svg(icon, color)
     return f"""<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="word picture">
   <rect width="512" height="512" rx="54" fill="{bg}"/>
@@ -497,9 +515,8 @@ def _vocabulary_visual_svg(word: str, topic: str, visual_type: str) -> str:
     clean_word = " ".join(str(word or "word").split()).lower()[:48]
     clean_topic = " ".join(str(topic or "basic").split()).lower()[:32]
     clean_type = " ".join(str(visual_type or "object").split()).lower()
-    seed = hashlib.sha1(f"{clean_word}:{clean_topic}:{clean_type}".encode("utf-8")).hexdigest()
-    bg, color, icon = _word_image_style(clean_word, clean_topic, seed)
-    accent = f"#{seed[:6]}"
+    bg, color, icon = _word_image_style(clean_word, clean_topic)
+    accent = _accent_for(color)
     icon_svg = _topic_icon_svg(icon, color)
 
     def panel(x: int, y: int, w: int = 156, h: int = 210) -> str:

@@ -10,7 +10,7 @@ import hashlib
 import json
 from urllib.parse import urlencode
 
-from config import VOCAB_AI_IMAGES
+from config import VOCAB_AI_IMAGES, APP_VERSION
 from webapp import storage
 from webapp.svg_renderer import _word_image_icon
 from webapp.vocabulary_visualizer import (
@@ -30,6 +30,7 @@ def _word_image_url(word: str, topic: str = "") -> str:
         query = urlencode({
             "w": clean_word,
             "t": clean_topic,
+            "iv": APP_VERSION,  # кэш-бастинг SVG при правке художки (см. vocabulary_image_url)
         })
         return f"/word-image.svg?{query}"
     visual = build_vocabulary_visual(
