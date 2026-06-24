@@ -14,6 +14,7 @@ from config import VOCAB_AI_IMAGES, VOCAB_FREE_PHOTOS
 from webapp import storage
 from webapp.svg_renderer import _word_image_icon
 from webapp.vocabulary_visualizer import (
+    allows_free_photo,
     build_vocabulary_visual,
     is_sensitive_word,
     vocabulary_image_url,
@@ -46,10 +47,11 @@ def _word_image_url(word: str, topic: str = "") -> str:
     )
 
 
-# Бесплатное фото Pixabay уместно только для КОНКРЕТНЫХ, фотографируемых слов
-# (предмет/действие). Для абстрактных/грамматических типов остаётся осмысленная
-# SVG-сцена — это логичнее, чем случайное стоковое фото по голому слову.
-PHOTO_VISUAL_TYPES = {"object", "action"}
+# Бесплатное фото Pixabay уместно только для КОНКРЕТНЫХ, узнаваемых по названию
+# существительных с высокой уверенностью (см. allows_free_photo). Раньше фото
+# тянулись для всех object/action — и давали мусор: «visited» -> жираф,
+# «lesson»/«class» -> случайные раскраски. Теперь действия и неконкретные
+# существительные получают учебную SVG-сцену, а не случайный фотосток.
 
 
 def _vocab_card_image_url(
@@ -59,16 +61,17 @@ def _vocab_card_image_url(
     visual_type: str = "",
     topic: str = "",
 ) -> str:
-    """Free Pixabay photo for concrete words (object/action) without an emoji;
-    otherwise the contextual SVG scene. Emoji words render a glyph client-side, so
-    image_url just keeps the SVG fallback. Topic narrows the photo search."""
+    """Free Pixabay photo only for high-confidence concrete nouns (allows_free_photo)
+    without an emoji; everything else keeps the contextual SVG scene. Emoji words
+    render a glyph client-side, so image_url keeps the SVG fallback. Topic narrows
+    the photo search."""
     w = " ".join(str(word or "").split()).lower()
     if (
         VOCAB_FREE_PHOTOS
         and w
         and not emoji
         and not is_sensitive_word(w)
-        and visual_type in PHOTO_VISUAL_TYPES
+        and allows_free_photo(w, visual_type)
     ):
         params = {"w": w[:40]}
         t = " ".join(str(topic or "").split()).lower()[:32]

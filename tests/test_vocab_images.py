@@ -28,9 +28,19 @@ class VocabCardImageUrlTests(unittest.TestCase):
         self.assertIn("w=table", url)
         self.assertIn("t=home", url)
 
-    def test_action_gets_photo(self):
-        url = server._vocab_card_image_url("travel", SVG, emoji="", visual_type="action", topic="travel")
-        self.assertTrue(url.startswith("/vocabulary-photo?"))
+    def test_action_word_falls_back_to_svg(self):
+        # Действия больше НЕ тянут случайное фото (visited -> жираф) — учебная сцена.
+        for w in ("visited", "travel", "run"):
+            with self.subTest(word=w):
+                url = server._vocab_card_image_url(w, SVG, emoji="", visual_type="action", topic="travel")
+                self.assertEqual(url, SVG)
+
+    def test_low_confidence_noun_falls_back_to_svg(self):
+        # Неконкретные существительные (lesson/class) не тянут случайное фото.
+        for w, t in (("lesson", "school"), ("class", "school")):
+            with self.subTest(word=w):
+                url = server._vocab_card_image_url(w, SVG, emoji="", visual_type="object", topic=t)
+                self.assertEqual(url, SVG)
 
     def test_abstract_situation_falls_back_to_svg(self):
         url = server._vocab_card_image_url("reason", SVG, emoji="", visual_type="situation", topic="abstract")

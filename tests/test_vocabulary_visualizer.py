@@ -3,6 +3,7 @@ from pathlib import Path
 
 from data.words import LEARNING_WORDS
 from webapp.vocabulary_visualizer import (
+    allows_free_photo,
     build_vocabulary_visual,
     determine_part_of_speech,
     determine_visual_type,
@@ -307,6 +308,23 @@ class VocabularyVisualizerTests(unittest.TestCase):
                 note = build_vocabulary_visual(word, "перевод", "", "basic", "8_10")["visual_learning_note"]
                 self.assertTrue(note)
                 self.assertNotIn("Условная сцена", note)
+
+    def test_allows_free_photo_only_for_curated_concrete_objects(self):
+        # Стоковое фото — только для конкретных узнаваемых существительных.
+        for word in ("table", "room", "customer"):
+            with self.subTest(word=word):
+                self.assertTrue(allows_free_photo(word, "object"), word)
+        # Действия и неконкретные/служебные слова -> учебная сцена, без случайного фото.
+        for word, visual_type in (
+            ("visited", "action"),
+            ("run", "action"),
+            ("lesson", "object"),
+            ("class", "object"),
+            ("because", "cause_effect"),
+            ("the", "no_good_visual"),
+        ):
+            with self.subTest(word=word):
+                self.assertFalse(allows_free_photo(word, visual_type), word)
 
 
 if __name__ == "__main__":

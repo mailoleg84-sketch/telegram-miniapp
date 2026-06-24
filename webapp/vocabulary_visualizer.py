@@ -533,6 +533,16 @@ def is_complex_visual_type(visual_type: str) -> bool:
     return visual_type in COMPLEX_VISUAL_TYPES
 
 
+def allows_free_photo(word: str, visual_type: str) -> bool:
+    """True только для конкретных, узнаваемых ПО НАЗВАНИЮ существительных с высокой
+    уверенностью (курируемые наборы). Цель — убрать случайный фотосток, который
+    сбивает ребёнка: действия (visited -> жираф) и неконкретные существительные
+    (lesson/class -> раскраски) получают учебную SVG-сцену, а не голый поиск фото.
+    Грамматические/служебные/абстрактные слова сюда не попадают по типу карточки."""
+    w = _clean(word).lower()
+    return visual_type == "object" and (w in OBJECT_WORDS or w in COMMON_CONCRETE_NOUNS)
+
+
 def _clean(value: str) -> str:
     return " ".join(str(value or "").strip().split())
 
