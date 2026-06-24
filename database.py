@@ -74,284 +74,324 @@ async def ping() -> bool:
     return await pool.fetchval("SELECT 1") == 1
 
 
+SCHEMA_VERSION = 1
+
+
+async def _record_schema_version(conn, version: int, description: str) -> None:
+    """Фиксирует применённую версию схемы в schema_versions (идемпотентно)."""
+    await conn.execute(
+        """
+        INSERT INTO schema_versions (version, description)
+        VALUES ($1, $2)
+        ON CONFLICT (version) DO NOTHING
+        """,
+        version, description,
+    )
+
+
 async def init_db() -> None:
     pool = await _get_pool()
     async with pool.acquire() as conn:
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                user_id        BIGINT PRIMARY KEY,
-                name           TEXT NOT NULL,
-                age_group      TEXT NOT NULL,
-                parent_name    TEXT,
-                child_age      INTEGER,
-                goal           TEXT,
-                english_level  TEXT DEFAULT 'beginner',
-                level_test_score INTEGER,
-                level_test_completed_at TIMESTAMP,
-                points         INTEGER DEFAULT 0,
-                registered_at  TIMESTAMP DEFAULT NOW()
+        # Схема — атомарно в одной транзакции (DDL в Postgres транзакционный):
+        # либо применилась вся, либо откат к прежнему состоянию (нет полу-
+        # миграции при крахе/таймауте посреди DDL).
+        async with conn.transaction():
+            await _ensure_schema(conn)
+            await _record_schema_version(
+                conn, SCHEMA_VERSION,
+                "baseline schema (tables, indexes, SRS columns, app_meta)",
             )
-        """)
-        await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS parent_name TEXT")
-        await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS child_age INTEGER")
-        await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS goal TEXT")
-        await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS english_level TEXT DEFAULT 'beginner'")
-        await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS level_test_score INTEGER")
-        await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS level_test_completed_at TIMESTAMP")
-        # Напоминания ботом (opt-in): выключены по умолчанию; last_reminded_at —
-        # страж от повторной отправки в один день.
-        await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS reminders_enabled BOOLEAN DEFAULT FALSE")
-        await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_reminded_at TIMESTAMP")
-        # Чистка: PIN родительского раздела был добавлен и затем убран — снимаем
-        # осиротевшую колонку, если осталась в проде (IF EXISTS = no-op иначе).
-        await conn.execute("ALTER TABLE users DROP COLUMN IF EXISTS parent_pin_hash")
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS words (
-                id           SERIAL PRIMARY KEY,
-                word         TEXT NOT NULL UNIQUE,
-                translation  TEXT NOT NULL,
-                transcription TEXT,
-                example      TEXT,
-                topic        TEXT DEFAULT 'basic',
-                age_group    TEXT DEFAULT '8_10'
-            )
-        """)
-        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS transcription TEXT")
-        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS topic TEXT DEFAULT 'basic'")
-        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS age_group TEXT DEFAULT '8_10'")
-        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS part_of_speech TEXT")
-        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS visual_type TEXT")
-        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS image_prompt TEXT")
-        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS image_url TEXT")
-        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS image_alt TEXT")
-        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS example_sentence TEXT")
-        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS simple_meaning TEXT")
-        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS russian_hint TEXT")
-        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS image_confidence REAL DEFAULT 0")
-        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS needs_review BOOLEAN DEFAULT FALSE")
-        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS generation_status TEXT DEFAULT 'pending'")
-        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS generated_image_url TEXT")
-        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS generated_image_prompt_hash TEXT")
-        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS generated_image_review TEXT")
-        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS generated_image_status TEXT DEFAULT 'missing'")
-        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS generated_image_model TEXT")
-        await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS generated_image_checked_at TIMESTAMP")
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS user_progress (
-                user_id        BIGINT,
-                word_id        INTEGER,
-                correct_count  INTEGER DEFAULT 0,
-                wrong_count    INTEGER DEFAULT 0,
-                review_streak  INTEGER DEFAULT 0,
-                last_seen      TIMESTAMP DEFAULT NOW(),
-                srs_box        INTEGER DEFAULT 0,
-                next_review_at TIMESTAMP,
-                PRIMARY KEY (user_id, word_id)
-            )
-        """)
-        await conn.execute("ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS review_streak INTEGER DEFAULT 0")
-        # SRS (интервальное повторение, Leitner): «коробка» 0..5 и срок следующего показа.
-        await conn.execute("ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS srs_box INTEGER DEFAULT 0")
-        await conn.execute("ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS next_review_at TIMESTAMP")
-        await conn.execute(
-            "CREATE INDEX IF NOT EXISTS user_progress_due_idx "
-            "ON user_progress (user_id, next_review_at)"
-        )
-        # Однократная миграция SRS для строк, существовавших до появления колонок:
-        # проставляем srs_box из review_streak и срок следующего показа. Старые
-        # «на повторение» (ошибочные, не закреплённые) — сразу; остальные — по
-        # интервалу от last_seen. Идемпотентно (WHERE next_review_at IS NULL):
-        # на повторных деплоях затрагивает 0 строк.
-        await conn.execute("""
-            UPDATE user_progress
-            SET srs_box = LEAST(COALESCE(review_streak, 0), 5),
-                next_review_at = CASE
-                    WHEN COALESCE(wrong_count, 0) > 0 AND COALESCE(review_streak, 0) < 2
-                        THEN NOW()
-                    ELSE COALESCE(last_seen, NOW()) + make_interval(
-                        days => CASE LEAST(COALESCE(review_streak, 0), 5)
-                            WHEN 0 THEN 1 WHEN 1 THEN 1 WHEN 2 THEN 3
-                            WHEN 3 THEN 7 WHEN 4 THEN 16 ELSE 35 END)
-                END
-            WHERE next_review_at IS NULL
-        """)
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS conversations (
-                id          SERIAL PRIMARY KEY,
-                user_id     BIGINT NOT NULL,
-                role        TEXT NOT NULL,
-                content     TEXT NOT NULL,
-                created_at  TIMESTAMP DEFAULT NOW()
-            )
-        """)
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS voice_lesson_state (
-                user_id             BIGINT PRIMARY KEY,
-                age_group           TEXT NOT NULL,
-                phase               TEXT NOT NULL DEFAULT 'welcome',
-                current_topic       TEXT DEFAULT '',
-                current_topic_label TEXT DEFAULT '',
-                topic_suggestions   TEXT[] NOT NULL DEFAULT '{}',
-                lesson_goal         TEXT DEFAULT '',
-                target_phrase       TEXT DEFAULT '',
-                target_words        TEXT[] NOT NULL DEFAULT '{}',
-                turn_count          INTEGER DEFAULT 0,
-                correction_count    INTEGER DEFAULT 0,
-                last_language       TEXT DEFAULT 'unknown',
-                support_mode        TEXT DEFAULT '',
-                started_at          TIMESTAMP DEFAULT NOW(),
-                updated_at          TIMESTAMP DEFAULT NOW()
-            )
-        """)
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS voice_lesson_sessions (
-                id               SERIAL PRIMARY KEY,
-                user_id          BIGINT NOT NULL,
-                started_at       TIMESTAMP NOT NULL,
-                completed_at     TIMESTAMP DEFAULT NOW(),
-                age_group        TEXT NOT NULL,
-                topic            TEXT NOT NULL,
-                topic_label      TEXT DEFAULT '',
-                lesson_goal      TEXT DEFAULT '',
-                target_phrase    TEXT DEFAULT '',
-                target_words     TEXT[] NOT NULL DEFAULT '{}',
-                correction_count INTEGER DEFAULT 0,
-                last_language    TEXT DEFAULT 'unknown',
-                UNIQUE (user_id, started_at)
-            )
-        """)
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS ai_usage (
-                id             SERIAL PRIMARY KEY,
-                user_id        BIGINT NOT NULL,
-                model          TEXT NOT NULL,
-                input_tokens   INTEGER DEFAULT 0,
-                output_tokens  INTEGER DEFAULT 0,
-                total_tokens   INTEGER DEFAULT 0,
-                cost_usd       NUMERIC(12, 6) DEFAULT 0,
-                created_at     TIMESTAMP DEFAULT NOW()
-            )
-        """)
-        await conn.execute("""
-            CREATE INDEX IF NOT EXISTS ai_usage_user_created_idx
-            ON ai_usage (user_id, created_at DESC)
-        """)
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS daily_lessons (
-                user_id          BIGINT NOT NULL,
-                lesson_date      DATE NOT NULL DEFAULT CURRENT_DATE,
-                completed_steps  INTEGER DEFAULT 0,
-                completed        BOOLEAN DEFAULT FALSE,
-                completed_at     TIMESTAMP,
-                rewarded_at      TIMESTAMP,
-                created_at       TIMESTAMP DEFAULT NOW(),
-                updated_at       TIMESTAMP DEFAULT NOW(),
-                PRIMARY KEY (user_id, lesson_date)
-            )
-        """)
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS vocabulary_sessions (
-                id              SERIAL PRIMARY KEY,
-                user_id         BIGINT NOT NULL,
-                topic           TEXT,
-                age_group       TEXT NOT NULL,
-                word_ids        INTEGER[] NOT NULL,
-                correct_count   INTEGER DEFAULT 0,
-                wrong_count     INTEGER DEFAULT 0,
-                completed       BOOLEAN DEFAULT FALSE,
-                created_at      TIMESTAMP DEFAULT NOW(),
-                completed_at    TIMESTAMP
-            )
-        """)
-        await conn.execute("""
-            CREATE INDEX IF NOT EXISTS vocabulary_sessions_user_created_idx
-            ON vocabulary_sessions (user_id, created_at DESC)
-        """)
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS game_sessions (
-                id              SERIAL PRIMARY KEY,
-                user_id         BIGINT NOT NULL,
-                game_type       TEXT NOT NULL,
-                age_group       TEXT NOT NULL,
-                word_ids        INTEGER[] NOT NULL,
-                correct_count   INTEGER DEFAULT 0,
-                wrong_count     INTEGER DEFAULT 0,
-                completed       BOOLEAN DEFAULT FALSE,
-                created_at      TIMESTAMP DEFAULT NOW(),
-                completed_at    TIMESTAMP
-            )
-        """)
-        await conn.execute("""
-            CREATE INDEX IF NOT EXISTS game_sessions_user_created_idx
-            ON game_sessions (user_id, created_at DESC)
-        """)
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS training_attempts (
-                id          SERIAL PRIMARY KEY,
-                user_id     BIGINT NOT NULL,
-                mode        TEXT NOT NULL,
-                focus       TEXT NOT NULL DEFAULT 'all',
-                correct     BOOLEAN NOT NULL,
-                created_at  TIMESTAMP DEFAULT NOW()
-            )
-        """)
-        await conn.execute("""
-            CREATE INDEX IF NOT EXISTS training_attempts_user_created_idx
-            ON training_attempts (user_id, created_at DESC)
-        """)
-        # Индексы на горячих путях: история чата, прогресс, дневной урок и
-        # выборка слов по возрастной группе (без них — seq scan при росте данных).
-        await conn.execute("""
-            CREATE INDEX IF NOT EXISTS conversations_user_id_idx
-            ON conversations (user_id, id DESC)
-        """)
-        await conn.execute("""
-            CREATE INDEX IF NOT EXISTS user_progress_user_id_idx
-            ON user_progress (user_id)
-        """)
-        await conn.execute("""
-            CREATE INDEX IF NOT EXISTS daily_lessons_user_id_idx
-            ON daily_lessons (user_id)
-        """)
-        await conn.execute("""
-            CREATE INDEX IF NOT EXISTS words_age_group_idx
-            ON words (age_group)
-        """)
-        # Композитный индекс под выборки тематических колод:
-        # WHERE age_group=$1 AND topic=$2 (get_words_by_topic) и
-        # WHERE age_group=$1 GROUP BY topic (get_topic_counts). Покрывает и
-        # запросы только по age_group (leftmost-префикс).
-        await conn.execute("""
-            CREATE INDEX IF NOT EXISTS words_age_topic_idx
-            ON words (age_group, topic)
-        """)
-        # Одноразовые токены тренировок (анти-накрутка прогресса). Раньше жили
-        # in-memory и терялись при рестарте/масштабе; теперь — в Neon.
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS training_tokens (
-                token       TEXT PRIMARY KEY,
-                user_id     BIGINT NOT NULL,
-                word_id     INTEGER NOT NULL,
-                expires_at  TIMESTAMP NOT NULL
-            )
-        """)
-        await conn.execute("""
-            CREATE INDEX IF NOT EXISTS training_tokens_expires_idx
-            ON training_tokens (expires_at)
-        """)
-        # Метаданные приложения (key-value). Сейчас: хеш засеянного банка слов —
-        # чтобы не ре-сидить 5000 строк на каждом старте, если данные не менялись.
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS app_meta (
-                key   TEXT PRIMARY KEY,
-                value TEXT
-            )
-        """)
-        # Сид — атомарно: UPSERT + DELETE'ы + запись хеша в одной транзакции,
-        # чтобы краш в середине не оставил заблокированные слова видимыми
-        # (откат → прежнее консистентное состояние → ре-сид на след. старте).
+        # Сид — отдельной транзакцией (тяжёлый UPSERT ~5000 строк, timeout=300):
+        # UPSERT + DELETE'ы + запись хеша атомарно (краш — откат — ре-сид на
+        # следующем старте, а не «осиротевшие» заблокированные слова).
         async with conn.transaction():
             await _seed_words(conn)
+
+
+async def _ensure_schema(conn) -> None:
+    """Идемпотентно создаёт/мигрирует схему (CREATE/ALTER ... IF [NOT] EXISTS).
+
+    Вызывается из init_db внутри транзакции — вся схема применяется атомарно.
+    Порядок важен: ALTER'ы зависят от своих CREATE TABLE выше."""
+    # Учёт применённых версий схемы (нумерованные миграции). Создаётся первой;
+    # baseline-версия фиксируется в init_db после всего DDL.
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS schema_versions (
+            version     INTEGER PRIMARY KEY,
+            description TEXT,
+            applied_at  TIMESTAMP DEFAULT NOW()
+        )
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id        BIGINT PRIMARY KEY,
+            name           TEXT NOT NULL,
+            age_group      TEXT NOT NULL,
+            parent_name    TEXT,
+            child_age      INTEGER,
+            goal           TEXT,
+            english_level  TEXT DEFAULT 'beginner',
+            level_test_score INTEGER,
+            level_test_completed_at TIMESTAMP,
+            points         INTEGER DEFAULT 0,
+            registered_at  TIMESTAMP DEFAULT NOW()
+        )
+    """)
+    await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS parent_name TEXT")
+    await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS child_age INTEGER")
+    await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS goal TEXT")
+    await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS english_level TEXT DEFAULT 'beginner'")
+    await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS level_test_score INTEGER")
+    await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS level_test_completed_at TIMESTAMP")
+    # Напоминания ботом (opt-in): выключены по умолчанию; last_reminded_at —
+    # страж от повторной отправки в один день.
+    await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS reminders_enabled BOOLEAN DEFAULT FALSE")
+    await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_reminded_at TIMESTAMP")
+    # Чистка: PIN родительского раздела был добавлен и затем убран — снимаем
+    # осиротевшую колонку, если осталась в проде (IF EXISTS = no-op иначе).
+    await conn.execute("ALTER TABLE users DROP COLUMN IF EXISTS parent_pin_hash")
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS words (
+            id           SERIAL PRIMARY KEY,
+            word         TEXT NOT NULL UNIQUE,
+            translation  TEXT NOT NULL,
+            transcription TEXT,
+            example      TEXT,
+            topic        TEXT DEFAULT 'basic',
+            age_group    TEXT DEFAULT '8_10'
+        )
+    """)
+    await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS transcription TEXT")
+    await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS topic TEXT DEFAULT 'basic'")
+    await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS age_group TEXT DEFAULT '8_10'")
+    await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS part_of_speech TEXT")
+    await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS visual_type TEXT")
+    await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS image_prompt TEXT")
+    await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS image_url TEXT")
+    await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS image_alt TEXT")
+    await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS example_sentence TEXT")
+    await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS simple_meaning TEXT")
+    await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS russian_hint TEXT")
+    await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS image_confidence REAL DEFAULT 0")
+    await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS needs_review BOOLEAN DEFAULT FALSE")
+    await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS generation_status TEXT DEFAULT 'pending'")
+    await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS generated_image_url TEXT")
+    await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS generated_image_prompt_hash TEXT")
+    await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS generated_image_review TEXT")
+    await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS generated_image_status TEXT DEFAULT 'missing'")
+    await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS generated_image_model TEXT")
+    await conn.execute("ALTER TABLE words ADD COLUMN IF NOT EXISTS generated_image_checked_at TIMESTAMP")
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS user_progress (
+            user_id        BIGINT,
+            word_id        INTEGER,
+            correct_count  INTEGER DEFAULT 0,
+            wrong_count    INTEGER DEFAULT 0,
+            review_streak  INTEGER DEFAULT 0,
+            last_seen      TIMESTAMP DEFAULT NOW(),
+            srs_box        INTEGER DEFAULT 0,
+            next_review_at TIMESTAMP,
+            PRIMARY KEY (user_id, word_id)
+        )
+    """)
+    await conn.execute("ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS review_streak INTEGER DEFAULT 0")
+    # SRS (интервальное повторение, Leitner): «коробка» 0..5 и срок следующего показа.
+    await conn.execute("ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS srs_box INTEGER DEFAULT 0")
+    await conn.execute("ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS next_review_at TIMESTAMP")
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS user_progress_due_idx "
+        "ON user_progress (user_id, next_review_at)"
+    )
+    # Однократная миграция SRS для строк, существовавших до появления колонок:
+    # проставляем srs_box из review_streak и срок следующего показа. Старые
+    # «на повторение» (ошибочные, не закреплённые) — сразу; остальные — по
+    # интервалу от last_seen. Идемпотентно (WHERE next_review_at IS NULL):
+    # на повторных деплоях затрагивает 0 строк.
+    await conn.execute("""
+        UPDATE user_progress
+        SET srs_box = LEAST(COALESCE(review_streak, 0), 5),
+            next_review_at = CASE
+                WHEN COALESCE(wrong_count, 0) > 0 AND COALESCE(review_streak, 0) < 2
+                    THEN NOW()
+                ELSE COALESCE(last_seen, NOW()) + make_interval(
+                    days => CASE LEAST(COALESCE(review_streak, 0), 5)
+                        WHEN 0 THEN 1 WHEN 1 THEN 1 WHEN 2 THEN 3
+                        WHEN 3 THEN 7 WHEN 4 THEN 16 ELSE 35 END)
+            END
+        WHERE next_review_at IS NULL
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS conversations (
+            id          SERIAL PRIMARY KEY,
+            user_id     BIGINT NOT NULL,
+            role        TEXT NOT NULL,
+            content     TEXT NOT NULL,
+            created_at  TIMESTAMP DEFAULT NOW()
+        )
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS voice_lesson_state (
+            user_id             BIGINT PRIMARY KEY,
+            age_group           TEXT NOT NULL,
+            phase               TEXT NOT NULL DEFAULT 'welcome',
+            current_topic       TEXT DEFAULT '',
+            current_topic_label TEXT DEFAULT '',
+            topic_suggestions   TEXT[] NOT NULL DEFAULT '{}',
+            lesson_goal         TEXT DEFAULT '',
+            target_phrase       TEXT DEFAULT '',
+            target_words        TEXT[] NOT NULL DEFAULT '{}',
+            turn_count          INTEGER DEFAULT 0,
+            correction_count    INTEGER DEFAULT 0,
+            last_language       TEXT DEFAULT 'unknown',
+            support_mode        TEXT DEFAULT '',
+            started_at          TIMESTAMP DEFAULT NOW(),
+            updated_at          TIMESTAMP DEFAULT NOW()
+        )
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS voice_lesson_sessions (
+            id               SERIAL PRIMARY KEY,
+            user_id          BIGINT NOT NULL,
+            started_at       TIMESTAMP NOT NULL,
+            completed_at     TIMESTAMP DEFAULT NOW(),
+            age_group        TEXT NOT NULL,
+            topic            TEXT NOT NULL,
+            topic_label      TEXT DEFAULT '',
+            lesson_goal      TEXT DEFAULT '',
+            target_phrase    TEXT DEFAULT '',
+            target_words     TEXT[] NOT NULL DEFAULT '{}',
+            correction_count INTEGER DEFAULT 0,
+            last_language    TEXT DEFAULT 'unknown',
+            UNIQUE (user_id, started_at)
+        )
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS ai_usage (
+            id             SERIAL PRIMARY KEY,
+            user_id        BIGINT NOT NULL,
+            model          TEXT NOT NULL,
+            input_tokens   INTEGER DEFAULT 0,
+            output_tokens  INTEGER DEFAULT 0,
+            total_tokens   INTEGER DEFAULT 0,
+            cost_usd       NUMERIC(12, 6) DEFAULT 0,
+            created_at     TIMESTAMP DEFAULT NOW()
+        )
+    """)
+    await conn.execute("""
+        CREATE INDEX IF NOT EXISTS ai_usage_user_created_idx
+        ON ai_usage (user_id, created_at DESC)
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS daily_lessons (
+            user_id          BIGINT NOT NULL,
+            lesson_date      DATE NOT NULL DEFAULT CURRENT_DATE,
+            completed_steps  INTEGER DEFAULT 0,
+            completed        BOOLEAN DEFAULT FALSE,
+            completed_at     TIMESTAMP,
+            rewarded_at      TIMESTAMP,
+            created_at       TIMESTAMP DEFAULT NOW(),
+            updated_at       TIMESTAMP DEFAULT NOW(),
+            PRIMARY KEY (user_id, lesson_date)
+        )
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS vocabulary_sessions (
+            id              SERIAL PRIMARY KEY,
+            user_id         BIGINT NOT NULL,
+            topic           TEXT,
+            age_group       TEXT NOT NULL,
+            word_ids        INTEGER[] NOT NULL,
+            correct_count   INTEGER DEFAULT 0,
+            wrong_count     INTEGER DEFAULT 0,
+            completed       BOOLEAN DEFAULT FALSE,
+            created_at      TIMESTAMP DEFAULT NOW(),
+            completed_at    TIMESTAMP
+        )
+    """)
+    await conn.execute("""
+        CREATE INDEX IF NOT EXISTS vocabulary_sessions_user_created_idx
+        ON vocabulary_sessions (user_id, created_at DESC)
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS game_sessions (
+            id              SERIAL PRIMARY KEY,
+            user_id         BIGINT NOT NULL,
+            game_type       TEXT NOT NULL,
+            age_group       TEXT NOT NULL,
+            word_ids        INTEGER[] NOT NULL,
+            correct_count   INTEGER DEFAULT 0,
+            wrong_count     INTEGER DEFAULT 0,
+            completed       BOOLEAN DEFAULT FALSE,
+            created_at      TIMESTAMP DEFAULT NOW(),
+            completed_at    TIMESTAMP
+        )
+    """)
+    await conn.execute("""
+        CREATE INDEX IF NOT EXISTS game_sessions_user_created_idx
+        ON game_sessions (user_id, created_at DESC)
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS training_attempts (
+            id          SERIAL PRIMARY KEY,
+            user_id     BIGINT NOT NULL,
+            mode        TEXT NOT NULL,
+            focus       TEXT NOT NULL DEFAULT 'all',
+            correct     BOOLEAN NOT NULL,
+            created_at  TIMESTAMP DEFAULT NOW()
+        )
+    """)
+    await conn.execute("""
+        CREATE INDEX IF NOT EXISTS training_attempts_user_created_idx
+        ON training_attempts (user_id, created_at DESC)
+    """)
+    # Индексы на горячих путях: история чата, прогресс, дневной урок и
+    # выборка слов по возрастной группе (без них — seq scan при росте данных).
+    await conn.execute("""
+        CREATE INDEX IF NOT EXISTS conversations_user_id_idx
+        ON conversations (user_id, id DESC)
+    """)
+    await conn.execute("""
+        CREATE INDEX IF NOT EXISTS user_progress_user_id_idx
+        ON user_progress (user_id)
+    """)
+    await conn.execute("""
+        CREATE INDEX IF NOT EXISTS daily_lessons_user_id_idx
+        ON daily_lessons (user_id)
+    """)
+    await conn.execute("""
+        CREATE INDEX IF NOT EXISTS words_age_group_idx
+        ON words (age_group)
+    """)
+    # Композитный индекс под выборки тематических колод:
+    # WHERE age_group=$1 AND topic=$2 (get_words_by_topic) и
+    # WHERE age_group=$1 GROUP BY topic (get_topic_counts). Покрывает и
+    # запросы только по age_group (leftmost-префикс).
+    await conn.execute("""
+        CREATE INDEX IF NOT EXISTS words_age_topic_idx
+        ON words (age_group, topic)
+    """)
+    # Одноразовые токены тренировок (анти-накрутка прогресса). Раньше жили
+    # in-memory и терялись при рестарте/масштабе; теперь — в Neon.
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS training_tokens (
+            token       TEXT PRIMARY KEY,
+            user_id     BIGINT NOT NULL,
+            word_id     INTEGER NOT NULL,
+            expires_at  TIMESTAMP NOT NULL
+        )
+    """)
+    await conn.execute("""
+        CREATE INDEX IF NOT EXISTS training_tokens_expires_idx
+        ON training_tokens (expires_at)
+    """)
+    # Метаданные приложения (key-value). Сейчас: хеш засеянного банка слов —
+    # чтобы не ре-сидить 5000 строк на каждом старте, если данные не менялись.
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS app_meta (
+            key   TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
 
 
 # Защита в глубину: ни одно из этих слов не попадёт в детский банк, даже если
