@@ -174,7 +174,7 @@ class VocabularyVisualizerTests(unittest.TestCase):
         self.assertIn("requestGeneratedWordImage", app_js)
         self.assertIn("image_generation_status", app_js)
         self.assertIn("fallback_image_url", app_js)
-        self.assertIn("word-detail", app_js)
+        self.assertIn("word-sentence", app_js)
         self.assertIn("word-explain", app_js)
         self.assertIn("word-hint", app_js)
         self.assertIn("showLearningDetails: false", app_js)
@@ -375,6 +375,65 @@ class VocabularyVisualizerTests(unittest.TestCase):
                 self.assertEqual(visual["visual_type"], "situation", word)
                 self.assertNotEqual(visual["card_archetype"], "object_card", word)
                 self.assertFalse(allows_free_photo(word, visual["visual_type"]), word)
+
+
+class CardContentTests(unittest.TestCase):
+    """Карточка «Учим слова»: бейдж типа значения, конкретное объяснение или пусто
+    (без шаблонного грамматического мусора), пример + перевод + полезные фразы.
+    Поля приходят из build_vocabulary_visual (его пересобирает _word_dict в рантайме)."""
+
+    JUNK_EN = "This is a thing, person, place, or idea"
+    JUNK_RU = "Это название предмета, человека, места или идеи"
+
+    def test_explanation_never_uses_universal_noun_template(self):
+        for word, tr, topic in (
+            ("math", "математика", "school"), ("because", "потому что", "grammar"),
+            ("the", "артикль the", "basic"), ("visited", "посетил", "travel"),
+            ("answer", "ответ", "school"), ("question", "вопрос", "school"),
+            ("lesson", "урок", "school"), ("class", "класс", "school"),
+            ("homework", "домашняя работа", "school"),
+        ):
+            with self.subTest(word=word):
+                explanation = build_vocabulary_visual(word, tr, "", topic, "8_10")["explanation_ru"]
+                self.assertNotIn(self.JUNK_RU, explanation)
+                self.assertNotIn("название предмета", explanation)
+                self.assertNotIn(self.JUNK_EN, explanation)
+
+    def test_non_curated_words_have_empty_explanation(self):
+        # the/answer/question/homework не курируются -> объяснение пустое (блок скрыт),
+        # вместо прежнего мусорного шаблона.
+        for word, tr, topic in (
+            ("the", "артикль the", "basic"), ("answer", "ответ", "school"),
+            ("question", "вопрос", "school"), ("homework", "домашняя работа", "school"),
+        ):
+            with self.subTest(word=word):
+                self.assertEqual(build_vocabulary_visual(word, tr, "", topic, "8_10")["explanation_ru"], "")
+
+    def test_math_card_is_complete(self):
+        v = build_vocabulary_visual("math", "математика", "Let's learn the word math.", "school", "8_10")
+        self.assertEqual(v["example_sentence"], "I like math.")
+        self.assertEqual(v["example_translation"], "Мне нравится математика.")
+        self.assertEqual(v["explanation_ru"], "Школьный предмет про числа, задачи и примеры.")
+        self.assertEqual(v["meaning_badge"], "noun · школьный предмет")
+        self.assertIn(["math lesson", "урок математики"], v["phrases"])
+
+    def test_meaning_badge_reads_clearly(self):
+        cases = {
+            ("dog", "собака", "animals"): "noun · животное",
+            ("run", "бежать", "verbs"): "verb · действие",
+            ("happy", "счастливый", "feelings"): "adjective · качество",
+            ("apple", "яблоко", "food"): "noun · предмет",
+        }
+        for (word, tr, topic), badge in cases.items():
+            with self.subTest(word=word):
+                self.assertEqual(build_vocabulary_visual(word, tr, "", topic, "8_10")["meaning_badge"], badge)
+
+    def test_vocabulary_not_shrunk(self):
+        # Слова из общего словаря не удалялись.
+        words = {w[0].strip().lower() for w in LEARNING_WORDS}
+        self.assertGreaterEqual(len(LEARNING_WORDS), 4900)
+        for w in ("math", "because", "the", "answer", "lesson"):
+            self.assertIn(w, words, w)
 
 
 if __name__ == "__main__":

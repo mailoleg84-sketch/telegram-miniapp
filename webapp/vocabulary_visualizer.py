@@ -302,6 +302,7 @@ EXAMPLES = {
     "already": "She has already finished her homework.",
     "yet": "He has not finished yet.",
     "usually": "I usually get up at seven.",
+    "math": "I like math.",
 }
 
 SIMPLE_MEANINGS = {
@@ -372,6 +373,86 @@ RUSSIAN_HINTS = {
     "lesson": "Урок — время, когда учитель и ученики учатся вместе.",
     "class": "Класс — группа учеников или занятие, где дети учатся вместе.",
     "visited": "Посетила — сходила куда-то и провела там время.",
+    "math": "Школьный предмет про числа, задачи и примеры.",
+}
+
+# Перевод примера на русский для карточки «Учим слова». Показывается, только если
+# есть (иначе строка перевода скрыта). Курируется вручную — лучше ничего, чем мусор.
+EXAMPLE_TRANSLATIONS = {
+    "apple": "У меня есть яблоко.",
+    "dog": "Собака дружелюбная.",
+    "car": "Машина синяя.",
+    "chair": "Книга на стуле.",
+    "ball": "У меня есть красный мяч.",
+    "run": "Я умею быстро бегать.",
+    "jump": "Ребёнок умеет прыгать.",
+    "eat": "Я ем яблоко.",
+    "sleep": "Кошка спит.",
+    "read": "Я читаю книгу.",
+    "swim": "Я умею плавать.",
+    "big": "Слон большой.",
+    "small": "Мышь маленькая.",
+    "hot": "Суп горячий.",
+    "cold": "Лёд холодный.",
+    "clean": "Комната чистая.",
+    "dirty": "Ботинки грязные.",
+    "happy": "Она счастлива.",
+    "sad": "Он грустный.",
+    "angry": "Она сердится.",
+    "scared": "Ему страшно.",
+    "tired": "Она устала.",
+    "in": "Мяч в коробке.",
+    "on": "Мяч на коробке.",
+    "under": "Мяч под коробкой.",
+    "behind": "Мяч за коробкой.",
+    "between": "Мяч между коробками.",
+    "brave": "Она смелая.",
+    "kind": "Он добр к другу.",
+    "honest": "Он честный.",
+    "careful": "Он осторожный.",
+    "proud": "Она гордится своим рисунком.",
+    "worried": "Он переживает из-за автобуса.",
+    "although": "Хотя идёт дождь, он счастлив.",
+    "however": "Идёт дождь. Однако она выходит на улицу.",
+    "because": "Он мокрый, потому что идёт дождь.",
+    "lesson": "Сегодня у нас урок английского.",
+    "class": "Наш класс учит новые слова.",
+    "visited": "Она сходила в зоопарк с семьёй.",
+    "should": "Тебе стоит надеть шлем.",
+    "must": "Ты должен остановиться на красный свет.",
+    "would": "Я бы хотел воды.",
+    "already": "Она уже сделала домашнюю работу.",
+    "yet": "Он ещё не закончил.",
+    "usually": "Обычно я встаю в семь.",
+    "math": "Мне нравится математика.",
+}
+
+# Полезные словосочетания для карточки (пары «фраза — перевод»). Показываются,
+# только если есть. Небольшой курируемый набор; легко расширять данными.
+WORD_PHRASES = {
+    "math": [
+        ("math lesson", "урок математики"),
+        ("math homework", "домашка по математике"),
+        ("math test", "тест по математике"),
+    ],
+    "book": [
+        ("read a book", "читать книгу"),
+        ("a book about animals", "книга о животных"),
+    ],
+    "friend": [
+        ("best friend", "лучший друг"),
+        ("make friends", "подружиться"),
+    ],
+    "school": [
+        ("go to school", "ходить в школу"),
+        ("at school", "в школе"),
+    ],
+}
+
+# Школьные предметы — для бейджа «noun · школьный предмет».
+SCHOOL_SUBJECTS = {
+    "math", "maths", "science", "biology", "chemistry", "physics", "history",
+    "geography", "art", "music", "english", "literature", "algebra", "geometry",
 }
 
 SCENE_PROMPTS = {
@@ -745,6 +826,79 @@ def create_russian_hint(word: str, translation: str, part_of_speech: str) -> str
     return f"{word} — {translation}. Это {description}."
 
 
+# --- Поля карточки «Учим слова» (без шаблонных грамматических объяснений) ---
+
+_POS_BADGE_EN = {
+    "noun": "noun",
+    "verb": "verb",
+    "adjective": "adjective",
+    "adverb": "adverb",
+    "preposition": "preposition",
+    "conjunction": "conjunction",
+    "article": "article",
+    "particle": "article",
+    "modal_verb": "modal verb",
+}
+_NOUN_PERSON_TOPICS = {"people", "family", "jobs", "friends", "professions"}
+_NOUN_PLACE_TOPICS = {"places", "travel", "geography", "city", "country"}
+
+
+def _meaning_type_ru(word: str, part_of_speech: str, topic: str, visual_type: str) -> str:
+    """Короткий понятный тип значения для бейджа (по-русски), без абстрактной
+    грамматики: животное / человек / место / предмет / школьный предмет / действие…"""
+    if part_of_speech == "verb":
+        return "действие"
+    if part_of_speech == "modal_verb":
+        return "служебное слово"
+    if part_of_speech == "adjective":
+        return "качество"
+    if part_of_speech == "adverb":
+        return "как происходит действие"
+    if part_of_speech == "preposition":
+        return "место/направление"
+    if part_of_speech == "conjunction":
+        return "связь слов"
+    if part_of_speech in {"article", "particle"}:
+        return "служебное слово"
+    # существительное
+    if word in SCHOOL_SUBJECTS:
+        return "школьный предмет"
+    if topic == "animals":
+        return "животное"
+    if topic in _NOUN_PERSON_TOPICS:
+        return "человек"
+    if topic in _NOUN_PLACE_TOPICS:
+        return "место"
+    if visual_type == "object":
+        return "предмет"
+    return "понятие"
+
+
+def meaning_badge_for(word: str, part_of_speech: str, topic: str = "", visual_type: str = "") -> str:
+    """Бейдж карточки «часть речи · понятный тип значения», например
+    'noun · школьный предмет'. Заменяет шаблонные грамматические объяснения."""
+    word = _clean(word).lower()
+    topic = _clean(topic).lower()
+    pos_en = _POS_BADGE_EN.get(part_of_speech, "word")
+    return f"{pos_en} · {_meaning_type_ru(word, part_of_speech, topic, visual_type)}"
+
+
+def explanation_ru_for(word: str) -> str:
+    """Конкретное детское объяснение по-русски — ТОЛЬКО курируемое (RUSSIAN_HINTS).
+    Если слова нет — пусто: карточка скрывает блок (никакого шаблона-мусора)."""
+    return RUSSIAN_HINTS.get(_clean(word).lower(), "")
+
+
+def example_translation_for(word: str) -> str:
+    """Перевод примера на русский — только курируемый, иначе пусто."""
+    return EXAMPLE_TRANSLATIONS.get(_clean(word).lower(), "")
+
+
+def phrases_for(word: str) -> list:
+    """Полезные словосочетания (пары [фраза, перевод]) — только курируемые."""
+    return [list(pair) for pair in WORD_PHRASES.get(_clean(word).lower(), [])]
+
+
 def create_image_prompt(word: str, visual_type: str, age_group: str = "") -> str:
     word = _clean(word).lower()
     age_note = (
@@ -882,6 +1036,10 @@ def build_vocabulary_visual(
         "example_sentence": create_example_sentence(word, part_of_speech, visual_type, example_sentence),
         "simple_meaning": create_simple_meaning(word, part_of_speech, translation),
         "russian_hint": create_russian_hint(word, translation, part_of_speech),
+        "meaning_badge": meaning_badge_for(word, part_of_speech, topic, visual_type),
+        "explanation_ru": explanation_ru_for(word),
+        "example_translation": example_translation_for(word),
+        "phrases": phrases_for(word),
         "image_confidence": confidence,
         "needs_review": needs_review,
         "generation_status": "needs_review" if needs_review else "generated",

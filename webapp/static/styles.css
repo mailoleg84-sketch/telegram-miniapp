@@ -2770,6 +2770,80 @@ h1::after {
   color: var(--text);
 }
 
+/* --- Карточка «Учим слова»: текстовый вид без картинок --- */
+.word-explain {
+  text-align: center;
+}
+.word-pos-badge {
+  justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(139, 123, 255, 0.12);
+  color: var(--button);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.1px;
+}
+.word-sentence {
+  margin-top: 4px;
+  display: grid;
+  gap: 3px;
+}
+.word-sentence-en {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.word-sentence-ru {
+  color: var(--hint);
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: center;
+}
+.word-phrases {
+  margin-top: 6px;
+  padding: 11px 12px;
+  border-radius: var(--radius-card);
+  background: rgba(139, 123, 255, 0.06);
+}
+.word-phrases-title {
+  margin-bottom: 5px;
+  color: var(--hint);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.word-phrases ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 3px;
+}
+.word-phrases li {
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text);
+}
+.word-phrases li b {
+  font-weight: 800;
+}
+/* Озвучка примера — маленькая и аккуратная (не вторая крупная кнопка). */
+.pronounce-btn.small {
+  width: 30px;
+  height: 30px;
+  box-shadow: none;
+}
+
 .dictionary-search-card {
   position: sticky;
   top: 8px;

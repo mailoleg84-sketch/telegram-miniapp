@@ -690,7 +690,10 @@ function wordStudyCard(wordData, options = {}) {
   const showTranslation = options.showTranslation !== false;
   const showLearningDetails = options.showLearningDetails !== false;
   const example = wordData.example_sentence || wordData.example || "";
-  const showRussianHint = wordData.show_russian_hint !== false && wordData.russian_hint;
+  const exampleTranslation = wordData.example_translation || "";
+  const meaningBadge = wordData.meaning_badge || "";
+  const explanation = wordData.explanation_ru || "";
+  const phrases = Array.isArray(wordData.phrases) ? wordData.phrases : [];
   return `
     <div class="card word-card ${options.compact ? "compact" : ""}">
       <div class="word-card-top">
@@ -700,18 +703,21 @@ function wordStudyCard(wordData, options = {}) {
       <div class="word-main">${esc(wordData.word)}</div>
       ${wordData.transcription ? `<div class="word-transcription">${esc(wordData.transcription)}</div>` : ""}
       ${showTranslation && wordData.translation ? `<div class="word-translation">${esc(wordData.translation)}</div>` : ""}
+      ${showLearningDetails && meaningBadge ? `<div class="word-pos-badge">${esc(meaningBadge)}</div>` : ""}
+      ${showLearningDetails && explanation ? `<div class="word-explain">${esc(explanation)}</div>` : ""}
       ${showLearningDetails && example ? `
-        <div class="word-detail">
-          <div>
-            <span>Пример</span>
+        <div class="word-sentence">
+          <div class="word-sentence-en">
             <b>${esc(example)}</b>
+            ${pronunciationButtonHtml(example, true)}
           </div>
-          ${pronunciationButtonHtml(example, true)}
+          ${exampleTranslation ? `<div class="word-sentence-ru">${esc(exampleTranslation)}</div>` : ""}
         </div>` : ""}
-      ${showLearningDetails && wordData.simple_meaning ? `
-        <div class="word-explain">${esc(wordData.simple_meaning)}</div>` : ""}
-      ${showLearningDetails && showRussianHint ? `
-        <div class="word-hint">${esc(wordData.russian_hint)}</div>` : ""}
+      ${showLearningDetails && phrases.length ? `
+        <div class="word-phrases">
+          <div class="word-phrases-title">Полезные фразы</div>
+          <ul>${phrases.map(p => `<li><b>${esc(p[0])}</b> — ${esc(p[1])}</li>`).join("")}</ul>
+        </div>` : ""}
       ${prompt ? `<p class="hint mt-12">${esc(prompt)}</p>` : ""}
     </div>`;
 }
