@@ -180,7 +180,7 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertIn('app.router.add_get("/word-image.svg", word_image_handler)', server_py)
         self.assertEqual(app_js.count('id="motivationPreview"'), 1)
         self.assertIn("/api/dictionary?filter=all&limit=5000", app_js)
-        self.assertEqual(app_js.count("showImage: true"), 2)
+        self.assertEqual(app_js.count("wordStudyCard(w,"), 2)
         dictionary_start = app_js.index("async function renderDictionary")
         dictionary_end = app_js.index("async function renderTrainingMenu", dictionary_start)
         dictionary_block = app_js[dictionary_start:dictionary_end]

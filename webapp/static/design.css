@@ -163,7 +163,7 @@
 :root[data-age="5_7"] .btn,
 :root[data-age="5_7"] .chat-send,
 :root[data-age="5_7"] .voice-mode-toggle { min-height: 56px; font-size: 17px; }
-:root[data-age="5_7"] .word-main { font-size: 34px; }
+:root[data-age="5_7"] .word-main { font-size: clamp(38px, 13vw, 52px); text-align: center; }
 :root[data-age="5_7"] .points-orb b { font-size: 30px; }
 
 :root[data-age="8_10"] .dashboard-hero h1 { font-size: 31px; }

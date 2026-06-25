@@ -691,20 +691,12 @@ function wordStudyCard(wordData, options = {}) {
   const showLearningDetails = options.showLearningDetails !== false;
   const example = wordData.example_sentence || wordData.example || "";
   const showRussianHint = wordData.show_russian_hint !== false && wordData.russian_hint;
-  const confidenceLabel = wordData.visual_confidence_label || "";
-  const conditionalVisual = wordData.image_needs_review || wordData.needs_review || Number(wordData.image_confidence || 1) < 0.7;
-  // Мягкая подсказка по типу карточки (предмет / действие / контраст / ситуация / …)
-  // вместо прежней технической фразы. Для старого кэша без поля — дружелюбный фолбэк.
-  const learningNote = wordData.visual_learning_note
-    || (conditionalVisual ? "Картинка помогает запомнить ситуацию. Смотри пример." : "");
   return `
     <div class="card word-card ${options.compact ? "compact" : ""}">
       <div class="word-card-top">
         ${badge ? `<div class="daily-badge">${esc(badge)}</div>` : "<span></span>"}
         ${pronunciationButtonHtml(wordData.word)}
       </div>
-      ${options.showImage ? wordImageHtml(wordData) : ""}
-      ${options.showImage && learningNote ? `<div class="visual-note" data-confidence="${esc(confidenceLabel)}">${esc(learningNote)}</div>` : ""}
       <div class="word-main">${esc(wordData.word)}</div>
       ${wordData.transcription ? `<div class="word-transcription">${esc(wordData.transcription)}</div>` : ""}
       ${showTranslation && wordData.translation ? `<div class="word-translation">${esc(wordData.translation)}</div>` : ""}
@@ -1551,7 +1543,7 @@ async function renderVocabWords(topic) {
         ${screenHeader("Новые слова")}
         <p class="hint">Сначала посмотри карточки, потом пройди короткий тест.</p>
         ${data.words.map((w, index) => `
-          ${wordStudyCard(w, { badge: `Слово ${index + 1}`, showImage: true })}
+          ${wordStudyCard(w, { badge: `Слово ${index + 1}` })}
         `).join("")}
         <button class="btn" id="startQuiz">Начать тест</button>
       </div>`;
@@ -1612,31 +1604,6 @@ function quizPromptCard(q, badge = "") {
           ${pronunciationButtonHtml(q.audio_word)}
           <span class="quiz-listen-hint">Нажми и послушай</span>
         </div>
-        <p class="hint mt-12">${esc(q.prompt)}</p>
-      </div>`;
-  }
-  if (q.type === "image") {
-    // Единый стиль: основная картинка — всегда учебная SVG-сцена (q.image_url);
-    // эмодзи, если есть, — маленький бейдж поверх, не отдельный большой эмодзи-блок.
-    const emojiBadge = q.emoji
-      ? `<span class="word-emoji-badge" role="img" aria-label="картинка">${esc(q.emoji)}</span>`
-      : "";
-    let visualHtml;
-    if (q.image_url) {
-      visualHtml = `
-        <div class="word-visual loaded">
-          <img class="word-image" src="${esc(q.image_url)}" alt="${esc(q.prompt || "картинка")}" loading="lazy">
-          ${emojiBadge}
-        </div>`;
-    } else if (q.emoji) {
-      visualHtml = `<div class="quiz-emoji" role="img" aria-label="картинка">${esc(q.emoji)}</div>`;
-    } else {
-      visualHtml = `<div class="quiz-emoji" role="img" aria-label="картинка">🖼️</div>`;
-    }
-    return `
-      <div class="card word-card compact">
-        <div class="word-card-top">${badgeHtml}<span></span></div>
-        ${visualHtml}
         <p class="hint mt-12">${esc(q.prompt)}</p>
       </div>`;
   }
@@ -2369,7 +2336,7 @@ async function renderDailyWords() {
           <p class="hint mt-12">Посмотри слова. Потом будет короткий тест и одна фраза для практики.</p>
         </div>
         ${words.map((w, index) => `
-          ${wordStudyCard(w, { badge: `Слово ${index + 1}`, showImage: true })}
+          ${wordStudyCard(w, { badge: `Слово ${index + 1}` })}
         `).join("")}
         <button class="btn" id="dailyWordsDone">Я запомнил слова</button>
       </div>`;

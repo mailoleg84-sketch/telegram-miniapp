@@ -119,85 +119,36 @@ def _img_word(wid, word, translation, topic, example, age_group="8_10"):
     }
 
 
-class BuildVocabImageQuestionTests(unittest.IsolatedAsyncioTestCase):
-    """qtype='image' показывает не только эмодзи, но и безопасную учебную SVG-сцену
-    для слов без эмодзи (lesson/class/visited/because); grammar/context-only слова
-    (the) в картинку не уходят. Archetype берётся из реального
-    build_vocabulary_visual (как на проде); БД не вызывается (пул достаточный)."""
+class QuizImageTypeRemovedTests(unittest.IsolatedAsyncioTestCase):
+    """Карточки без картинок: тип вопроса «image» убран. Запрос qtype='image' мягко
+    откатывается в 'translation' (guard `qtype not in rotation`), а ротация по индексу
+    никогда не выдаёт тип 'image'. БД не вызывается (пул достаточный)."""
 
-    async def _image_question(self, word):
-        pool = _pool(10)  # достаточно дистракторов -> обращения в БД быть не должно
+    async def _question(self, word, qtype=None, index=0):
+        pool = _pool(10)  # достаточно дистракторов -> обращений в БД быть не должно
         with patch("database.get_word_options", new=AsyncMock(side_effect=AssertionError)), \
              patch("database.get_random_words", new=AsyncMock(side_effect=AssertionError)):
-            return await _build_vocab_question(word, "8_10", qtype="image", pool=pool)
+            return await _build_vocab_question(word, "8_10", index=index, qtype=qtype, pool=pool)
 
-    async def test_visited_stays_image_action_scene(self):
-        q = await self._image_question(
-            _img_word(1, "visited", "посетил", "travel", "She visited the zoo with her family.")
+    async def test_image_qtype_falls_back_to_translation(self):
+        q = await self._question(
+            _img_word(1, "apple", "яблоко", "food", "I eat an apple every day."),
+            qtype="image",
         )
-        self.assertEqual(q["type"], "image")
-        self.assertEqual(q["prompt"], "Что делает герой?")
-        self.assertTrue(q["image_url"], "должна быть учебная SVG-сцена")
-        self.assertEqual(q["emoji"], "")
-        self.assertEqual(q["translation"], "", "перевод не должен утекать в image-вопрос")
+        self.assertEqual(q["type"], "translation")
+        self.assertEqual(q["prompt"], "Выбери перевод")
+        self.assertEqual(q["word"], "apple", "в translation показываем само слово")
+        self.assertEqual(q["translation"], "", "перевод не утекает в подсказку")
+        labels = [o["label"] for o in q["options"]]
+        self.assertIn("яблоко", labels, "правильный перевод среди вариантов")
 
-    async def test_lesson_stays_image_context_scene(self):
-        q = await self._image_question(
-            _img_word(1, "lesson", "урок", "school", "We have an English lesson today.")
-        )
-        self.assertEqual(q["type"], "image")
-        self.assertEqual(q["prompt"], "Что означает эта ситуация?")
-        self.assertTrue(q["image_url"])
-        self.assertEqual(q["emoji"], "")
-
-    async def test_class_stays_image_context_scene(self):
-        q = await self._image_question(
-            _img_word(1, "class", "класс", "school", "Our class is learning new words.")
-        )
-        self.assertEqual(q["type"], "image")
-        self.assertEqual(q["prompt"], "Что означает эта ситуация?")
-        self.assertTrue(q["image_url"])
-
-    async def test_because_stays_image_cause_effect(self):
-        q = await self._image_question(
-            _img_word(1, "because", "потому что", "grammar", "He is wet because it is raining.")
-        )
-        self.assertEqual(q["type"], "image")
-        self.assertEqual(q["prompt"], "Какое слово объясняет причину или результат?")
-        self.assertTrue(q["image_url"])
-
-    async def test_the_is_not_image_falls_back(self):
-        q = await self._image_question(
-            _img_word(1, "the", "артикль the", "basic", "I see the cat.")
-        )
-        self.assertIn(q["type"], {"gap", "word"})
-        self.assertEqual(q["image_url"], "")
-        self.assertEqual(q["emoji"], "")
-        expected = "Вставь пропущенное слово" if q["type"] == "gap" else "Выбери английское слово"
-        self.assertEqual(q["prompt"], expected)
-
-    async def test_apple_image_uses_photo_and_keeps_emoji_badge(self):
-        # apple — конкретное существительное: основная картинка квиза тоже фото
-        # Pixabay; эмодзи остаётся бейджем (не подменяет картинку).
-        with patch("webapp.word_payloads.VOCAB_FREE_PHOTOS", True):
-            q = await self._image_question(
-                _img_word(1, "apple", "яблоко", "food", "I eat an apple every day.")
-            )
-        self.assertEqual(q["type"], "image")
-        self.assertEqual(q["prompt"], "Что это?")
-        self.assertTrue(q["emoji"], "эмодзи остаётся как бейдж")
-        self.assertIn("/vocabulary-photo", q["image_url"], q["image_url"])
-
-    async def test_answer_stays_image_scene_not_photo(self):
-        # answer теперь учебная сцена (не object-фото руки/анкеты): остаётся image
-        # с вопросом «что означает ситуация», без /vocabulary-photo.
-        q = await self._image_question(
-            _img_word(1, "answer", "ответ", "school", "Please answer the question.")
-        )
-        self.assertEqual(q["type"], "image")
-        self.assertEqual(q["prompt"], "Что означает эта ситуация?")
-        self.assertTrue(q["image_url"] or q["emoji"], "должна быть сцена или эмодзи")
-        self.assertNotIn("/vocabulary-photo", q["image_url"])
+    async def test_rotation_never_yields_image_type(self):
+        word = _img_word(1, "lesson", "урок", "school", "We have an English lesson today.")
+        seen = set()
+        for index in range(8):
+            q = await self._question(word, index=index)
+            seen.add(q["type"])
+        self.assertNotIn("image", seen, f"тип 'image' не должен появляться: {sorted(seen)}")
 
 
 if __name__ == "__main__":

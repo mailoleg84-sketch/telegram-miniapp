@@ -405,7 +405,7 @@ async def _build_vocab_question(word, age_group: str, index: int = 0, pool=None,
     - word: показываем перевод -> выбрать английское слово;
     - gap: пример с пропуском -> выбрать пропущенное слово (не для 5-7);
     - listen: озвучка слова -> выбрать перевод (аудирование);
-    - image: эмодзи/учебная SVG-сцена слова -> выбрать перевод («картинкуемые» слова).
+    - image: УБРАН (карточки без картинок) — qtype "image" мягко откатывается в translation.
     Во всех типах правильный вариант — тот, чей id == word_id, поэтому логика
     подсчёта на /api/vocab/finish не меняется.
     """
@@ -415,7 +415,7 @@ async def _build_vocab_question(word, age_group: str, index: int = 0, pool=None,
     # Тип берём из qtype (его рандомизирует api_vocab_quiz на сессию — чтобы из
     # раза в раз не повторялось одно и то же задание); если не передан — ротация
     # по позиции (обратная совместимость). Мягкие откаты там, где тип недоступен.
-    rotation = ["translation", "word", "listen", "image", "gap"]
+    rotation = ["translation", "word", "listen", "gap"]  # image убран: карточки без картинок (qtype "image" -> translation через guard ниже)
     if qtype is None:
         qtype = rotation[index % len(rotation)]
     if qtype not in rotation:
@@ -1352,7 +1352,7 @@ async def api_vocab_quiz(request: web.Request):
     # Тип задания рандомизируем НА СЕССИЮ: перетасованная ротация даёт разные типы
     # внутри теста и разный порядок при каждом прохождении (не «одно и то же из
     # раза в раз»). Недоступные для слова типы мягко откатываются внутри билдера.
-    type_sequence = ["translation", "word", "listen", "image", "gap"]
+    type_sequence = ["translation", "word", "listen", "gap"]
     random.shuffle(type_sequence)
     questions = [
         await _build_vocab_question(

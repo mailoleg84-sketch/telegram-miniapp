@@ -101,15 +101,12 @@ class NavigationBackTests(unittest.TestCase):
 
 
 class QuizImageContractTests(unittest.TestCase):
-    def test_quiz_prompt_card_prefers_image_over_big_emoji(self):
+    def test_quiz_prompt_card_has_no_image(self):
+        # Карточки без картинок: в квиз-карточке не осталось рендера картинки/эмодзи-блока.
         body = _func_body("quizPromptCard")
-        self.assertIn("q.image_url", body)
-        image_pos = body.find("q.image_url")
-        big_emoji_pos = body.find('class="quiz-emoji"')
-        self.assertTrue(
-            image_pos != -1 and (big_emoji_pos == -1 or image_pos < big_emoji_pos),
-            "image_url должен иметь приоритет над большим эмодзи-блоком (.quiz-emoji)",
-        )
+        self.assertNotIn("q.image_url", body)
+        self.assertNotIn("word-image", body)
+        self.assertNotIn('class="quiz-emoji"', body)
 
     def test_cards_never_use_photo_stock(self):
         self.assertNotIn("/vocabulary-photo", APP_JS)
