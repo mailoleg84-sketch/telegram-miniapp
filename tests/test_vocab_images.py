@@ -172,7 +172,8 @@ class UnifiedCardImageTests(unittest.TestCase):
                     d = server._word_dict(self._row(word, tr, topic))
                     self.assertIn("/vocabulary-photo", d["image_url"], f"{word}: {d['image_url']}")
             for word, tr, topic in [("lesson", "урок", "school"), ("answer", "ответ", "school"),
-                                    ("visited", "посетил", "travel"), ("because", "потому что", "grammar")]:
+                                    ("visited", "посетил", "travel"), ("because", "потому что", "grammar"),
+                                    ("app", "приложение", "technology"), ("club", "клуб", "hobbies")]:
                 with self.subTest(word=word):
                     d = server._word_dict(self._row(word, tr, topic))
                     self.assertTrue(d["image_url"].startswith("/vocabulary-visual.svg"), f"{word}: {d['image_url']}")

@@ -208,6 +208,13 @@ AMBIGUOUS_NOUNS = {
     "idea", "issue", "lesson", "class", "matter", "mind", "opinion", "options",
     "point", "problem", "purpose", "question", "reason", "result", "solution",
     "test", "thought", "truth", "witness",
+    # v157: абстрактные слова, ошибочно становившиеся "object" → тянули мусорное/
+    # неоднозначное Pixabay-фото (категория Pixabay не лечит абстрактность). app/
+    # software/behavior/offer/direction/competition → бессмысленное фото; game →
+    # дичь/видеоигра, club → ночной клуб, hobby → случайное. Теперь учебная
+    # SVG-сцена + вопрос «что это значит» (как answer/question/lesson выше).
+    "app", "software", "behavior", "direction", "offer", "competition",
+    "game", "club", "hobby",
 }
 SENSITIVE_WORDS = {
     "fuck", "shit", "piss", "torture", "theft", "scandal", "nightmare",

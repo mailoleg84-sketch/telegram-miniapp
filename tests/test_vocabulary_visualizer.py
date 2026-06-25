@@ -354,6 +354,28 @@ class VocabularyVisualizerTests(unittest.TestCase):
                 self.assertNotEqual(visual["card_archetype"], "object_card", word)
                 self.assertFalse(allows_free_photo(word, visual["visual_type"]), word)
 
+    def test_abstract_object_nouns_reclassified_to_scene_not_photo(self):
+        # v157: абстрактные/неоднозначные слова, прежде классифицированные как
+        # "object", тянули мусорное или недетское Pixabay-фото (app/software →
+        # скриншоты, behavior/offer → случайные люди, game → дичь, club → клуб).
+        # Теперь — situation-сцена (как answer/question) и фото не получают.
+        for word, translation, topic in (
+            ("app", "приложение", "technology"),
+            ("software", "программное обеспечение", "technology"),
+            ("behavior", "поведение", "people"),
+            ("direction", "направление", "travel"),
+            ("offer", "предложение", "people"),
+            ("competition", "соревнование", "school"),
+            ("game", "игра", "games"),
+            ("club", "клуб", "hobbies"),
+            ("hobby", "хобби", "hobbies"),
+        ):
+            with self.subTest(word=word):
+                visual = build_vocabulary_visual(word, translation, "", topic, "8_10")
+                self.assertEqual(visual["visual_type"], "situation", word)
+                self.assertNotEqual(visual["card_archetype"], "object_card", word)
+                self.assertFalse(allows_free_photo(word, visual["visual_type"]), word)
+
 
 if __name__ == "__main__":
     unittest.main()
