@@ -689,8 +689,8 @@ function wordStudyCard(wordData, options = {}) {
   const prompt = options.prompt || "";
   const showTranslation = options.showTranslation !== false;
   const showLearningDetails = options.showLearningDetails !== false;
-  const example = wordData.example_sentence || wordData.example || "";
-  const exampleTranslation = wordData.example_translation || "";
+  const example = wordData.card_example || wordData.example_sentence || wordData.example || "";
+  const exampleTranslation = wordData.card_example_ru || wordData.example_translation || "";
   const meaningBadge = wordData.meaning_badge || "";
   const explanation = wordData.explanation_ru || "";
   const phrases = Array.isArray(wordData.phrases) ? wordData.phrases : [];

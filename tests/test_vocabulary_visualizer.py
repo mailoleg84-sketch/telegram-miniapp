@@ -411,22 +411,44 @@ class CardContentTests(unittest.TestCase):
 
     def test_math_card_is_complete(self):
         v = build_vocabulary_visual("math", "математика", "Let's learn the word math.", "school", "8_10")
-        self.assertEqual(v["example_sentence"], "I like math.")
-        self.assertEqual(v["example_translation"], "Мне нравится математика.")
+        self.assertEqual(v["card_example"], "I like math.")
+        self.assertEqual(v["card_example_ru"], "Мне нравится математика.")
         self.assertEqual(v["explanation_ru"], "Школьный предмет про числа, задачи и примеры.")
-        self.assertEqual(v["meaning_badge"], "noun · школьный предмет")
+        self.assertEqual(v["meaning_badge"], "школьный предмет")
         self.assertIn(["math lesson", "урок математики"], v["phrases"])
 
-    def test_meaning_badge_reads_clearly(self):
+    def test_meaning_badge_is_one_simple_word_or_empty(self):
         cases = {
-            ("dog", "собака", "animals"): "noun · животное",
-            ("run", "бежать", "verbs"): "verb · действие",
-            ("happy", "счастливый", "feelings"): "adjective · качество",
-            ("apple", "яблоко", "food"): "noun · предмет",
+            ("dog", "собака", "animals"): "животное",
+            ("run", "бежать", "verbs"): "действие",
+            ("apple", "яблоко", "food"): "еда",
+            ("happy", "счастливый", "feelings"): "",   # прилагательное -> без ярлыка
+            ("lesson", "урок", "school"): "",          # абстрактное существительное -> без ярлыка
         }
         for (word, tr, topic), badge in cases.items():
             with self.subTest(word=word):
                 self.assertEqual(build_vocabulary_visual(word, tr, "", topic, "8_10")["meaning_badge"], badge)
+        # В ярлыке нет английского 'noun'/'verb', разделителя '·' и размытого 'понятие'.
+        for word, tr, topic in (("dog", "собака", "animals"), ("table", "стол", "home"), ("run", "бежать", "verbs")):
+            badge = build_vocabulary_visual(word, tr, "", topic, "8_10")["meaning_badge"]
+            self.assertNotIn("noun", badge)
+            self.assertNotIn("·", badge)
+            self.assertNotIn("понятие", badge)
+
+    def test_every_word_gets_example_and_clean_templated_pair(self):
+        # Существительное (не курируемое): "This is a X." / "Это перевод."
+        nb = build_vocabulary_visual("notebook", "тетрадь", "", "school", "8_10")
+        self.assertEqual(nb["card_example"], "This is a notebook.")
+        self.assertEqual(nb["card_example_ru"], "Это тетрадь.")
+        # Глагол (базовая форма): "I can X." / "Я могу перевод."
+        dr = build_vocabulary_visual("draw", "рисовать", "", "art", "8_10")
+        self.assertEqual(dr["card_example"], "I can draw.")
+        self.assertEqual(dr["card_example_ru"], "Я могу рисовать.")
+        # У каждого слова есть непустой пример (карточка не пустая).
+        for word, tr, topic in (("notebook", "тетрадь", "school"), ("draw", "рисовать", "art"),
+                                ("the", "the", "basic"), ("big", "большой", "basic")):
+            with self.subTest(word=word):
+                self.assertTrue(build_vocabulary_visual(word, tr, "", topic, "8_10")["card_example"], word)
 
     def test_vocabulary_not_shrunk(self):
         # Слова из общего словаря не удалялись.

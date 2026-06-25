@@ -826,41 +826,23 @@ def create_russian_hint(word: str, translation: str, part_of_speech: str) -> str
     return f"{word} — {translation}. Это {description}."
 
 
-# --- Поля карточки «Учим слова» (без шаблонных грамматических объяснений) ---
+# --- Поля карточки «Учим слова» (просто и по делу, без грамматического жаргона) ---
 
-_POS_BADGE_EN = {
-    "noun": "noun",
-    "verb": "verb",
-    "adjective": "adjective",
-    "adverb": "adverb",
-    "preposition": "preposition",
-    "conjunction": "conjunction",
-    "article": "article",
-    "particle": "article",
-    "modal_verb": "modal verb",
-}
 _NOUN_PERSON_TOPICS = {"people", "family", "jobs", "friends", "professions"}
 _NOUN_PLACE_TOPICS = {"places", "travel", "geography", "city", "country"}
 
 
-def _meaning_type_ru(word: str, part_of_speech: str, topic: str, visual_type: str) -> str:
-    """Короткий понятный тип значения для бейджа (по-русски), без абстрактной
-    грамматики: животное / человек / место / предмет / школьный предмет / действие…"""
+def meaning_badge_for(word: str, part_of_speech: str, topic: str = "", visual_type: str = "") -> str:
+    """Короткий ярлык значения ОДНИМ простым русским словом (животное / человек /
+    место / еда / одежда / предмет / школьный предмет / действие). Показывается
+    только там, где реально помогает; для абстрактных и служебных слов — пусто
+    (без английского 'noun' и без размытого 'понятие')."""
+    word = _clean(word).lower()
+    topic = _clean(topic).lower()
     if part_of_speech == "verb":
         return "действие"
-    if part_of_speech == "modal_verb":
-        return "служебное слово"
-    if part_of_speech == "adjective":
-        return "качество"
-    if part_of_speech == "adverb":
-        return "как происходит действие"
-    if part_of_speech == "preposition":
-        return "место/направление"
-    if part_of_speech == "conjunction":
-        return "связь слов"
-    if part_of_speech in {"article", "particle"}:
-        return "служебное слово"
-    # существительное
+    if part_of_speech != "noun":
+        return ""
     if word in SCHOOL_SUBJECTS:
         return "школьный предмет"
     if topic == "animals":
@@ -869,18 +851,13 @@ def _meaning_type_ru(word: str, part_of_speech: str, topic: str, visual_type: st
         return "человек"
     if topic in _NOUN_PLACE_TOPICS:
         return "место"
+    if topic == "food":
+        return "еда"
+    if topic == "clothes":
+        return "одежда"
     if visual_type == "object":
         return "предмет"
-    return "понятие"
-
-
-def meaning_badge_for(word: str, part_of_speech: str, topic: str = "", visual_type: str = "") -> str:
-    """Бейдж карточки «часть речи · понятный тип значения», например
-    'noun · школьный предмет'. Заменяет шаблонные грамматические объяснения."""
-    word = _clean(word).lower()
-    topic = _clean(topic).lower()
-    pos_en = _POS_BADGE_EN.get(part_of_speech, "word")
-    return f"{pos_en} · {_meaning_type_ru(word, part_of_speech, topic, visual_type)}"
+    return ""  # абстрактное существительное — без ярлыка
 
 
 def explanation_ru_for(word: str) -> str:
@@ -889,14 +866,37 @@ def explanation_ru_for(word: str) -> str:
     return RUSSIAN_HINTS.get(_clean(word).lower(), "")
 
 
-def example_translation_for(word: str) -> str:
-    """Перевод примера на русский — только курируемый, иначе пусто."""
-    return EXAMPLE_TRANSLATIONS.get(_clean(word).lower(), "")
-
-
 def phrases_for(word: str) -> list:
     """Полезные словосочетания (пары [фраза, перевод]) — только курируемые."""
     return [list(pair) for pair in WORD_PHRASES.get(_clean(word).lower(), [])]
+
+
+def card_example_pair(word: str, part_of_speech: str, translation: str, visual_type: str = "") -> list:
+    """[пример EN, перевод RU] для карточки. Сначала курируемая пара, иначе чистый
+    шаблон по части речи (так пример+перевод есть у всех слов). Где грамматически
+    чистый перевод не гарантирован (инфлектированные глаголы, служебные слова) —
+    перевод пустой: показываем только пример, без кривого перевода."""
+    w = _clean(word).lower()
+    t = _clean(translation)
+    if w in EXAMPLES and w in EXAMPLE_TRANSLATIONS:
+        return [EXAMPLES[w], EXAMPLE_TRANSLATIONS[w]]
+    if part_of_speech == "noun":
+        if w.endswith("s") and not w.endswith("ss"):
+            return [f"These are {w}.", f"Это {t}." if t else ""]
+        return [f"This is {_article(w)} {w}.", f"Это {t}." if t else ""]
+    if part_of_speech == "verb":
+        if not (w.endswith("ed") or w.endswith("ing") or w.endswith("s")):
+            return [f"I can {w}.", f"Я могу {t}." if t else ""]
+        if w.endswith("ing"):
+            return [f"She is {w}.", ""]
+        return [f"It {w}." if w.endswith("ed") else f"She {w}.", ""]
+    if part_of_speech == "adjective":
+        return [f"He is very {w}.", f"Он очень {t}." if t else ""]
+    if part_of_speech == "adverb":
+        return [f"She did it {w}.", f"Она сделала это {t}." if t else ""]
+    if part_of_speech == "preposition":
+        return [f"The ball is {w} the box.", ""]
+    return [f"This is the word “{w}”.", ""]
 
 
 def create_image_prompt(word: str, visual_type: str, age_group: str = "") -> str:
@@ -1020,6 +1020,7 @@ def build_vocabulary_visual(
         is_complex_visual_type(visual_type)
         or str(level or "beginner").lower() in {"starter", "beginner", "elementary", "a0", "a1", "a2"}
     )
+    card_example = card_example_pair(word, part_of_speech, translation, visual_type)
     return {
         "word": word,
         "translation": translation,
@@ -1038,7 +1039,8 @@ def build_vocabulary_visual(
         "russian_hint": create_russian_hint(word, translation, part_of_speech),
         "meaning_badge": meaning_badge_for(word, part_of_speech, topic, visual_type),
         "explanation_ru": explanation_ru_for(word),
-        "example_translation": example_translation_for(word),
+        "card_example": card_example[0],
+        "card_example_ru": card_example[1],
         "phrases": phrases_for(word),
         "image_confidence": confidence,
         "needs_review": needs_review,
