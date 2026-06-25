@@ -826,6 +826,31 @@ function setBack(handler) {
   }
 }
 
+// Единая видимая навигация «назад»: вложенные экраны рендерят screenHeader(...) с
+// кнопкой .screen-back. Один делегированный обработчик вызывает текущий state.back —
+// ту же цель, что и нативный Telegram BackButton, поэтому видимая кнопка и BackButton
+// всегда согласованы (без per-screen onclick и без зависших обработчиков).
+app.addEventListener("click", (event) => {
+  if (event.target.closest(".screen-back")) {
+    haptic();
+    if (state.back) state.back();
+  }
+});
+
+function screenHeader(title, options = {}) {
+  const showBack = options.showBack !== false;
+  const subtitle = options.subtitle || "";
+  const backLabel = options.backLabel || "← Назад";
+  const titleBlock = title
+    ? `<div class="screen-header-text"><h1>${esc(title)}</h1>${subtitle ? `<p class="screen-subtitle">${esc(subtitle)}</p>` : ""}</div>`
+    : "";
+  return `
+    <div class="screen-header">
+      ${showBack ? `<button type="button" class="screen-back" aria-label="Назад">${esc(backLabel)}</button>` : ""}
+      ${titleBlock}
+    </div>`;
+}
+
 function loading() {
   app.innerHTML = `<div class="screen card center">Загрузка...</div>`;
 }
@@ -1174,7 +1199,7 @@ function renderLearningHub() {
   const u = state.me.user;
   app.innerHTML = `
     <div class="screen">
-      <h1>Учеба</h1>
+      ${screenHeader("Учеба")}
       <div class="section-label">Сегодня</div>
       <div class="action-list">
         <button class="action-row primary" id="daily">
@@ -1231,7 +1256,7 @@ function renderProgressHub() {
   ensureBottomNav("progress");
   app.innerHTML = `
     <div class="screen">
-      <h1>Прогресс</h1>
+      ${screenHeader("Прогресс")}
       <div class="card motivation-preview" id="motivationPreview">
         <div class="hint">Собираю достижения...</div>
       </div>
@@ -1266,7 +1291,7 @@ function renderParentZone() {
   const u = state.me.user;
   app.innerHTML = `
     <div class="screen">
-      <h1>Профиль</h1>
+      ${screenHeader("Профиль")}
       <div class="card">
         <b>${esc(u.child_name)}</b>
         <p class="hint mt-8">${esc(ageYearsLabel(u.child_age))} · Уровень - ${esc(u.level_label || "Beginner / A1")}</p>
@@ -1313,7 +1338,7 @@ function renderParentCabinet() {
   ensureBottomNav("parent");
   app.innerHTML = `
     <div class="screen">
-      <h1>Родительский кабинет</h1>
+      ${screenHeader("Родительский кабинет")}
       <p class="hint">Прогресс ребёнка: что получается и где нужна поддержка.</p>
       <div class="hub-grid">
         <button class="action-tile report" id="pcReport">
@@ -1327,9 +1352,7 @@ function renderParentCabinet() {
           <small>уроки, слова, тесты</small>
         </button>
       </div>
-      <button class="btn btn-secondary mt-12" id="backToProfile">← Назад</button>
     </div>`;
-  document.getElementById("backToProfile").onclick = () => { haptic(); renderParentZone(); };
   document.getElementById("pcReport").onclick = () => { haptic(); renderParentReport(); };
   document.getElementById("pcHistory").onclick = () => { haptic(); renderActivityHistory(); };
 }
@@ -1340,7 +1363,7 @@ function renderSubscription() {
   ensureBottomNav("parent");
   app.innerHTML = `
     <div class="screen">
-      <h1>Подписка</h1>
+      ${screenHeader("Подписка")}
       <div class="card">
         <h2>Тариф: Бесплатный</h2>
         <p class="hint">Доступны слова, тренировки, игры, тесты и общение с ИИ-репетитором.</p>
@@ -1349,9 +1372,7 @@ function renderSubscription() {
         <b>Расширенный доступ — скоро</b>
         <p class="hint mt-8">Больше занятий с голосовым репетитором, генерация картинок к словам и подробные отчёты для родителей. Мы сообщим, когда подписку можно будет подключить.</p>
       </div>
-      <button class="btn btn-secondary mt-12" id="backToProfile">← Назад</button>
     </div>`;
-  document.getElementById("backToProfile").onclick = () => { haptic(); renderParentZone(); };
 }
 
 function renderHelp() {
@@ -1360,7 +1381,7 @@ function renderHelp() {
   ensureBottomNav("parent");
   app.innerHTML = `
     <div class="screen">
-      <h1>Помощь</h1>
+      ${screenHeader("Помощь")}
       <div class="card">
         <b>Как пользоваться</b>
         <p class="hint mt-8">«Учёба» — слова, тренировки и игры. «Репетитор» — разговор и голос. «Прогресс» — баллы, серии и достижения. «Профиль» — данные ребёнка, отчёт родителю, подписка и настройки.</p>
@@ -1370,9 +1391,7 @@ function renderHelp() {
         <p class="hint mt-8">Напишите боту @my_eng_tutor777_bot. Команды: /start — открыть приложение, /help — справка.</p>
       </div>
       <p class="hint mt-12">Занятия безопасны и подобраны по возрасту. Личные данные ребёнка приложение не запрашивает.</p>
-      <button class="btn btn-secondary mt-12" id="backToProfile">← Назад</button>
     </div>`;
-  document.getElementById("backToProfile").onclick = () => { haptic(); renderParentZone(); };
 }
 
 async function renderLevelTestIntro({ afterRegistration = false } = {}) {
@@ -1383,7 +1402,7 @@ async function renderLevelTestIntro({ afterRegistration = false } = {}) {
     state.levelTest = { data, answers: [], afterRegistration };
     app.innerHTML = `
       <div class="screen">
-        <h1>Тест уровня</h1>
+        ${screenHeader("Тест уровня", { showBack: !afterRegistration })}
         <div class="card">
           <div class="daily-badge">${esc(data.age_label)} · ${data.questions.length} вопросов</div>
           <p class="hint mt-12">Это короткая проверка без оценок и стресса. По результату репетитор будет давать задания не слишком легкие и не слишком сложные.</p>
@@ -1416,7 +1435,7 @@ function renderLevelQuestion(index) {
   setBack(index > 0 ? () => renderLevelQuestion(index - 1) : () => renderLevelTestIntro({ afterRegistration: state.levelTest?.afterRegistration }));
   app.innerHTML = `
     <div class="screen">
-      <h1>Тест уровня</h1>
+      ${screenHeader("Тест уровня")}
       <div class="card center">
         <div class="daily-badge">Вопрос ${index + 1}/${test.questions.length}</div>
         <div class="big-sub mt-12">${esc(q.prompt)}</div>
@@ -1450,7 +1469,7 @@ async function finishLevelTest() {
     state.me = await api("/api/me", "GET");
     app.innerHTML = `
       <div class="screen">
-        <h1>Уровень готов</h1>
+        ${screenHeader("Уровень готов", { showBack: !state.levelTest?.afterRegistration })}
         <div class="card center">
           <div class="big" style="color: var(--button)">${esc(result.level_label)}</div>
           <p class="hint">${result.correct_count}/${result.total} правильно · ${result.score}%</p>
@@ -1494,7 +1513,7 @@ async function renderVocabStart() {
     const topics = data.topics || [];
     app.innerHTML = `
       <div class="screen">
-        <h1>Выбери тему</h1>
+        ${screenHeader("Выбери тему")}
         <p class="hint">С чего начнём сегодня?</p>
         <div class="hub-grid">
           ${topics.map(t => `
@@ -1529,7 +1548,7 @@ async function renderVocabWords(topic) {
     state.vocabTopic = topic;
     app.innerHTML = `
       <div class="screen">
-        <h1>Новые слова</h1>
+        ${screenHeader("Новые слова")}
         <p class="hint">Сначала посмотри карточки, потом пройди короткий тест.</p>
         ${data.words.map((w, index) => `
           ${wordStudyCard(w, { badge: `Слово ${index + 1}`, showImage: true })}
@@ -1650,7 +1669,7 @@ function renderQuizQuestion(index) {
   const progress = `${index + 1}/${state.quiz.questions.length}`;
   app.innerHTML = `
     <div class="screen">
-      <h1>Тест по словам</h1>
+      ${screenHeader("Тест по словам")}
       ${quizProgressHtml(index)}
       ${quizPromptCard(q, progress)}
       ${q.options.map(o => `
@@ -1735,7 +1754,7 @@ async function finishVocabQuiz() {
     const mistakes = result.results.filter(r => !r.correct);
     app.innerHTML = `
       <div class="screen">
-        <h1>Результат теста</h1>
+        ${screenHeader("Результат теста")}
         <div class="card center">
           <div class="big" style="color: var(--button)">${result.score}%</div>
           <p>${result.correct_count} правильно из ${result.total}</p>
@@ -1764,7 +1783,7 @@ function renderGamesMenu() {
   setBack(renderLearningHub);
   app.innerHTML = `
     <div class="screen">
-      <h1>Игры со словами</h1>
+      ${screenHeader("Игры со словами")}
       <div class="card">
         <h2>Словесная охота</h2>
         <p class="hint">Короткая игра: смотри перевод и лови правильное английское слово. За правильные ответы начисляются баллы, штрафов нет.</p>
@@ -1800,7 +1819,7 @@ function renderWordHuntRound(index) {
   setBack(renderGamesMenu);
   app.innerHTML = `
     <div class="screen">
-      <h1>${esc(game.title || "Словесная охота")}</h1>
+      ${screenHeader(game.title || "Словесная охота")}
       <div class="game-score">
         <span>${progress}</span>
         <b>${state.game.score} поймано</b>
@@ -1845,7 +1864,7 @@ async function finishWordHunt() {
     const mistakes = result.results.filter(item => !item.correct);
     app.innerHTML = `
       <div class="screen">
-        <h1>Охота завершена</h1>
+        ${screenHeader("Охота завершена")}
         <div class="card center">
           <div class="big" style="color: var(--button)">${result.score}%</div>
           <p>${result.correct_count} поймано из ${result.total}</p>
@@ -1880,7 +1899,7 @@ async function renderDictionary() {
     const words = data.words || [];
     app.innerHTML = `
       <div class="screen">
-        <h1>Словарь</h1>
+        ${screenHeader("Словарь")}
         <div class="card dictionary-search-card">
           <input id="dictionarySearch" type="text" placeholder="Найти слово..." autocomplete="off">
         </div>
@@ -1946,7 +1965,7 @@ async function renderTrainingMenu(focus = "all") {
   const reviewMode = focus === "review";
   app.innerHTML = `
     <div class="screen">
-      <h1>${reviewMode ? "Повторение ошибок" : "Тренировка слов"}</h1>
+      ${screenHeader(reviewMode ? "Повторение ошибок" : "Тренировка слов")}
       <div class="card">
         <p class="hint">${reviewMode
           ? "Сейчас будут слова, в которых были ошибки или которые пора освежить."
@@ -2100,7 +2119,7 @@ async function renderTrainingSessionNext() {
 function renderChoiceTrainingTask(task, session) {
   app.innerHTML = `
     <div class="screen">
-      <h1>Выбери перевод</h1>
+      ${screenHeader("Выбери перевод")}
       ${trainingProgressHtml(session)}
       ${task.review_empty ? `<div class="card"><p class="hint">Ошибок для повторения пока нет, поэтому даю обычное слово.</p></div>` : ""}
       ${wordStudyCard(task, { compact: true, showTranslation: false, showLearningDetails: false })}
@@ -2144,7 +2163,7 @@ function renderChoiceTrainingTask(task, session) {
 function renderInputTrainingTask(task, session) {
   app.innerHTML = `
     <div class="screen">
-      <h1>Напиши слово</h1>
+      ${screenHeader("Напиши слово")}
       ${trainingProgressHtml(session)}
       ${task.review_empty ? `<div class="card"><p class="hint">Ошибок для повторения пока нет, поэтому даю обычное слово.</p></div>` : ""}
       <div class="card center">
@@ -2254,7 +2273,7 @@ function renderTrainingSessionComplete(session) {
   const score = total ? Math.round(session.totalCorrect / total * 100) : 0;
   app.innerHTML = `
     <div class="screen">
-      <h1>Тренировка завершена</h1>
+      ${screenHeader("Тренировка завершена")}
       <div class="card center">
         <div class="big" style="color: var(--button)">${score}%</div>
         <p>${session.totalCorrect} правильно из ${total}</p>
@@ -2311,7 +2330,7 @@ async function renderDailyLesson() {
     const status = await api("/api/daily/status", "GET");
     app.innerHTML = `
       <div class="screen">
-        <h1>Ежедневный урок</h1>
+        ${screenHeader("Ежедневный урок")}
         <div class="card">
           <div class="daily-badge">${status.completed ? "На сегодня готово" : "5 минут"}</div>
           <p class="hint mt-12">Мини-урок состоит из слов, теста и маленькой практики. Уровень: ${esc(state.me?.user?.level_label || "Beginner / A1")}.</p>
@@ -2344,7 +2363,7 @@ async function renderDailyWords() {
     const words = (data.words || []).slice(0, 4);
     app.innerHTML = `
       <div class="screen">
-        <h1>Урок: новые слова</h1>
+        ${screenHeader("Урок: новые слова")}
         <div class="card">
           <div class="daily-badge">Шаг 1 из 4</div>
           <p class="hint mt-12">Посмотри слова. Потом будет короткий тест и одна фраза для практики.</p>
@@ -2388,7 +2407,7 @@ function renderDailyQuizQuestion(index) {
   if (!q) return finishDailyQuiz();
   app.innerHTML = `
     <div class="screen">
-      <h1>Урок: мини-тест</h1>
+      ${screenHeader("Урок: мини-тест")}
       ${quizPromptCard(q, `Шаг 2 из 4 · ${index + 1}/${state.dailyQuiz.questions.length}`)}
       ${q.options.map(o => `
         <button class="btn btn-secondary daily-answer" data-id="${o.id}">${esc(o.label)}</button>
@@ -2434,7 +2453,7 @@ function renderDailyPhrase() {
   const phrase = `I like ${firstWord}.`;
   app.innerHTML = `
     <div class="screen">
-      <h1>Урок: фраза</h1>
+      ${screenHeader("Урок: фраза")}
       <div class="card">
         <div class="daily-badge">Шаг 3 из 4</div>
         <p class="hint mt-12">Напиши эту фразу по-английски. Можно без точки.</p>
@@ -2467,7 +2486,7 @@ async function renderDailyFinish(phraseWasCorrect = true, phrase = "") {
     const reward = status.reward_points || 0;
     app.innerHTML = `
       <div class="screen">
-        <h1>Урок завершен</h1>
+        ${screenHeader("Урок завершен")}
         <div class="card center">
           <div class="daily-badge">Шаг 4 из 4</div>
           <div class="big mt-12">${result.score ?? 0}%</div>
@@ -2544,6 +2563,9 @@ function tutorAvatarHtml() {
 }
 
 async function renderChat() {
+  // Назад доступен сразу при входе (ещё до загрузки истории). После полной
+  // инициализации ниже setBack переопределяется на cleanupChat()+renderMenu.
+  setBack(renderMenu);
   loading();
   ensureBottomNav("tutor");
   try {
@@ -2551,6 +2573,7 @@ async function renderChat() {
     app.innerHTML = `
       <div class="screen chat-wrap">
         <div class="chat-topbar">
+          <button type="button" class="screen-back" aria-label="Назад">← Назад</button>
           <h2 style="margin:0">Репетитор</h2>
           <button class="chat-reset" id="reset">Очистить</button>
         </div>
@@ -4315,7 +4338,7 @@ async function renderMotivation() {
     const freshBadges = diffNewlyUnlocked(badges);
     app.innerHTML = `
       <div class="screen">
-        <h1>${esc(data.title || "Достижения")}</h1>
+        ${screenHeader(data.title || "Достижения")}
         <div class="card motivation-hero">
           <div>
             <span class="daily-badge">Серия занятий</span>
@@ -4360,7 +4383,7 @@ async function renderParentReport() {
     const problemWords = data.problem_words || [];
     app.innerHTML = `
       <div class="screen">
-        <h1>Отчет для родителя</h1>
+        ${screenHeader("Отчет для родителя")}
         <div class="card">
           <h2>${esc(data.child.name)}</h2>
           <p class="hint">${esc(ageYearsLabel(data.child.child_age))} · Уровень - ${esc(data.child.level_label || "Beginner / A1")}</p>
@@ -4413,9 +4436,7 @@ async function renderParentReport() {
             `).join("")}
           </div>
         ` : ""}
-        <button class="btn btn-secondary" id="reportHome">← Назад</button>
       </div>`;
-    document.getElementById("reportHome").onclick = () => { haptic(); renderParentCabinet(); };
   } catch (e) {
     renderError(e.message);
   }
@@ -4472,7 +4493,7 @@ async function renderActivityHistory() {
     const groups = groupHistoryEvents(events);
     app.innerHTML = `
       <div class="screen">
-        <h1>История занятий</h1>
+        ${screenHeader("История занятий")}
         ${groups.length ? groups.map(group => `
           <section class="history-day">
             <div class="history-day-label">${esc(historyDayLabel(group.date))}</div>
@@ -4494,9 +4515,7 @@ async function renderActivityHistory() {
             <p class="hint">Заверши урок, тренировку, тест или игру — результат появится здесь.</p>
           </div>
         `}
-        <button class="btn btn-secondary" id="historyHome">← Назад</button>
       </div>`;
-    document.getElementById("historyHome").onclick = () => { haptic(); renderParentCabinet(); };
   } catch (e) {
     renderError(e.message);
   }
@@ -4522,7 +4541,7 @@ async function renderLeaderboard() {
     const ageLabel = data.age_label || "Мой возраст";
     app.innerHTML = `
       <div class="screen">
-        <h1>Рейтинг</h1>
+        ${screenHeader("Рейтинг")}
         <div class="seg-toggle">
           <button class="seg-btn active" data-scope="all">Все</button>
           <button class="seg-btn" data-scope="age">${esc(ageLabel)}</button>
@@ -4651,7 +4670,7 @@ async function renderAdminPanel() {
     const usersTotal = Number(users.total || 0);
     app.innerHTML = `
       <div class="screen admin-screen">
-        <h1>Админпанель</h1>
+        ${screenHeader("Админпанель")}
         <div class="card admin-hero">
           <div>
             <div class="daily-badge">Управление</div>
@@ -4816,14 +4835,13 @@ async function renderAdminUsers(query = "") {
   state.adminUsersQuery = query;
   app.innerHTML = `
     <div class="screen admin-screen">
-      <h1>Пользователи</h1>
+      ${screenHeader("Пользователи")}
       <div class="card dictionary-search-card">
         <input id="adminUserSearch" type="text" placeholder="Найти ученика, родителя или ID..." value="${esc(query)}" autocomplete="off">
       </div>
       <div class="admin-list" id="adminUsersList">
         <div class="card center"><p class="hint">Загружаю пользователей...</p></div>
       </div>
-      <button class="btn btn-secondary" id="adminUsersBack">К админке</button>
     </div>`;
   const search = document.getElementById("adminUserSearch");
   let searchTimer = null;
@@ -4831,7 +4849,6 @@ async function renderAdminUsers(query = "") {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => loadAdminUsers(search.value.trim()), 350);
   });
-  document.getElementById("adminUsersBack").onclick = () => { haptic(); renderAdminPanel(); };
   loadAdminUsers(query);
 }
 
@@ -4876,7 +4893,7 @@ async function renderAdminUserDetail(userId) {
     const streakDays = Number(streak.current || 0);
     app.innerHTML = `
       <div class="screen admin-screen">
-        <h1>Карточка ученика</h1>
+        ${screenHeader("Карточка ученика")}
         <div class="card admin-hero">
           <div>
             <div class="daily-badge">ID ${esc(u.id || userId)}</div>
@@ -4927,9 +4944,7 @@ async function renderAdminUserDetail(userId) {
         </div>
 
         <button class="btn btn-danger" id="adminDetailReset">Обнулить результаты ученика</button>
-        <button class="btn btn-secondary" id="adminDetailBack">К пользователям</button>
       </div>`;
-    document.getElementById("adminDetailBack").onclick = () => { haptic(); renderAdminUsers(state.adminUsersQuery || ""); };
     document.getElementById("adminDetailReset").onclick = async () => {
       haptic("warning");
       const ok = await confirmAction(`Обнулить учебные результаты ученика ${u.child_name || userId}?`);
@@ -4961,7 +4976,7 @@ async function renderProfile() {
     const u = state.me.user;
     app.innerHTML = `
       <div class="screen">
-        <h1>Профиль ребёнка</h1>
+        ${screenHeader("Профиль ребёнка")}
         <div class="card center">
           <h2>${esc(u.child_name)}</h2>
           <p class="hint">Возраст — ${esc(ageYearsLabel(u.child_age))}</p>
@@ -4973,9 +4988,7 @@ async function renderProfile() {
           <div class="stat-row"><span>Уровень</span><b>${esc(u.level_label || "Beginner / A1")}</b></div>
           <div class="stat-row"><span>Тест уровня</span><b>${u.level_test_completed ? `${u.level_test_score}%` : "не пройден"}</b></div>
         </div>
-        <button class="btn btn-secondary mt-12" id="backToProfile">← Назад</button>
       </div>`;
-    document.getElementById("backToProfile").onclick = () => { haptic(); renderParentZone(); };
   } catch (e) {
     renderError(e.message);
   }
@@ -4988,7 +5001,7 @@ async function renderSettings() {
   if (!state.me || !state.me.user) { renderMenu(); return; }
   app.innerHTML = `
     <div class="screen">
-      <h1>Настройки</h1>
+      ${screenHeader("Настройки")}
       <div class="card">
         <h2>Уведомления</h2>
         <p class="hint">Напоминание в Telegram, если за день не было занятий. Не чаще одного раза в день.</p>
@@ -5002,9 +5015,7 @@ async function renderSettings() {
         <p class="hint mt-12">Удаление навсегда стирает профиль, прогресс, историю и все диалоги с репетитором. Отменить нельзя.</p>
         <button class="btn btn-danger" id="deleteAccount">Удалить профиль и все данные</button>
       </div>
-      <button class="btn btn-secondary mt-12" id="backToProfile">← Назад</button>
     </div>`;
-  document.getElementById("backToProfile").onclick = () => { haptic(); renderParentZone(); };
   const remBtn = document.getElementById("remToggle");
   const paintRem = (on) => {
     remBtn.textContent = on ? "🔔 Напоминания: включены" : "🔕 Напоминания: выключены";
