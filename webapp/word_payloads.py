@@ -10,11 +10,13 @@ import hashlib
 import json
 from urllib.parse import urlencode
 
-from config import VOCAB_AI_IMAGES, APP_VERSION
+from config import VOCAB_AI_IMAGES, APP_VERSION, VOCAB_FREE_PHOTOS
 from webapp import storage
 from webapp.svg_renderer import _word_image_icon
 from webapp.vocabulary_visualizer import (
+    allows_free_photo,
     build_vocabulary_visual,
+    is_sensitive_word,
     vocabulary_image_url,
 )
 
@@ -46,9 +48,10 @@ def _word_image_url(word: str, topic: str = "") -> str:
     )
 
 
-# Единый визуальный язык карточек: основная картинка слова — ВСЕГДА контролируемая
-# SVG-сцена (или валидная AI-картинка выше по стеку). Фотосток (Pixabay) из карточек
-# убран полностью — он давал разнобой (apple-эмодзи vs lesson-фото) и сбивал ребёнка.
+# Конкретные существительные (allows_free_photo: visual_type == "object") получают
+# бесплатное child-safe фото Pixabay (/vocabulary-photo, кэш по слову, safesearch);
+# действия / абстрактные существительные / прилагательные / служебные слова — единую
+# контролируемую SVG-сцену. Эмодзи остаётся маленьким бейджем поверх картинки (v153).
 
 
 def _vocab_card_image_url(
@@ -58,10 +61,21 @@ def _vocab_card_image_url(
     visual_type: str = "",
     topic: str = "",
 ) -> str:
-    """Карточки слов больше НЕ используют фотосток — возвращаем контролируемый SVG/AI
-    fallback как есть. Публичный /vocabulary-photo остаётся как legacy-хэндлер, но
-    словарь его не вызывает. emoji/visual_type/topic сохранены для совместимости
-    вызовов (эмодзи фронт рендерит маленьким бейджем поверх SVG, не вместо неё)."""
+    """Фото Pixabay для конкретных существительных (allows_free_photo), иначе SVG/AI
+    fallback. Условие «без emoji» убрано: эмодзи рендерится бейджем поверх (v153),
+    поэтому apple показывает фото + 🍎. Сенситивные слова фото не получают."""
+    w = " ".join(str(word or "").split()).lower()
+    if (
+        VOCAB_FREE_PHOTOS
+        and w
+        and not is_sensitive_word(w)
+        and allows_free_photo(w, visual_type)
+    ):
+        params = {"w": w[:40]}
+        t = " ".join(str(topic or "").split()).lower()[:32]
+        if t:
+            params["t"] = t
+        return "/vocabulary-photo?" + urlencode(params)
     return fallback_url
 
 

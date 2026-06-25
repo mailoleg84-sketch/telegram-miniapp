@@ -58,5 +58,36 @@ class UnifiedAccentTests(unittest.TestCase):
                 self.assertIn(accent, _vocabulary_visual_svg(word, "school", "spatial_relation"))
 
 
+class LearningSceneContractTests(unittest.TestCase):
+    """Ключевые учебные слова должны получать не общий сердечко/палочки-фолбэк,
+    а осмысленные бесплатные SVG-сцены в едином стиле."""
+
+    def test_school_words_have_curated_classroom_scenes(self):
+        for word in ("lesson", "class"):
+            with self.subTest(word=word):
+                s = _vocabulary_visual_svg(word, "school", "situation")
+                self.assertIn(f'data-scene="{word}"', s)
+                self.assertNotIn("/vocabulary-photo", s)
+                self.assertNotIn("<text", s.lower())
+
+    def test_answer_and_visited_have_meaningful_scenes(self):
+        cases = (
+            ("answer", "situation", 'data-scene="answer"'),
+            ("visited", "action", 'data-scene="visited"'),
+            ("visited", "situation", 'data-scene="visited"'),
+        )
+        for word, visual_type, marker in cases:
+            with self.subTest(word=word, visual_type=visual_type):
+                s = _vocabulary_visual_svg(word, "school", visual_type)
+                self.assertIn(marker, s)
+                self.assertNotIn("/vocabulary-photo", s)
+                self.assertNotIn("<text", s.lower())
+
+    def test_grammar_uses_unified_character_scene(self):
+        s = _vocabulary_visual_svg("the", "grammar", "grammar_diagram")
+        self.assertIn('data-scene="grammar"', s)
+        self.assertNotIn("<text", s.lower())
+
+
 if __name__ == "__main__":
     unittest.main()

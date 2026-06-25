@@ -323,23 +323,25 @@ class VocabularyVisualizerTests(unittest.TestCase):
                 self.assertTrue(note)
                 self.assertNotIn("Условная сцена", note)
 
-    def test_allows_free_photo_only_for_photo_safe_allowlist(self):
-        # Фото — ТОЛЬКО для слов из узкого ручного allowlist PHOTO_SAFE_OBJECTS.
-        for word in ("apple", "table", "cat", "dog", "cup", "book"):
+    def test_allows_free_photo_for_concrete_object_nouns(self):
+        # Фото — для конкретных существительных (visual_type "object"), теперь не только
+        # из узкого allowlist: apple, table, room, customer, office, house, tree…
+        for word in ("apple", "table", "cat", "dog", "cup", "book", "room", "customer", "office", "house", "tree"):
             with self.subTest(word=word):
                 self.assertTrue(allows_free_photo(word, "object"), word)
-        # Всё остальное -> учебная сцена, без случайного фото: неоднозначные
-        # существительные (lesson/answer/class/question), бывшие "object" вне
-        # allowlist (room/customer/office), действия, абстрактные и служебные слова.
+        # Не-object (абстрактные сущ. -> situation, действия, служебные) -> учебная сцена.
         for word, visual_type in (
             ("lesson", "situation"), ("answer", "situation"), ("class", "situation"),
             ("question", "situation"), ("visited", "action"), ("run", "action"),
             ("because", "cause_effect"), ("the", "no_good_visual"),
-            ("room", "object"), ("customer", "object"), ("office", "object"),
         ):
             with self.subTest(word=word):
                 self.assertFalse(allows_free_photo(word, visual_type), word)
-        # Даже allowlist-слово вне типа object фото не получает.
+        # Сенситивные слова — никогда не фото, даже если object.
+        for word in ("knife", "gun", "blood"):
+            with self.subTest(word=word):
+                self.assertFalse(allows_free_photo(word, "object"), word)
+        # Даже конкретное слово вне типа object фото не получает.
         self.assertFalse(allows_free_photo("apple", "situation"))
 
     def test_ambiguous_school_nouns_are_scene_not_object(self):

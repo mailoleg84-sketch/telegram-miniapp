@@ -560,18 +560,17 @@ def is_complex_visual_type(visual_type: str) -> bool:
 
 
 def allows_free_photo(word: str, visual_type: str) -> bool:
-    """Строгий гейт бесплатного фото: разрешено ТОЛЬКО для слов из ручного allowlist
-    PHOTO_SAFE_OBJECTS и только если слово классифицировано как object.
-
-    Случайный фотосток ненадёжен для детского словаря — он показывает связанный
-    объект/действие, а не значение слова (lesson -> рука с карандашом, answer ->
-    заполнение анкеты). Поэтому одного visual_type == "object" недостаточно: слово
-    обязано быть в явном узком списке однозначных предметов. Всё остальное
-    (действия, ситуации, абстрактные, грамматические, любые неоднозначные
-    существительные) получает учебную SVG-сцену. Членство в PHOTO_SAFE_OBJECTS
-    гарантирует object_card / high-confidence / needs_review=False."""
+    """Бесплатное child-safe фото (Pixabay) — для КОНКРЕТНЫХ существительных:
+    visual_type == "object" (apple, house, tree, table, sun, flower…). Для них фото
+    показывает именно предмет. Абстрактные существительные (lesson/answer/idea →
+    visual_type "situation"), действия, прилагательные и служебные слова фото НЕ
+    получают — там фотосток давал мусор (lesson -> рука с карандашом) — остаются на
+    учебной SVG-сцене. Сенситивные слова отсекаются всегда (детская безопасность).
+    PHOTO_SAFE_OBJECTS теперь не гейт, а справочное подмножество «высшей уверенности»."""
     w = _clean(word).lower()
-    return visual_type == "object" and w in PHOTO_SAFE_OBJECTS
+    if is_sensitive_word(w):
+        return False
+    return visual_type == "object"
 
 
 def _clean(value: str) -> str:

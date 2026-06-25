@@ -582,7 +582,10 @@ class OpenAISafetyTests(unittest.TestCase):
         self.assertEqual(payload["status"], "review")
         self.assertEqual(payload["status_label"], "повторить")
         self.assertEqual(payload["wrong_count"], 2)
-        self.assertTrue(payload["image_url"].startswith("/vocabulary-visual.svg?"))
+        self.assertTrue(
+            payload["image_url"].startswith(("/vocabulary-photo", "/vocabulary-visual.svg")),
+            payload["image_url"],
+        )
         self.assertIn("w=apple", payload["image_url"])
 
     def test_dictionary_word_status_due_beats_mastered(self):

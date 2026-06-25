@@ -496,6 +496,88 @@ def _topic_icon_svg(icon: str, color: str) -> str:
     <path d="M196 52 l24 51 l56 8 l-40 40 l9 56 l-49-26 l-50 26 l10-56 l-41-40 l56-8Z" fill="{color}"/>"""
 
 
+def _child_figure(hx: int, hy: int, color: str, scale: float = 1.0) -> str:
+    """Единый бесплатный персонаж для учебных сцен: без фотостока, без текста,
+    с дружелюбной формой. scale оставляем параметром для маленьких/больших сцен."""
+    r = 32 * scale
+    eye_r = 4.5 * scale
+    return (
+        f'<circle cx="{hx}" cy="{hy}" r="{r:.1f}" fill="{color}"/>'
+        f'<circle cx="{hx - 11 * scale:.1f}" cy="{hy - 3 * scale:.1f}" r="{eye_r:.1f}" fill="#1f2933"/>'
+        f'<circle cx="{hx + 11 * scale:.1f}" cy="{hy - 3 * scale:.1f}" r="{eye_r:.1f}" fill="#1f2933"/>'
+        f'<path d="M{hx - 14 * scale:.1f} {hy + 11 * scale:.1f} C{hx - 5 * scale:.1f} {hy + 20 * scale:.1f} '
+        f'{hx + 5 * scale:.1f} {hy + 20 * scale:.1f} {hx + 14 * scale:.1f} {hy + 11 * scale:.1f}" '
+        f'fill="none" stroke="#1f2933" stroke-width="{4.5 * scale:.1f}" stroke-linecap="round"/>'
+        f'<path d="M{hx - 56 * scale:.1f} {hy + 150 * scale:.1f} C{hx - 48 * scale:.1f} {hy + 88 * scale:.1f} '
+        f'{hx - 26 * scale:.1f} {hy + 60 * scale:.1f} {hx} {hy + 60 * scale:.1f} '
+        f'C{hx + 26 * scale:.1f} {hy + 60 * scale:.1f} {hx + 48 * scale:.1f} {hy + 88 * scale:.1f} '
+        f'{hx + 56 * scale:.1f} {hy + 150 * scale:.1f} Z" fill="{color}" opacity=".88"/>'
+    )
+
+
+def _speech_bubble(x: int, y: int, color: str, dots: bool = True) -> str:
+    dots_svg = (
+        f'<circle cx="{x + 36}" cy="{y + 34}" r="6" fill="{color}"/>'
+        f'<circle cx="{x + 58}" cy="{y + 34}" r="6" fill="{color}" opacity=".8"/>'
+        f'<circle cx="{x + 80}" cy="{y + 34}" r="6" fill="{color}" opacity=".62"/>'
+    ) if dots else ""
+    return (
+        f'<path d="M{x} {y} h122 c18 0 32 14 32 32 v24 c0 18-14 32-32 32 h-54 '
+        f'l-34 24 v-24 h-34 c-18 0-32-14-32-32 v-24 c0-18 14-32 32-32Z" '
+        f'fill="#fff" stroke="{color}" stroke-width="8" opacity=".94"/>'
+        f'{dots_svg}'
+    )
+
+
+def _classroom_scene(color: str, accent: str, icon_svg: str, variant: str = "lesson") -> str:
+    board_icon = '<g transform="translate(174 76) scale(.23)">' + icon_svg + '</g>' if variant == "lesson" else ""
+    return f"""
+        <g data-scene="{variant}">
+        <rect x="88" y="64" width="220" height="108" rx="22" fill="#fff" stroke="{color}" stroke-width="10" opacity=".92"/>
+        <path d="M122 106 h74 M122 136 h126" stroke="{color}" stroke-width="10" opacity=".24" stroke-linecap="round"/>
+        {board_icon}
+        {_child_figure(122, 176, accent, .62)}
+        {_child_figure(210, 184, color, .58)}
+        {_child_figure(294, 178, accent, .55)}
+        <path d="M92 278 C150 258 238 258 314 278" fill="none" stroke="#34c759" stroke-width="13" opacity=".4" stroke-linecap="round"/>
+        </g>"""
+
+
+def _answer_scene(color: str, accent: str) -> str:
+    return f"""
+        <g data-scene="answer">
+        {_speech_bubble(168, 64, accent)}
+        {_child_figure(136, 146, color, .78)}
+        <path d="M188 176 C226 143 244 126 266 97" fill="none" stroke="{color}" stroke-width="16" stroke-linecap="round"/>
+        <circle cx="270" cy="93" r="17" fill="{color}"/>
+        <path d="M90 280 C145 258 228 258 312 280" fill="none" stroke="#34c759" stroke-width="13" opacity=".4" stroke-linecap="round"/>
+        </g>"""
+
+
+def _visit_scene(color: str, accent: str) -> str:
+    return f"""
+        <g data-scene="visited">
+        <path d="M96 258 V116 c0-38 31-69 69-69 h62 c38 0 69 31 69 69 v142" fill="none" stroke="{color}" stroke-width="18" stroke-linecap="round"/>
+        <path d="M126 258 V128 c0-21 17-38 38-38 h64 c21 0 38 17 38 38 v130" fill="#fff" opacity=".82"/>
+        <circle cx="196" cy="132" r="32" fill="{accent}" opacity=".72"/>
+        <path d="M196 162 v60" stroke="{accent}" stroke-width="13" stroke-linecap="round"/>
+        {_child_figure(106, 164, color, .58)}
+        {_child_figure(292, 172, accent, .52)}
+        <path d="M76 280 C144 258 226 258 320 280" fill="none" stroke="#34c759" stroke-width="13" opacity=".4" stroke-linecap="round"/>
+        </g>"""
+
+
+def _homework_scene(color: str, accent: str, icon_svg: str, variant: str) -> str:
+    return f"""
+        <g data-scene="{variant}">
+        {_child_figure(128, 116, color, .66)}
+        <rect x="162" y="138" width="142" height="96" rx="18" fill="#fff" stroke="{accent}" stroke-width="9" opacity=".94"/>
+        <path d="M188 170 h76 M188 198 h52" stroke="{accent}" stroke-width="10" opacity=".28" stroke-linecap="round"/>
+        <g transform="translate(214 66) scale(.28)">{icon_svg}</g>
+        <path d="M84 268 C148 248 230 248 316 268" fill="none" stroke="#34c759" stroke-width="13" opacity=".4" stroke-linecap="round"/>
+        </g>"""
+
+
 def _word_image_svg(word: str, topic: str) -> str:
     clean_word = " ".join(str(word or "word").split())[:48]
     clean_topic = " ".join(str(topic or "basic").split())[:32]
@@ -525,12 +607,18 @@ def _vocabulary_visual_svg(word: str, topic: str, visual_type: str) -> str:
     if clean_type == "object":
         return _word_image_svg(clean_word, clean_topic)
     if clean_type == "action":
-        scene = f"""
-        <circle cx="190" cy="128" r="36" fill="{color}"/>
-        <path d="M190 164 l-38 70 M190 164 l50 58 M188 178 l-65 10 M188 178 l76-22" stroke="{color}" stroke-width="18" stroke-linecap="round"/>
-        <path d="M78 218 C124 202 166 202 214 218 C250 230 294 230 334 218" fill="none" stroke="#34c759" stroke-width="14" opacity=".55" stroke-linecap="round"/>
-        <path d="M92 124 h46 M78 164 h54 M280 106 h42" stroke="{accent}" stroke-width="12" opacity=".42" stroke-linecap="round"/>
-        <g transform="translate(214 62) scale(.42)">{icon_svg}</g>"""
+        if clean_word in {"visit", "visited"}:
+            scene = _visit_scene(color, accent)
+        elif clean_word in {"answer", "answered", "reply", "replied"}:
+            scene = _answer_scene(color, accent)
+        else:
+            scene = f"""
+        <g data-scene="action">
+        {_child_figure(178, 120, color)}
+        <path d="M70 100 h46 M58 134 h56 M74 166 h40" stroke="{accent}" stroke-width="12" stroke-linecap="round" opacity=".5"/>
+        <path d="M78 252 C144 234 222 234 300 252" fill="none" stroke="#34c759" stroke-width="14" opacity=".5" stroke-linecap="round"/>
+        <g transform="translate(244 64) scale(.4)">{icon_svg}</g>
+        </g>"""
     elif clean_type == "contrast":
         scene = f"""
         <circle cx="156" cy="174" r="82" fill="{color}" opacity=".86"/>
@@ -564,23 +652,32 @@ def _vocabulary_visual_svg(word: str, topic: str, visual_type: str) -> str:
         <circle cx="{bx}" cy="{by}" r="34" fill="{accent}"/>
         <path d="M92 276 h230" stroke="#34c759" stroke-width="14" opacity=".42" stroke-linecap="round"/>"""
     elif clean_type == "situation":
-        if clean_word == "honest":
-            prop = '<rect x="186" y="166" width="48" height="34" rx="8" fill="#8a5a2b"/><circle cx="222" cy="176" r="6" fill="#ffcc00"/>'
-        elif clean_word == "careful":
-            prop = '<path d="M184 150 h54 v74 c0 15-12 27-27 27s-27-12-27-27Z" fill="#bfe7ff" stroke="#2481cc" stroke-width="7"/><path d="M190 184 h42" stroke="#fff" stroke-width="8" opacity=".8"/>'
-        elif clean_word == "proud":
-            prop = '<rect x="168" y="135" width="74" height="60" rx="10" fill="#fff" stroke="#ffcc00" stroke-width="8"/><circle cx="205" cy="165" r="15" fill="#ffcc00"/>'
-        elif clean_word == "worried":
-            prop = '<circle cx="218" cy="152" r="38" fill="#fff" stroke="#7c5cff" stroke-width="8"/><path d="M218 130 v25 l18 12" stroke="#7c5cff" stroke-width="8" stroke-linecap="round"/>'
+        if clean_word in {"lesson", "class", "course"}:
+            scene = _classroom_scene(color, accent, icon_svg, clean_word)
+        elif clean_word in {"answer", "question"}:
+            scene = _answer_scene(color, accent)
+        elif clean_word in {"homework", "test", "exam"}:
+            scene = _homework_scene(color, accent, icon_svg, clean_word)
+        elif clean_word in {"visit", "visited"}:
+            scene = _visit_scene(color, accent)
         else:
-            prop = '<path d="M196 158 C154 126 113 164 144 202 C163 226 186 223 196 245 C206 223 229 226 248 202 C279 164 238 126 196 158Z" fill="#ff5c8a"/>'
-        scene = f"""
-        <circle cx="136" cy="124" r="34" fill="{color}"/>
-        <path d="M82 248 C92 196 111 168 136 168 C164 168 184 197 194 248Z" fill="{color}" opacity=".78"/>
-        <circle cx="270" cy="124" r="34" fill="{accent}" opacity=".7"/>
-        <path d="M216 248 C226 196 245 168 270 168 C298 168 318 197 328 248Z" fill="{accent}" opacity=".5"/>
+            if clean_word == "honest":
+                prop = '<rect x="186" y="166" width="48" height="34" rx="8" fill="#8a5a2b"/><circle cx="222" cy="176" r="6" fill="#ffcc00"/>'
+            elif clean_word == "careful":
+                prop = '<path d="M184 150 h54 v74 c0 15-12 27-27 27s-27-12-27-27Z" fill="#bfe7ff" stroke="#2481cc" stroke-width="7"/><path d="M190 184 h42" stroke="#fff" stroke-width="8" opacity=".8"/>'
+            elif clean_word == "proud":
+                prop = '<rect x="168" y="135" width="74" height="60" rx="10" fill="#fff" stroke="#ffcc00" stroke-width="8"/><circle cx="205" cy="165" r="15" fill="#ffcc00"/>'
+            elif clean_word == "worried":
+                prop = '<circle cx="218" cy="152" r="38" fill="#fff" stroke="#7c5cff" stroke-width="8"/><path d="M218 130 v25 l18 12" stroke="#7c5cff" stroke-width="8" stroke-linecap="round"/>'
+            else:
+                prop = '<path d="M196 158 C154 126 113 164 144 202 C163 226 186 223 196 245 C206 223 229 226 248 202 C279 164 238 126 196 158Z" fill="#ff5c8a"/>'
+            scene = f"""
+        <g data-scene="situation">
+        {_child_figure(126, 116, color, .82)}
+        {_child_figure(266, 122, accent, .72)}
         {prop}
-        <path d="M118 270 h172" stroke="#34c759" stroke-width="13" opacity=".38" stroke-linecap="round"/>"""
+        <path d="M104 268 C160 252 232 252 300 268" fill="none" stroke="#34c759" stroke-width="13" opacity=".4" stroke-linecap="round"/>
+        </g>"""
     elif clean_type == "cause_effect":
         scene = f"""
         {panel(74, 66)}{panel(244, 66)}
@@ -600,12 +697,13 @@ def _vocabulary_visual_svg(word: str, topic: str, visual_type: str) -> str:
         <path d="M224 162 h38" stroke="#1f2933" stroke-width="10" opacity=".22" stroke-linecap="round"/>"""
     elif clean_type == "grammar_diagram":
         scene = f"""
-        <circle cx="156" cy="126" r="35" fill="{color}"/>
-        <path d="M156 160 v68 M156 182 l-52 40 M156 182 l62 34" stroke="{color}" stroke-width="16" stroke-linecap="round"/>
-        <circle cx="272" cy="196" r="48" fill="none" stroke="{accent}" stroke-width="14"/>
-        <path d="M250 160 C262 128 301 128 314 160" fill="{accent}" opacity=".55"/>
-        <path d="M245 106 C262 78 304 78 321 106" fill="none" stroke="{accent}" stroke-width="14" stroke-linecap="round"/>
-        <path d="M103 262 h205" stroke="#34c759" stroke-width="14" opacity=".4" stroke-linecap="round"/>"""
+        <g data-scene="grammar">
+        {_child_figure(140, 120, color, .72)}
+        <circle cx="272" cy="150" r="50" fill="none" stroke="{accent}" stroke-width="13"/>
+        <path d="M272 124 v28 l20 12" stroke="{accent}" stroke-width="11" stroke-linecap="round" fill="none"/>
+        <path d="M196 158 h40" stroke="#1f2933" stroke-width="8" opacity=".22" stroke-linecap="round"/>
+        <path d="M78 254 C150 238 226 238 300 254" fill="none" stroke="#34c759" stroke-width="13" opacity=".4" stroke-linecap="round"/>
+        </g>"""
     else:
         scene = f"""
         <rect x="102" y="86" width="188" height="140" rx="24" fill="#fff" stroke="{color}" stroke-width="10" opacity=".86"/>

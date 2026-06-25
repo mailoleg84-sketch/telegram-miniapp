@@ -176,17 +176,17 @@ class BuildVocabImageQuestionTests(unittest.IsolatedAsyncioTestCase):
         expected = "Вставь пропущенное слово" if q["type"] == "gap" else "Выбери английское слово"
         self.assertEqual(q["prompt"], expected)
 
-    async def test_apple_image_has_svg_scene_and_emoji_badge(self):
-        # Единый стиль: даже у apple основная картинка — SVG-сцена; эмодзи остаётся
-        # как бейдж (не подменяет картинку), фотосток не используется.
-        q = await self._image_question(
-            _img_word(1, "apple", "яблоко", "food", "I eat an apple every day.")
-        )
+    async def test_apple_image_uses_photo_and_keeps_emoji_badge(self):
+        # apple — конкретное существительное: основная картинка квиза тоже фото
+        # Pixabay; эмодзи остаётся бейджем (не подменяет картинку).
+        with patch("webapp.word_payloads.VOCAB_FREE_PHOTOS", True):
+            q = await self._image_question(
+                _img_word(1, "apple", "яблоко", "food", "I eat an apple every day.")
+            )
         self.assertEqual(q["type"], "image")
         self.assertEqual(q["prompt"], "Что это?")
         self.assertTrue(q["emoji"], "эмодзи остаётся как бейдж")
-        self.assertTrue(q["image_url"].startswith("/vocabulary-visual.svg"), q["image_url"])
-        self.assertNotIn("/vocabulary-photo", q["image_url"])
+        self.assertIn("/vocabulary-photo", q["image_url"], q["image_url"])
 
     async def test_answer_stays_image_scene_not_photo(self):
         # answer теперь учебная сцена (не object-фото руки/анкеты): остаётся image

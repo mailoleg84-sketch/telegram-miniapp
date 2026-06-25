@@ -16,25 +16,27 @@ SVG = "/vocabulary-visual.svg?w=x&v=object"
 
 
 class VocabCardImageUrlTests(unittest.TestCase):
-    """Карточки слов больше НЕ используют фотосток: _vocab_card_image_url всегда
-    возвращает контролируемый SVG/AI fallback — для любого слова и независимо от эмодзи."""
+    """Карточки слов: _vocab_card_image_url отдаёт бесплатное фото Pixabay для
+    конкретных существительных (object) и SVG/AI fallback для остальных слов."""
 
-    def test_card_image_is_never_a_photo(self):
-        cases = [
-            ("table", "", "object", "home"),        # бывший «можно фото» — теперь SVG
-            ("apple", "🍎", "object", "food"),       # эмодзи-слово — основная картинка SVG
-            ("visited", "", "action", "travel"),
-            ("lesson", "", "situation", "school"),
-            ("answer", "", "situation", "school"),
-            ("because", "", "cause_effect", "grammar"),
-            ("the", "", "no_good_visual", "basic"),
-            ("knife", "", "object", "home"),
-        ]
-        for word, emoji, vt, topic in cases:
-            with self.subTest(word=word):
-                url = server._vocab_card_image_url(word, SVG, emoji=emoji, visual_type=vt, topic=topic)
-                self.assertEqual(url, SVG)
-                self.assertNotIn("/vocabulary-photo", url)
+    def test_object_nouns_get_photo_others_keep_svg(self):
+        with patch("webapp.word_payloads.VOCAB_FREE_PHOTOS", True):
+            for word, emoji, vt, topic in (
+                ("table", "", "object", "home"),
+                ("apple", "🍎", "object", "food"),   # эмодзи остаётся бейджем поверх фото
+            ):
+                with self.subTest(word=word):
+                    url = server._vocab_card_image_url(word, SVG, emoji=emoji, visual_type=vt, topic=topic)
+                    self.assertIn("/vocabulary-photo", url)
+            for word, vt, topic in (
+                ("visited", "action", "travel"), ("lesson", "situation", "school"),
+                ("answer", "situation", "school"), ("because", "cause_effect", "grammar"),
+                ("the", "no_good_visual", "basic"), ("knife", "object", "home"),
+            ):
+                with self.subTest(word=word):
+                    url = server._vocab_card_image_url(word, SVG, emoji="", visual_type=vt, topic=topic)
+                    self.assertEqual(url, SVG)
+                    self.assertNotIn("/vocabulary-photo", url)
 
     def test_scene_words_stay_situation_not_object(self):
         # lesson/class остаются учебной ситуацией (не object) — основа единой сцены.
@@ -153,31 +155,34 @@ class VocabularyPhotoHandlerTests(unittest.TestCase):
 
 
 class UnifiedCardImageTests(unittest.TestCase):
-    """Единый визуальный язык: основная картинка карточки (_word_dict) — SVG-сцена для
-    ВСЕХ слов (вкл. apple/cat/dog), никогда не фотосток; эмодзи остаётся как бейдж."""
+    """Карточки (_word_dict): конкретные существительные -> бесплатное фото Pixabay,
+    действия/абстрактные/служебные -> учебная SVG-сцена; эмодзи остаётся бейджем."""
 
     @staticmethod
     def _row(word, translation, topic, example=""):
         return {"id": 1, "word": word, "translation": translation, "transcription": "",
                 "example": example, "topic": topic, "age_group": "8_10"}
 
-    def test_all_words_card_image_is_svg_scene_not_photo(self):
-        cases = [("apple", "яблоко", "food"), ("cat", "кошка", "animals"),
-                 ("dog", "собака", "animals"), ("car", "машина", "transport"),
-                 ("book", "книга", "reading"), ("lesson", "урок", "school"),
-                 ("answer", "ответ", "school"), ("visited", "посетил", "travel"),
-                 ("because", "потому что", "grammar")]
-        for word, tr, topic in cases:
-            with self.subTest(word=word):
-                d = server._word_dict(self._row(word, tr, topic))
-                self.assertTrue(d["image_url"].startswith("/vocabulary-visual.svg"),
-                                f"{word}: {d['image_url']}")
-                self.assertNotIn("/vocabulary-photo", d["image_url"])
+    def test_object_nouns_use_photo_scene_words_use_svg(self):
+        with patch("webapp.word_payloads.VOCAB_FREE_PHOTOS", True):
+            for word, tr, topic in [("apple", "яблоко", "food"), ("cat", "кошка", "animals"),
+                                    ("dog", "собака", "animals"), ("car", "машина", "transport"),
+                                    ("book", "книга", "reading")]:
+                with self.subTest(word=word):
+                    d = server._word_dict(self._row(word, tr, topic))
+                    self.assertIn("/vocabulary-photo", d["image_url"], f"{word}: {d['image_url']}")
+            for word, tr, topic in [("lesson", "урок", "school"), ("answer", "ответ", "school"),
+                                    ("visited", "посетил", "travel"), ("because", "потому что", "grammar")]:
+                with self.subTest(word=word):
+                    d = server._word_dict(self._row(word, tr, topic))
+                    self.assertTrue(d["image_url"].startswith("/vocabulary-visual.svg"), f"{word}: {d['image_url']}")
+                    self.assertNotIn("/vocabulary-photo", d["image_url"])
 
-    def test_emoji_word_keeps_svg_image_and_emoji_badge(self):
-        # apple: основная картинка — SVG-сцена, а эмодзи остаётся в payload (бейдж).
-        d = server._word_dict(self._row("apple", "яблоко", "food"))
-        self.assertTrue(d["image_url"].startswith("/vocabulary-visual.svg"))
+    def test_emoji_object_word_uses_photo_and_keeps_emoji_badge(self):
+        # apple: основная картинка — фото, эмодзи остаётся в payload (бейдж поверх).
+        with patch("webapp.word_payloads.VOCAB_FREE_PHOTOS", True):
+            d = server._word_dict(self._row("apple", "яблоко", "food"))
+        self.assertIn("/vocabulary-photo", d["image_url"])
         self.assertTrue(d["emoji"], "эмодзи остаётся как декоративный бейдж")
 
 
