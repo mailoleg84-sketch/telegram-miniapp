@@ -200,7 +200,7 @@ CONCRETE_TOPICS = {
     "animals", "art", "body", "clothes", "family", "food", "friends",
     "games", "hobbies", "home", "jobs", "music", "nature", "places",
     "reading", "school", "sports", "technology", "toys", "transport",
-    "travel", "people",
+    "travel", "people", "colors", "time", "work",
 }
 AMBIGUOUS_NOUNS = {
     "advice", "amount", "answer", "balance", "blow", "case", "change", "choice",

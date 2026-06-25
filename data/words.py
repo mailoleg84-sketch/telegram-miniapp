@@ -18,6 +18,8 @@ import re
 import pronouncing
 
 from data.single_words_5000 import SINGLE_WORDS_5000
+from data.topic_classifier import CANONICAL_TOPICS, classify_topic
+from webapp.vocabulary_visualizer import determine_part_of_speech
 
 
 TARGET_WORD_COUNT = 5000
@@ -1611,44 +1613,26 @@ def _with_examples(entries: list[Entry6]) -> list[Entry6]:
     ]
 
 
-# Курированная реклассификация тем (высокая точность, обратимо). Переносим
-# однозначно конкретные слова из мусорных тем (everyday/verbs/people/abstract…) в
-# темы-колоды (VOCAB_TOPIC_LABELS) — это (1) наполняет тематические колоды и
-# (2) даёт конкретным существительным визуал «object» вместо «situation»
-# (тема не в CONCRETE_TOPICS → situation). Каждое слово сверено с переводом из
-# банка; омонимы исключены вручную (rock=рок, seal=печать, sink=тонуть, cup=посуда,
-# back=назад, goal=цель, garden→оставлен в nature). Источник single_words_5000 не
-# меняем — правка применяется при сборке LEARNING_WORDS, её легко откатить.
-_TOPIC_RECLASSIFY = {
-    "animals": "bat bull dragon eagle rat rooster",
-    "food": "bacon beans butter candy cherry chocolate corn honey jam meal pepper salt sugar",
-    "body": "bone brain chest lip lips neck shoulder skin stomach teeth",
-    "colors": "gold grey silver",
-    "clothes": "belt boot boots cap jacket pants shirt shoes suit tie uniform",
-    "transport": "boat rocket scooter ship taxi train truck van",
-    "family": "grandfather husband wife",
-    "home": "bathroom bed couch door floor key mirror plate roof wall",
-    "school": "crayon paper",
-    "nature": "beach bush cave desert hill island leaves lightning mountain rose sand stone storm thunder wave",
-    "sports": "baseball boxing cricket golf hockey medal rugby trophy",
-    "music": "piano",
-    "toys": "blocks puzzle",
-}
-_TOPIC_OVERRIDE = {
-    word: topic
-    for topic, words in _TOPIC_RECLASSIFY.items()
-    for word in words.split()
-}
-
-
+# Высокоточная классификация тем ПО СМЫСЛУ слова (data/topic_classifier). Уверенно
+# -> тема-колода (CANONICAL_TOPICS); не уверены -> слово сохраняет исходную тему и
+# остаётся в общем словаре / колоде «Любые слова», а НЕ попадает в неправильную
+# тематическую колоду. Источник single_words_5000 не меняем — правка применяется при
+# сборке LEARNING_WORDS, легко откатить.
 def _reclassify_topics(entries: list[Entry6]) -> list[Entry6]:
-    """Меняет только поле topic по курированному override (см. _TOPIC_RECLASSIFY);
-    остальные слова без изменений. Применяется ДО генерации примеров, чтобы их
-    категория совпадала с исправленной темой."""
-    return [
-        (word, translation, example, _TOPIC_OVERRIDE.get(word.lower(), topic), age_group, transcription)
-        for word, translation, example, topic, age_group, transcription in entries
-    ]
+    """Меняет только поле topic: уверенная тема-колода (classify_topic) или исходная
+    тема, если уверенности нет. Применяется ДО генерации примеров, чтобы их категория
+    совпала с темой."""
+    out: list[Entry6] = []
+    for word, translation, example, topic, age_group, transcription in entries:
+        pos = determine_part_of_speech(word, translation, topic)
+        canon = classify_topic(word, translation, pos, topic)
+        if canon is None:
+            # Не уверены: оставляем исходную тему, НО если она сама — тема-колода
+            # (ненадёжный ярлык банка, напр. «people» = слова на -er: letter/winter),
+            # уводим в общий словарь, чтобы не засорять колоду.
+            canon = topic if topic not in CANONICAL_TOPICS else "everyday"
+        out.append((word, translation, example, canon, age_group, transcription))
+    return out
 
 
 # Целевые слова из topic_plans, которых не было в банке (уроки на них не могли

@@ -1273,17 +1273,11 @@ async def api_dictionary(request: web.Request):
     })
 
 
-# Кид-френдли темы для колод: метка + эмодзи. Показываем только конкретные темы
-# (не everyday/abstract/grammar/verbs/people — они не «тема для выбора»).
-VOCAB_TOPIC_LABELS = {
-    "animals": ("Животные", "🐶"), "food": ("Еда", "🍎"), "school": ("Школа", "🎒"),
-    "colors": ("Цвета", "🎨"), "nature": ("Природа", "🌳"), "body": ("Тело", "✋"),
-    "family": ("Семья", "👪"), "sports": ("Спорт", "⚽"), "travel": ("Путешествия", "✈️"),
-    "home": ("Дом", "🏠"), "toys": ("Игрушки", "🧸"), "clothes": ("Одежда", "👕"),
-    "transport": ("Транспорт", "🚗"), "music": ("Музыка", "🎵"),
-    "technology": ("Техника", "💻"), "feelings": ("Чувства", "😊"),
-    "hobbies": ("Хобби", "🎯"), "work": ("Работа", "💼"),
-}
+# Кид-френдли темы для колод (20 шт): метка + эмодзи — зеркало CANONICAL_TOPICS
+# (data/topic_classifier). Слова раскиданы туда же высокоточным классификатором;
+# неуверенные остаются в общем словаре и в колоде «Любые слова».
+from data.topic_classifier import CANONICAL_TOPICS
+VOCAB_TOPIC_LABELS = dict(CANONICAL_TOPICS)
 VOCAB_TOPIC_MIN_WORDS = 6
 
 
