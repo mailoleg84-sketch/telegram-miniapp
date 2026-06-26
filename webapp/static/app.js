@@ -1511,7 +1511,7 @@ async function renderVocabStart() {
       <div class="screen">
         ${screenHeader("Выбери тему")}
         <p class="hint">С чего начнём сегодня?</p>
-        <div class="hub-grid">
+        <div class="hub-grid topic-grid">
           ${topics.map(t => `
             <button class="action-tile vocab-topic" data-topic="${esc(t.topic)}">
               <i class="tile-ic">${esc(t.emoji)}</i>

@@ -323,6 +323,24 @@ p, .hint, li,
 .action-row-text { display: grid; gap: 3px; }
 .action-row-text b { font-size: 17px; font-weight: 900; }
 
+/* Компактные плитки выбора темы — узкие, по 2 в ряд, без громоздкости. */
+.topic-grid { gap: 8px; }
+.topic-grid .action-tile {
+  min-height: 74px;
+  padding: 11px 12px;
+  gap: 2px;
+  border-radius: 14px;
+}
+.topic-grid .tile-ic {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  font-size: 19px;
+  margin-bottom: 2px;
+}
+.topic-grid .action-tile b { font-size: 14px; line-height: 1.15; font-weight: 800; }
+.topic-grid .action-tile small { font-size: 11px; line-height: 1.3; }
+
 /* ===================== НИЖНЯЯ НАВИГАЦИЯ ===================== */
 #bottomNav {
   position: fixed;

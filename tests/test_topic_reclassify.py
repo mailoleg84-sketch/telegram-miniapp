@@ -59,9 +59,29 @@ class TopicClassifierTests(unittest.TestCase):
             with self.subTest(topic=key):
                 self.assertGreaterEqual(cnt[key], 6, f"{key}: {cnt[key]}")
 
-    def test_word_count_unchanged(self):
-        # 5000 базовых + 6 целевых из topic_plans (слова не удаляются).
-        self.assertEqual(len(LEARNING_WORDS), 5006)
+    def test_word_count_base_plus_extra(self):
+        # 5000 базовых + 6 целевых из topic_plans + 342 курированных тематических
+        # слова (data/topic_extra_words). Слова только добавляются, не удаляются.
+        self.assertEqual(len(LEARNING_WORDS), 5348)
+
+    def test_curated_extra_words_land_in_their_topic(self):
+        # Курированные тематические слова получают заявленную тему напрямую
+        # (без реклассификации) и наполняют колоды.
+        cases = {
+            "giraffe": "animals", "yogurt": "food", "sweater": "clothes",
+            "elbow": "body", "curtain": "home", "notebook": "school",
+            "waterfall": "nature", "triangle": "colors", "helicopter": "travel",
+            "keyboard": "technology", "violin": "art", "dentist": "work",
+            "hospital": "places", "conversation": "communication",
+        }
+        for word, expected in cases.items():
+            with self.subTest(word=word):
+                self.assertEqual(self.topic_by_word.get(word), expected, word)
+
+    def test_no_duplicate_words_after_extra(self):
+        # Дедуп против банка: одно англ. слово — одна запись.
+        words = [w[0].strip().lower() for w in LEARNING_WORDS]
+        self.assertEqual(len(words), len(set(words)))
 
 
 if __name__ == "__main__":

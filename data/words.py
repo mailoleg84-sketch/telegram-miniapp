@@ -1650,11 +1650,32 @@ _TOPIC_PLAN_WORDS: list[Entry5] = [
 ]
 
 
+def _extra_topic_entries(existing_words: set[str]) -> list[Entry5]:
+    """Курированные тематические слова (data/topic_extra_words), которых ещё нет в
+    банке. Тема назначается явно и НЕ проходит через _reclassify_topics — мы ей
+    доверяем (ручная курация). Пример-заглушка заменится в _with_examples."""
+    from data.topic_extra_words import flatten_extra_words
+    seen = set(existing_words)
+    out: list[Entry5] = []
+    for english, russian, topic, age_group in flatten_extra_words():
+        key = english.strip().lower()
+        if not key or " " in key or key in seen:
+            continue
+        seen.add(key)
+        out.append((english, russian, f"Let's learn the word {english}.", topic, age_group))
+    return out
+
+
+_BASE_LEARNING = _reclassify_topics(
+    [item for item in _with_transcriptions(list(SINGLE_WORDS_5000)) if _is_single_word(item[0])]
+    + _with_transcriptions(_TOPIC_PLAN_WORDS)
+)
+
 LEARNING_WORDS = tuple(
     _with_examples(
-        _reclassify_topics(
-            [item for item in _with_transcriptions(list(SINGLE_WORDS_5000)) if _is_single_word(item[0])]
-            + _with_transcriptions(_TOPIC_PLAN_WORDS)
+        _BASE_LEARNING
+        + _with_transcriptions(
+            _extra_topic_entries({item[0].strip().lower() for item in _BASE_LEARNING})
         )
     )
 )
