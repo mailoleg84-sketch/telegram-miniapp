@@ -174,8 +174,9 @@ class VocabularyVisualizerTests(unittest.TestCase):
         self.assertIn("requestGeneratedWordImage", app_js)
         self.assertIn("image_generation_status", app_js)
         self.assertIn("fallback_image_url", app_js)
-        self.assertIn("word-sentence", app_js)
-        self.assertIn("word-explain", app_js)
+        # Карточка «Учим слова» упрощена (v165): примеры (word-sentence) и пояснения
+        # (word-explain) убраны. Остаются gap-подсказка квиза (word-hint) и опция
+        # компактного режима без деталей.
         self.assertIn("word-hint", app_js)
         self.assertIn("showLearningDetails: false", app_js)
         self.assertIn(".word-visual", styles_css)

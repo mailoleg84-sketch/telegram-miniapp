@@ -685,14 +685,12 @@ function wordImageHtml(wordData, small = false) {
 }
 
 function wordStudyCard(wordData, options = {}) {
+  // Карточка намеренно простая: только слово, транскрипция, перевод и озвучка.
+  // Примеры, пояснения и «полезные фразы» убраны (решение владельца, v165) —
+  // меньше визуального шума и нет рисков показать пример без перевода.
   const badge = options.badge || "";
   const prompt = options.prompt || "";
   const showTranslation = options.showTranslation !== false;
-  const showLearningDetails = options.showLearningDetails !== false;
-  const example = wordData.card_example || wordData.example_sentence || wordData.example || "";
-  const exampleTranslation = wordData.card_example_ru || wordData.example_translation || "";
-  const explanation = wordData.explanation_ru || "";
-  const phrases = Array.isArray(wordData.phrases) ? wordData.phrases : [];
   return `
     <div class="card word-card ${options.compact ? "compact" : ""}">
       <div class="word-card-top">
@@ -702,20 +700,6 @@ function wordStudyCard(wordData, options = {}) {
       <div class="word-main">${esc(wordData.word)}</div>
       ${wordData.transcription ? `<div class="word-transcription">${esc(wordData.transcription)}</div>` : ""}
       ${showTranslation && wordData.translation ? `<div class="word-translation">${esc(wordData.translation)}</div>` : ""}
-      ${showLearningDetails && explanation ? `<div class="word-explain">${esc(explanation)}</div>` : ""}
-      ${showLearningDetails && example ? `
-        <div class="word-sentence">
-          <div class="word-sentence-en">
-            <b>${esc(example)}</b>
-            ${pronunciationButtonHtml(example, true)}
-          </div>
-          ${exampleTranslation ? `<div class="word-sentence-ru">${esc(exampleTranslation)}</div>` : ""}
-        </div>` : ""}
-      ${showLearningDetails && phrases.length ? `
-        <div class="word-phrases">
-          <div class="word-phrases-title">Полезные фразы</div>
-          <ul>${phrases.map(p => `<li><b>${esc(p[0])}</b> — ${esc(p[1])}</li>`).join("")}</ul>
-        </div>` : ""}
       ${prompt ? `<p class="hint mt-12">${esc(prompt)}</p>` : ""}
     </div>`;
 }
