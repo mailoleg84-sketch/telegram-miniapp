@@ -940,6 +940,27 @@ async def get_topic_counts(age_group: str):
     )
 
 
+async def get_topic_counts_all():
+    """Сколько слов по каждой теме ПО ВСЕМ возрастам — для счётчиков тем-колод.
+    Тема-колода набирается со всех возрастов (не дробится на 4), поэтому и счётчик
+    общий: ребёнок видит реальный размер темы, а не свою четверть."""
+    pool = await _get_pool()
+    return await pool.fetch("SELECT topic, COUNT(*) AS n FROM words GROUP BY topic")
+
+
+async def get_topic_words_pooled(age_group: str, count: int, topic: str):
+    """Слова темы СО ВСЕХ возрастов (тема-колода больше не дробится по возрасту):
+    сперва слова темы (слова своего возраста первыми), затем добор словами своего
+    возраста, если тема меньше count. Колода полна для любого ребёнка, а младшим
+    слова своего возраста показываются первыми (порядок (topic,age) DESC)."""
+    pool = await _get_pool()
+    return await pool.fetch("""
+        SELECT * FROM words
+        ORDER BY (topic = $2) DESC, (age_group = $1) DESC, RANDOM()
+        LIMIT $3
+    """, age_group, topic, count)
+
+
 async def get_words_for_age(age_group: str, count: int, topic: str | None = None):
     """Слова для возраста: при заданной теме — её слова первыми, добор остальными
     словами того же возраста. Один запрос вместо каскада из 2–3 (меньше round-trip

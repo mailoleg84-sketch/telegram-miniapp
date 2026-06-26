@@ -60,9 +60,9 @@ class TopicClassifierTests(unittest.TestCase):
                 self.assertGreaterEqual(cnt[key], 6, f"{key}: {cnt[key]}")
 
     def test_word_count_base_plus_extra(self):
-        # 5000 базовых + 6 целевых из topic_plans + 342 курированных тематических
-        # слова (data/topic_extra_words). Слова только добавляются, не удаляются.
-        self.assertEqual(len(LEARNING_WORDS), 5348)
+        # 5000 базовых + 6 целевых из topic_plans + курированные тематические
+        # слова (data/topic_extra_words, семь волн). Слова только добавляются.
+        self.assertEqual(len(LEARNING_WORDS), 7569)
 
     def test_curated_extra_words_land_in_their_topic(self):
         # Курированные тематические слова получают заявленную тему напрямую

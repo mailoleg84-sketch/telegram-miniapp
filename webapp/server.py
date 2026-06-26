@@ -1282,11 +1282,11 @@ VOCAB_TOPIC_MIN_WORDS = 6
 
 
 async def api_vocab_topics(request: web.Request):
-    """Темы для тематических колод: только те, где для возраста ребёнка набирается
-    достаточно слов (≥ VOCAB_TOPIC_MIN_WORDS) — чтобы не показывать пустые темы."""
-    user = await _current_user_or_404(request)
-    age_group = _normalized_age_group_for_user(user)
-    rows = await database.get_topic_counts(age_group)
+    """Темы для тематических колод. Счётчик — по ВСЕМ возрастам (колода набирается
+    со всех возрастов, не дробится на 4), показываем тему с ≥ VOCAB_TOPIC_MIN_WORDS
+    слов, чтобы не было почти пустых колод."""
+    await _current_user_or_404(request)
+    rows = await database.get_topic_counts_all()
     topics = []
     for row in rows:
         topic = row["topic"]
@@ -1305,7 +1305,13 @@ async def api_vocab_start(request: web.Request):
     topic = (body.get("topic") or "").strip() or None
     age_group = _normalized_age_group_for_user(user)
     count = WORDS_PER_AGE_GROUP.get(age_group, 6)
-    words = await database.get_words_for_age(age_group, count=count, topic=topic)
+    # Тематическая колода: слова темы со ВСЕХ возрастов (свой возраст первым),
+    # иначе тема дробится на 4 и выглядит пустой. «Любые слова» (topic=None) —
+    # по-прежнему строго по возрасту ребёнка.
+    if topic:
+        words = await database.get_topic_words_pooled(age_group, count=count, topic=topic)
+    else:
+        words = await database.get_words_for_age(age_group, count=count, topic=None)
     if not words:
         log.error("No vocabulary words available for user=%s age_group=%s", user_id, age_group)
         return web.json_response({

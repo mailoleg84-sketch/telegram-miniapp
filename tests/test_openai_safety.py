@@ -782,10 +782,11 @@ class OpenAISafetyTests(unittest.TestCase):
 
         # 5000 базовых (single_words_5000) + 6 целевых слов из topic_plans
         # (doll/sunny/rainy: 5_7; playlist: 11_13; luggage/booking: 14_18)
-        # + 342 курированных тематических слова (data/topic_extra_words, после
-        # дедупа против банка) — наполнение тем-колод реальной детской лексикой.
-        self.assertEqual(len(LEARNING_WORDS), 5348)
-        self.assertEqual(by_age, {"5_7": 1298, "8_10": 1390, "11_13": 1345, "14_18": 1315})
+        # + курированные тематические слова (data/topic_extra_words, семь волн,
+        # после дедупа против банка) — наполнение тем-колод реальной детской
+        # лексикой (2563 уникальных добавления).
+        self.assertEqual(len(LEARNING_WORDS), 7569)
+        self.assertEqual(by_age, {"5_7": 1374, "8_10": 2364, "11_13": 2106, "14_18": 1725})
         self.assertFalse(forbidden_words & words)
         self.assertFalse(profanity & words, f"profanity in word bank: {sorted(profanity & words)}")
         self.assertIn("moon", words)
