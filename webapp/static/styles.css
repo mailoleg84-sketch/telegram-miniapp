@@ -1685,12 +1685,19 @@ input,
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Единая шапка вложенного экрана с видимой кнопкой «← Назад» (screenHeader). */
+/* Единая шапка вложенного экрана с видимой кнопкой «← Назад» (screenHeader).
+   Липкая (sticky) — кнопка «Назад» всегда видна сверху и не уезжает при прокрутке
+   длинных экранов (карточки слов), как и нижнее меню остаётся снизу. */
 .screen-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: flex;
   align-items: center;
   gap: 12px;
   margin-bottom: 16px;
+  padding: 10px 0;
+  background: var(--bg);
 }
 .screen-header > .screen-header-text {
   min-width: 0;

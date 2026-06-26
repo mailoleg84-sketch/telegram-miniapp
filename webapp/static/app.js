@@ -691,7 +691,6 @@ function wordStudyCard(wordData, options = {}) {
   const showLearningDetails = options.showLearningDetails !== false;
   const example = wordData.card_example || wordData.example_sentence || wordData.example || "";
   const exampleTranslation = wordData.card_example_ru || wordData.example_translation || "";
-  const meaningBadge = wordData.meaning_badge || "";
   const explanation = wordData.explanation_ru || "";
   const phrases = Array.isArray(wordData.phrases) ? wordData.phrases : [];
   return `
@@ -703,7 +702,6 @@ function wordStudyCard(wordData, options = {}) {
       <div class="word-main">${esc(wordData.word)}</div>
       ${wordData.transcription ? `<div class="word-transcription">${esc(wordData.transcription)}</div>` : ""}
       ${showTranslation && wordData.translation ? `<div class="word-translation">${esc(wordData.translation)}</div>` : ""}
-      ${showLearningDetails && meaningBadge ? `<div class="word-pos-badge">${esc(meaningBadge)}</div>` : ""}
       ${showLearningDetails && explanation ? `<div class="word-explain">${esc(explanation)}</div>` : ""}
       ${showLearningDetails && example ? `
         <div class="word-sentence">

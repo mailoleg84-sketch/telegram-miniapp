@@ -871,6 +871,25 @@ def phrases_for(word: str) -> list:
     return [list(pair) for pair in WORD_PHRASES.get(_clean(word).lower(), [])]
 
 
+# Местоимения / служебные слова: им шаблонный пример не подходит («This is a they.»)
+# — отдаём пустой пример. Грамматические/сравнительные/временные слова дополнительно
+# ловятся по visual_type == "no_good_visual".
+_NO_EXAMPLE_WORDS = {
+    "i", "you", "he", "she", "it", "we", "they", "me", "him", "her", "them", "us",
+    "my", "your", "his", "their", "our", "its", "mine", "yours", "hers", "ours", "theirs",
+    "this", "that", "these", "those", "who", "whom", "whose", "which", "what",
+    "a", "an", "the", "and", "or", "but", "if", "of", "to", "in", "on", "at", "by", "for",
+    "with", "as", "from", "into", "onto", "over", "under", "about", "around", "through",
+    "before", "after", "between", "among", "against", "during", "without", "within",
+    "than", "then", "so", "because", "although", "however", "while", "whether",
+    "is", "am", "are", "was", "were", "be", "been", "being",
+    "do", "does", "did", "have", "has", "had", "will", "would", "shall", "should",
+    "can", "could", "may", "might", "must",
+    "not", "no", "yes", "very", "too", "also", "just", "only", "even", "still", "yet",
+    "here", "there", "now", "soon", "ever", "never",
+}
+
+
 def card_example_pair(word: str, part_of_speech: str, translation: str, visual_type: str = "") -> list:
     """[пример EN, перевод RU] для карточки. Сначала курируемая пара, иначе чистый
     шаблон по части речи (так пример+перевод есть у всех слов). Где грамматически
@@ -880,23 +899,32 @@ def card_example_pair(word: str, part_of_speech: str, translation: str, visual_t
     t = _clean(translation)
     if w in EXAMPLES and w in EXAMPLE_TRANSLATIONS:
         return [EXAMPLES[w], EXAMPLE_TRANSLATIONS[w]]
+    if visual_type == "no_good_visual" or w in _NO_EXAMPLE_WORDS:
+        # Служебные слова / местоимения / союзы / сравнительные -> без примера
+        # (вместо «This is a they.» / «This is an about.»).
+        return ["", ""]
+    # Морфологию английского слова проверяем РАНЬШЕ части речи: POS по русскому
+    # окончанию путает причастие/мн.число с прилагательным (-> «He is very animals/
+    # flying/showing»). Правило: лучше без примера, чем грамматический бред.
+    if w.endswith("ing"):
+        # Корректный Present Continuous (She is showing/flying.), без кривого перевода.
+        return [f"She is {w}.", ""]
+    if w.endswith("ed"):
+        # Причастие / прошедшее время неоднозначно -> без примера.
+        return ["", ""]
+    if w.endswith("s") and not w.endswith("ss"):
+        # Мн.число / 3-е лицо неоднозначно -> пример только для явных существительных.
+        return [f"These are {w}.", f"Это {t}." if t else ""] if part_of_speech == "noun" else ["", ""]
     if part_of_speech == "noun":
-        if w.endswith("s") and not w.endswith("ss"):
-            return [f"These are {w}.", f"Это {t}." if t else ""]
         return [f"This is {_article(w)} {w}.", f"Это {t}." if t else ""]
     if part_of_speech == "verb":
-        if not (w.endswith("ed") or w.endswith("ing") or w.endswith("s")):
-            return [f"I can {w}.", f"Я могу {t}." if t else ""]
-        if w.endswith("ing"):
-            return [f"She is {w}.", ""]
-        return [f"It {w}." if w.endswith("ed") else f"She {w}.", ""]
+        return [f"I can {w}.", f"Я могу {t}." if t else ""]
     if part_of_speech == "adjective":
         return [f"He is very {w}.", f"Он очень {t}." if t else ""]
     if part_of_speech == "adverb":
         return [f"She did it {w}.", f"Она сделала это {t}." if t else ""]
-    if part_of_speech == "preposition":
-        return [f"The ball is {w} the box.", ""]
-    return [f"This is the word “{w}”.", ""]
+    # Служебные / прочее -> без примера (раньше было «This is the word X.»).
+    return ["", ""]
 
 
 def create_image_prompt(word: str, visual_type: str, age_group: str = "") -> str:

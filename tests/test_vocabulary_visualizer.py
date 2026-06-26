@@ -435,20 +435,26 @@ class CardContentTests(unittest.TestCase):
             self.assertNotIn("·", badge)
             self.assertNotIn("понятие", badge)
 
-    def test_every_word_gets_example_and_clean_templated_pair(self):
-        # Существительное (не курируемое): "This is a X." / "Это перевод."
+    def test_card_examples_clean_no_nonsense(self):
+        # Базовые формы -> чистый пример.
         nb = build_vocabulary_visual("notebook", "тетрадь", "", "school", "8_10")
         self.assertEqual(nb["card_example"], "This is a notebook.")
         self.assertEqual(nb["card_example_ru"], "Это тетрадь.")
-        # Глагол (базовая форма): "I can X." / "Я могу перевод."
         dr = build_vocabulary_visual("draw", "рисовать", "", "art", "8_10")
         self.assertEqual(dr["card_example"], "I can draw.")
         self.assertEqual(dr["card_example_ru"], "Я могу рисовать.")
-        # У каждого слова есть непустой пример (карточка не пустая).
-        for word, tr, topic in (("notebook", "тетрадь", "school"), ("draw", "рисовать", "art"),
-                                ("the", "the", "basic"), ("big", "большой", "basic")):
+        # -ing -> корректный Present Continuous, а НЕ «He is very showing».
+        self.assertEqual(
+            build_vocabulary_visual("showing", "показывая", "", "verbs", "8_10")["card_example"],
+            "She is showing.",
+        )
+        # Инфлектированные / мн.число / служебные -> без грамматического бреда «He is very …».
+        for word, tr, topic in (("animals", "животные", "animals"), ("burned", "сожжённый", "verbs"),
+                                ("flying", "летающий", "verbs"), ("pointing", "указывая", "verbs"),
+                                ("the", "the", "basic")):
             with self.subTest(word=word):
-                self.assertTrue(build_vocabulary_visual(word, tr, "", topic, "8_10")["card_example"], word)
+                en = build_vocabulary_visual(word, tr, "", topic, "8_10")["card_example"]
+                self.assertNotIn("He is very", en, word)
 
     def test_vocabulary_not_shrunk(self):
         # Слова из общего словаря не удалялись.

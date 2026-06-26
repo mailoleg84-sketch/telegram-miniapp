@@ -112,13 +112,13 @@ class QuizImageContractTests(unittest.TestCase):
         self.assertNotIn("/vocabulary-photo", APP_JS)
 
     def test_study_card_is_text_only(self):
-        # Карточка «Учим слова» (wordStudyCard): без картинок и без шаблонных
-        # объяснений simple_meaning/russian_hint; есть бейдж типа значения,
-        # конкретное объяснение и блок полезных фраз.
+        # Карточка «Учим слова» (wordStudyCard): без картинок, без шаблонных объяснений
+        # simple_meaning/russian_hint и без бейджа-определения (word-pos-badge убран);
+        # конкретное объяснение и блок полезных фраз остаются.
         body = _func_body("wordStudyCard")
-        for marker in ("wordImageHtml", "word-image", "image_url", "simple_meaning", "russian_hint"):
+        for marker in ("wordImageHtml", "word-image", "image_url", "simple_meaning",
+                       "russian_hint", "word-pos-badge"):
             self.assertNotIn(marker, body, marker)
-        self.assertIn("word-pos-badge", body)
         self.assertIn("explanation_ru", body)
         self.assertIn("word-phrases", body)
 
