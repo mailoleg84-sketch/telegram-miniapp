@@ -240,6 +240,10 @@ h2 { font-size: 18px; margin: 0 0 12px; font-weight: 600; }
 .btn-danger { background: var(--red) !important; color: #fff !important; }
 .btn-correct { background: var(--green) !important; color: #fff !important; }
 .btn-wrong   { background: var(--red)   !important; color: #fff !important; }
+/* Правильно/неправильно различается НЕ только цветом: добавляем значок ✓/✗
+   (для малышей и дальтоников; UX-аудит «смысл только цветом»). */
+.btn-correct::after { content: "\00a0✓"; font-weight: 900; }
+.btn-wrong::after   { content: "\00a0✗"; font-weight: 900; }
 
 /* ===== Input ===== */
 
