@@ -362,6 +362,21 @@ def _blank_word_in_example(word: str, example: str) -> str:
     return pattern.sub("_____", example, count=1)
 
 
+def _is_meta_frame_example(word: str, example: str) -> bool:
+    """True, если целевое слово в примере обёрнуто в кавычки/апострофы — признак
+    учебного фрейма («Let's learn 'X' today.», «Read the word 'X'.»), а не живого
+    предложения. Из такого пример с пропуском бесполезен для «вставь слово»: по
+    самому предложению слово не угадать. Настоящие примеры (I can run. / This is a
+    dog.) слово в кавычки не берут."""
+    word = (word or "").strip()
+    example = (example or "").strip()
+    if not word or not example:
+        return False
+    quotes = "'\"‘’“”«»"
+    pattern = rf"[{quotes}]\s*{re.escape(word)}\s*[{quotes}]"
+    return bool(re.search(pattern, example, re.IGNORECASE))
+
+
 def _pick_distractors(pool, correct_id, count: int = 3) -> list:
     """Выбирает до `count` случайных неправильных вариантов из готового пула слов.
 
@@ -411,6 +426,10 @@ async def _build_vocab_question(word, age_group: str, index: int = 0, pool=None,
     """
     example = (word["example"] or "").strip()
     gap_text = _blank_word_in_example(word["word"], example)
+    # Учебные фреймы («Let's learn 'X' today.») контекста не дают — для «вставь
+    # слово» бесполезны. Обнуляем gap_text: гард ниже мягко откатит тип на "word".
+    if gap_text and _is_meta_frame_example(word["word"], example):
+        gap_text = ""
 
     # Тип берём из qtype (его рандомизирует api_vocab_quiz на сессию — чтобы из
     # раза в раз не повторялось одно и то же задание); если не передан — ротация

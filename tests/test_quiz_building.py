@@ -10,6 +10,7 @@ from webapp.server import (
     _pick_distractors,
     _build_vocab_question,
     _build_word_hunt_round,
+    _is_meta_frame_example,
 )
 
 
@@ -90,6 +91,39 @@ class BuildVocabQuestionTests(unittest.IsolatedAsyncioTestCase):
             q = await _build_vocab_question(word, "8_10", index=0, pool=[])
         fake.assert_awaited_once()
         self.assertEqual(len(q["options"]), 4)
+
+
+class GapMetaFrameTests(unittest.IsolatedAsyncioTestCase):
+    """Gap-тест («вставь слово») строится только из живого примера. Учебный фрейм
+    с целевым словом в кавычках («Let's learn 'X' today.») контекста не даёт —
+    тип вопроса мягко откатывается на «выбери слово»."""
+
+    async def _question(self, word, qtype="gap", index=3):
+        pool = _pool(10)
+        with patch("database.get_word_options", new=AsyncMock(side_effect=AssertionError)), \
+             patch("database.get_random_words", new=AsyncMock(side_effect=AssertionError)):
+            return await _build_vocab_question(word, "8_10", index=index, qtype=qtype, pool=pool)
+
+    def test_helper_detects_quoted_target_word(self):
+        self.assertTrue(_is_meta_frame_example("disabled", "Let's learn 'disabled' today."))
+        self.assertTrue(_is_meta_frame_example("gap", "Read the word 'gap'."))
+        self.assertTrue(_is_meta_frame_example("Word", "'Word' is a good word to know."))
+        # Живые примеры слово в кавычки не берут.
+        self.assertFalse(_is_meta_frame_example("apple", "I eat an apple every day."))
+        self.assertFalse(_is_meta_frame_example("run", "I can run."))
+
+    async def test_real_example_yields_gap(self):
+        q = await self._question(_word(1, "apple", "яблоко"))  # «I eat an apple every day.»
+        self.assertEqual(q["type"], "gap")
+        self.assertIn("_____", q["gap_text"])
+        self.assertNotIn("apple", q["gap_text"].lower(), "целевое слово спрятано в пропуск")
+
+    async def test_meta_frame_falls_back_to_word(self):
+        word = _word(1, "disabled", "отключённый")
+        word["example"] = "Let's learn 'disabled' today."
+        q = await self._question(word)
+        self.assertEqual(q["type"], "word", "фрейм без контекста -> не gap")
+        self.assertEqual(q["gap_text"], "")
 
 
 class BuildWordHuntRoundTests(unittest.IsolatedAsyncioTestCase):

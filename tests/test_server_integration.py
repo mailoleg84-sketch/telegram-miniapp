@@ -103,6 +103,9 @@ class ServerIntegrationTests(AioHTTPTestCase):
             p(patch("database.get_user", AsyncMock(return_value={"age_group": "8_10"})))
             p(patch("database.get_user_dictionary", AsyncMock(return_value=words)))
             p(patch("database.get_dictionary_summary", AsyncMock(return_value=summary)))
+            # get_words_count тоже должен быть замокан — иначе хэндлер лезет в живую
+            # БД (Neon) и тест становится зависимым от окружения/паролей.
+            p(patch("database.get_words_count", AsyncMock(return_value=60)))
             resp = await self.client.get(
                 "/api/dictionary",
                 headers={"X-App-Fallback-Auth": _fallback_header(771, "Kid"),
