@@ -61,8 +61,8 @@ class TopicClassifierTests(unittest.TestCase):
 
     def test_word_count_base_plus_extra(self):
         # 5000 базовых + 6 целевых из topic_plans + курированные тематические
-        # слова (data/topic_extra_words, семь волн). Слова только добавляются.
-        self.assertEqual(len(LEARNING_WORDS), 7569)
+        # слова (data/topic_extra_words, восемь волн). Слова только добавляются.
+        self.assertEqual(len(LEARNING_WORDS), 7579)
 
     def test_curated_extra_words_land_in_their_topic(self):
         # Курированные тематические слова получают заявленную тему напрямую

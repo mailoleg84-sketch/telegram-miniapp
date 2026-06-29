@@ -2713,6 +2713,65 @@ EXTRA_TOPIC_WORDS_BY_AGE_7: dict[str, dict[str, list[tuple[str, str]]]] = {
 }
 
 
+# Восьмая волна — только ёмкие темы с реальным запасом (животные/еда/природа).
+# Остальные темы намеренно пропущены: их настоящая детская лексика исчерпана.
+EXTRA_TOPIC_WORDS_BY_AGE_8: dict[str, dict[str, list[tuple[str, str]]]] = {
+    "animals": {
+        "8_10": [
+            ("caterpillar", "гусеница"), ("grasshopper", "кузнечик"), ("moth", "мотылёк"),
+            ("wasp", "оса"), ("beetle", "жук"), ("woodpecker", "дятел"),
+            ("robin", "малиновка"), ("seahorse", "морской конёк"), ("oyster", "устрица"),
+            ("lobster", "омар"), ("seagull", "чайка"), ("dove", "голубь"),
+            ("mammoth", "мамонт"), ("tadpole", "головастик"), ("dragonfly", "стрекоза"),
+        ],
+        "11_13": [
+            ("jaguar", "ягуар"), ("cobra", "кобра"), ("python", "питон"),
+            ("iguana", "игуана"), ("alligator", "аллигатор"), ("tortoise", "сухопутная черепаха"),
+            ("newt", "тритон"), ("gecko", "геккон"), ("stingray", "скат"),
+            ("porcupine", "дикобраз"), ("flamingo", "фламинго"), ("walrus", "морж"),
+        ],
+        "14_18": [
+            ("scavenger", "падальщик"), ("predator", "хищник"), ("prey", "добыча"),
+            ("pollinator", "опылитель"), ("parasite", "паразит"), ("larva", "личинка"),
+        ],
+    },
+    "food": {
+        "8_10": [
+            ("garlic", "чеснок"), ("celery", "сельдерей"), ("lettuce", "салат-латук"),
+            ("spinach", "шпинат"), ("broccoli", "брокколи"), ("gooseberry", "крыжовник"),
+            ("coconut", "кокос"), ("kiwi", "киви"), ("blueberry", "черника"),
+            ("raspberry", "малина"), ("omelette", "омлет"), ("porridge", "каша"),
+        ],
+        "11_13": [
+            ("flour", "мука"), ("dough", "тесто"), ("pastry", "выпечка"),
+            ("yeast", "дрожжи"), ("barbecue", "барбекю"), ("seafood", "морепродукты"),
+            ("noodles", "лапша"), ("waffle", "вафля"), ("sausage", "колбаса"),
+        ],
+        "14_18": [
+            ("protein", "белок"), ("vitamin", "витамин"), ("fibre", "клетчатка"),
+            ("calorie", "калория"), ("ingredient", "ингредиент"), ("recipe", "рецепт"),
+        ],
+    },
+    "nature": {
+        "8_10": [
+            ("thunder", "гром"), ("lightning", "молния"), ("breeze", "ветерок"),
+            ("fog", "туман"), ("frost", "иней"), ("valley", "долина"),
+            ("meadow", "луг"), ("pond", "пруд"), ("waterfall", "водопад"),
+            ("cliff", "утёс"), ("shrub", "кустарник"), ("sunflower", "подсолнух"),
+        ],
+        "11_13": [
+            ("volcano", "вулкан"), ("jungle", "джунгли"), ("rainforest", "тропический лес"),
+            ("swamp", "болото"), ("avalanche", "лавина"), ("iceberg", "айсберг"),
+            ("reef", "риф"), ("meteor", "метеор"), ("comet", "комета"),
+        ],
+        "14_18": [
+            ("pollution", "загрязнение"), ("climate", "климат"), ("drought", "засуха"),
+            ("flood", "наводнение"), ("humidity", "влажность"), ("ozone", "озон"),
+        ],
+    },
+}
+
+
 _WAVES = (
     EXTRA_TOPIC_WORDS_BY_AGE,
     EXTRA_TOPIC_WORDS_BY_AGE_2,
@@ -2721,6 +2780,7 @@ _WAVES = (
     EXTRA_TOPIC_WORDS_BY_AGE_5,
     EXTRA_TOPIC_WORDS_BY_AGE_6,
     EXTRA_TOPIC_WORDS_BY_AGE_7,
+    EXTRA_TOPIC_WORDS_BY_AGE_8,
 )
 
 
