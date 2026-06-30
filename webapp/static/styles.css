@@ -823,6 +823,10 @@ input[type="text"]:focus { border-color: var(--button); }
   padding: 8px;
 }
 .dictionary-row {
+  /* Пропускаем рендер строк за экраном — словарь может быть на сотни слов.
+     contain-intrinsic-size резервирует ~высоту строки, чтобы скролл не прыгал. */
+  content-visibility: auto;
+  contain-intrinsic-size: 0 64px;
   display: flex;
   align-items: center;
   justify-content: space-between;
