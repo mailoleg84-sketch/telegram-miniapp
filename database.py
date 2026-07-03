@@ -248,6 +248,9 @@ async def _ensure_schema(conn) -> None:
             updated_at          TIMESTAMP DEFAULT NOW()
         )
     """)
+    await conn.execute(
+        "ALTER TABLE voice_lesson_state ADD COLUMN IF NOT EXISTS target_hits INTEGER DEFAULT 0"
+    )
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS voice_lesson_sessions (
             id               SERIAL PRIMARY KEY,
@@ -1664,9 +1667,10 @@ async def save_voice_lesson_state(user_id: int, state: dict) -> None:
             correction_count,
             last_language,
             support_mode,
+            target_hits,
             updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
         ON CONFLICT (user_id)
         DO UPDATE SET
             age_group = EXCLUDED.age_group,
@@ -1681,6 +1685,7 @@ async def save_voice_lesson_state(user_id: int, state: dict) -> None:
             correction_count = EXCLUDED.correction_count,
             last_language = EXCLUDED.last_language,
             support_mode = EXCLUDED.support_mode,
+            target_hits = EXCLUDED.target_hits,
             updated_at = NOW()
     """,
     user_id,
@@ -1696,6 +1701,7 @@ async def save_voice_lesson_state(user_id: int, state: dict) -> None:
     int(state.get("correction_count") or 0),
     state.get("last_language") or "unknown",
     state.get("support_mode") or "",
+    int(state.get("target_hits") or 0),
     )
 
 

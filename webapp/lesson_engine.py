@@ -115,6 +115,7 @@ def _select_topic(state: dict[str, Any], topic_id: str) -> dict[str, Any]:
         "target_phrase": plan["phrase"],
         "target_words": list(plan["words"]),
         "turn_count": 0,
+        "target_hits": 0,
         "support_mode": "",
     })
     return state
@@ -167,9 +168,32 @@ def create_lesson_state(age_group: str, goal: str = "", seed: str = "") -> dict[
         "target_words": [],
         "turn_count": 0,
         "correction_count": 0,
+        "target_hits": 0,
         "last_language": "unknown",
         "support_mode": "",
     }
+
+
+def _used_target(state: dict[str, Any], clean_text: str) -> bool:
+    """True, если ребёнок реально произнёс целевую фразу или целевое слово —
+    сигнал усвоения, по которому фаза урока движется вперёд (а не только по числу ходов)."""
+    if not clean_text:
+        return False
+    padded = f" {clean_text} "
+    for word in state.get("target_words") or []:
+        normalized_word = _normalized_text(word)
+        if normalized_word and f" {normalized_word} " in padded:
+            return True
+    phrase = _normalized_text(state.get("target_phrase") or "")
+    if not phrase:
+        return False
+    if phrase in clean_text:
+        return True
+    tokens = [token for token in phrase.split() if len(token) > 2]
+    if len(tokens) >= 2:
+        matched = sum(1 for token in tokens if f" {token} " in padded)
+        return matched >= 2
+    return False
 
 
 def advance_lesson_state(state: dict[str, Any], role: str, text: str) -> dict[str, Any]:
@@ -177,6 +201,7 @@ def advance_lesson_state(state: dict[str, Any], role: str, text: str) -> dict[st
     updated["topic_suggestions"] = list(state.get("topic_suggestions") or [])
     updated["target_words"] = list(state.get("target_words") or [])
     updated["age_group"] = normalize_age_group(updated.get("age_group"))
+    updated["target_hits"] = int(updated.get("target_hits") or 0)
     updated["phase"] = updated.get("phase") if updated.get("phase") in PHASE_LABELS else "welcome"
     clean = _normalized_text(text)
 
@@ -195,6 +220,7 @@ def advance_lesson_state(state: dict[str, Any], role: str, text: str) -> dict[st
                 "target_phrase": "",
                 "target_words": [],
                 "turn_count": 0,
+                "target_hits": 0,
                 "support_mode": "change_topic",
             })
             return updated
@@ -222,6 +248,8 @@ def advance_lesson_state(state: dict[str, Any], role: str, text: str) -> dict[st
             updated["correction_count"] = int(updated.get("correction_count") or 0) + 1
             if not updated["support_mode"]:
                 updated["support_mode"] = "correction"
+        if updated.get("current_topic") and _used_target(updated, clean):
+            updated["target_hits"] = int(updated.get("target_hits") or 0) + 1
         if updated["phase"] == "welcome":
             updated["phase"] = "choose_topic"
         return updated
@@ -235,14 +263,18 @@ def advance_lesson_state(state: dict[str, Any], role: str, text: str) -> dict[st
 
     updated["turn_count"] = int(updated.get("turn_count") or 0) + 1
     turns = updated["turn_count"]
-    if turns <= 2:
+    hits = int(updated.get("target_hits") or 0)
+    # Фазу двигаем по реальному мастерству (ребёнок произнёс цель), но с потолком
+    # по числу ходов, чтобы урок продвигался даже без попаданий (старое поведение
+    # сохраняется как «пол»). Условия монотонны — фаза не откатывается назад.
+    if turns <= 2 and hits == 0:
         updated["phase"] = "mini_lesson"
-    elif turns <= 7:
-        updated["phase"] = "dialogue"
-    elif turns <= 9:
+    elif (hits >= 2 and turns >= 6) or turns >= 10:
+        updated["phase"] = "wrapup"
+    elif (hits >= 1 and turns >= 4) or turns >= 8:
         updated["phase"] = "challenge"
     else:
-        updated["phase"] = "wrapup"
+        updated["phase"] = "dialogue"
     return updated
 
 
@@ -305,7 +337,9 @@ def lesson_prompt_context(state: dict[str, Any] | None) -> dict[str, str]:
     else:
         instruction = (
             f"Коротко заверши тему «{topic_label}»: назови один успех, одну мягкую точку роста "
-            "и предложи продолжить позже. Не начинай новый урок самостоятельно."
+            "и дай один конкретный совет по учёбе, как лучше запомнить — по возрасту ребёнка "
+            "(например: повтори эти слова завтра, скажи фразу вслух три раза или используй её сегодня "
+            "в реальной ситуации). Предложи продолжить позже. Не начинай новый урок самостоятельно."
         )
     if support_mode == "confused":
         instruction += " Ребенок запутался: сначала объясни по-русски проще и дай выбор из двух вариантов."

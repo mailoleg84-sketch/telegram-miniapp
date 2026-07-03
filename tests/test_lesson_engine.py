@@ -116,6 +116,30 @@ class LessonEngineTests(unittest.TestCase):
         self.assertEqual(phases[-1], "wrapup")
         self.assertEqual(public_lesson_state(state)["progress_percent"], PHASE_PROGRESS["wrapup"])
 
+    def test_mastery_reaches_wrapup_before_turn_ceiling(self):
+        # Ребёнок реально произносит целевую фразу — урок движется по усвоению,
+        # а не только по счётчику ходов, и доходит до итога раньше потолка в 10 ходов.
+        state = create_lesson_state("8_10", seed="kid")
+        state = advance_lesson_state(state, "user", "food")
+        self.assertEqual(state["current_topic"], "food")
+        for _ in range(3):
+            state = advance_lesson_state(state, "assistant", "Nice, your turn.")
+            state = advance_lesson_state(state, "user", "Can I have a pizza, please?")
+        self.assertGreaterEqual(state["target_hits"], 2)
+        for _ in range(3):
+            state = advance_lesson_state(state, "assistant", "Great job!")
+        self.assertEqual(state["turn_count"], 6)
+        self.assertEqual(state["phase"], "wrapup")
+
+    def test_no_mastery_keeps_old_turn_based_ceiling(self):
+        # Без попаданий (ребёнок не произносит цель) фазы идут по старым потолкам.
+        state = create_lesson_state("8_10", seed="kid")
+        state = advance_lesson_state(state, "user", "food")
+        for _ in range(5):
+            state = advance_lesson_state(state, "assistant", "Let's keep going.")
+        self.assertEqual(state["target_hits"], 0)
+        self.assertEqual(state["phase"], "dialogue")
+
     def test_no_preference_can_start_a_topic_without_repeated_menu(self):
         state = create_lesson_state("5_7", seed="small-kid")
         first_suggestion = state["topic_suggestions"][0]
