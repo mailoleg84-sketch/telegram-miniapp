@@ -285,6 +285,20 @@ async def _ensure_schema(conn) -> None:
         "CREATE INDEX IF NOT EXISTS idx_voice_mistakes_user ON voice_mistakes (user_id, created_at DESC)"
     )
     await conn.execute("""
+        CREATE TABLE IF NOT EXISTS voice_telemetry (
+            id          SERIAL PRIMARY KEY,
+            user_id     BIGINT NOT NULL,
+            created_at  TIMESTAMP DEFAULT NOW(),
+            event       TEXT NOT NULL,
+            mode        TEXT DEFAULT '',
+            latency_ms  INTEGER DEFAULT 0,
+            detail      TEXT DEFAULT ''
+        )
+    """)
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_voice_telemetry_user ON voice_telemetry (user_id, created_at DESC)"
+    )
+    await conn.execute("""
         CREATE TABLE IF NOT EXISTS ai_usage (
             id             SERIAL PRIMARY KEY,
             user_id        BIGINT NOT NULL,
@@ -669,6 +683,7 @@ async def reset_learning_results(user_id: int) -> None:
             await conn.execute("DELETE FROM voice_lesson_state WHERE user_id = $1", user_id)
             await conn.execute("DELETE FROM voice_lesson_sessions WHERE user_id = $1", user_id)
             await conn.execute("DELETE FROM voice_mistakes WHERE user_id = $1", user_id)
+            await conn.execute("DELETE FROM voice_telemetry WHERE user_id = $1", user_id)
 
 
 async def delete_user_account(user_id: int) -> None:
@@ -689,6 +704,7 @@ async def delete_user_account(user_id: int) -> None:
                 "voice_lesson_state",
                 "voice_lesson_sessions",
                 "voice_mistakes",
+                "voice_telemetry",
                 "conversations",
                 "ai_usage",
                 "users",
@@ -763,6 +779,18 @@ async def get_admin_overview() -> dict:
             FROM ai_usage
             WHERE created_at >= DATE_TRUNC('day', NOW()) - INTERVAL '6 days'
         """)
+        voice_tel = await conn.fetchrow("""
+            SELECT
+                COUNT(*) FILTER (WHERE event = 'realtime_ok')::INT AS realtime_ok,
+                COUNT(*) FILTER (WHERE event = 'realtime_fallback')::INT AS realtime_fallback,
+                COUNT(*) FILTER (WHERE event = 'realtime_drop')::INT AS realtime_drop,
+                COALESCE(ROUND(AVG(latency_ms) FILTER (WHERE latency_ms > 0)), 0)::INT AS avg_latency_ms
+            FROM voice_telemetry
+            WHERE created_at >= DATE_TRUNC('day', NOW()) - INTERVAL '6 days'
+        """)
+    rt_ok = int(voice_tel["realtime_ok"]) if voice_tel else 0
+    rt_fb = int(voice_tel["realtime_fallback"]) if voice_tel else 0
+    fb_total = rt_ok + rt_fb
     return {
         "users": users,
         "active_today": int(active_today or 0),
@@ -770,6 +798,13 @@ async def get_admin_overview() -> dict:
         "learning": learning,
         "ai_today": ai_today,
         "ai_week": ai_week,
+        "voice": {
+            "realtime_ok": rt_ok,
+            "realtime_fallback": rt_fb,
+            "realtime_drop": int(voice_tel["realtime_drop"]) if voice_tel else 0,
+            "avg_latency_ms": int(voice_tel["avg_latency_ms"]) if voice_tel else 0,
+            "fallback_rate": round(rt_fb / fb_total * 100) if fb_total else 0,
+        },
     }
 
 
@@ -1800,6 +1835,37 @@ async def get_recent_voice_mistakes(user_id: int, limit: int = 10) -> list:
         "WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2",
         user_id, int(limit),
     )
+
+
+_VOICE_TELEMETRY_EVENTS = ("realtime_ok", "realtime_fallback", "realtime_drop", "first_response")
+
+
+async def add_voice_telemetry(user_id: int, event: str, mode: str = "", latency_ms: int = 0, detail: str = "") -> None:
+    """Пишет лёгкое событие телеметрии голоса (фолбэк/подключение/латентность).
+    Хранилище ограничено 200 последними записями на ученика."""
+    if str(event or "") not in _VOICE_TELEMETRY_EVENTS:
+        return
+    try:
+        latency = max(0, min(int(latency_ms or 0), 120000))
+    except (TypeError, ValueError):
+        latency = 0
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO voice_telemetry (user_id, event, mode, latency_ms, detail) "
+            "VALUES ($1, $2, $3, $4, $5)",
+            user_id, event, str(mode or "")[:20], latency, str(detail or "")[:200],
+        )
+        await conn.execute(
+            """
+            DELETE FROM voice_telemetry
+            WHERE user_id = $1 AND id NOT IN (
+                SELECT id FROM voice_telemetry WHERE user_id = $1
+                ORDER BY created_at DESC LIMIT 200
+            )
+            """,
+            user_id,
+        )
 
 
 async def get_recent_completed_voice_lessons(

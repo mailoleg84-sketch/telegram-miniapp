@@ -2985,6 +2985,17 @@ async function renderChat() {
       }
     }
 
+    function sendVoiceTelemetry(event, mode, latencyMs, detail) {
+      try {
+        api("/api/voice/telemetry", "POST", {
+          event,
+          mode: mode || "",
+          latency_ms: latencyMs || 0,
+          detail: detail || "",
+        }).catch(() => {});
+      } catch (_) {}
+    }
+
     function realtimeSupported() {
       return Boolean(window.RTCPeerConnection && navigator.mediaDevices?.getUserMedia);
     }
@@ -4152,10 +4163,12 @@ async function renderChat() {
       if (!shouldUseStableVoice() && realtimeSupported()) {
         try {
           await startRealtimeVoiceMode();
+          sendVoiceTelemetry("realtime_ok", "realtime");
           return;
         } catch (e) {
           console.error("Realtime voice failed:", e);
           preferStableVoice("realtime_start_failed");
+          sendVoiceTelemetry("realtime_fallback", "realtime", 0, String((e && e.message) || e).slice(0, 120));
           stopRealtimeSession();
           voiceModeActive = false;
           if (isMicrophonePermissionError(e)) {
@@ -4629,6 +4642,7 @@ async function renderAdminPanel() {
     const openai = config.openai || {};
     const failedWords = data.failed_image_words || [];
     const health = data.health || [];
+    const voice = data.voice || {};
     const wordsTotal = Number(words.total || 0);
     const readyImages = Number(words.generated_images || 0) + Number(words.images_needing_review || 0);
     const audioFiles = Number(cache.word_audio?.files || 0);
@@ -4682,6 +4696,14 @@ async function renderAdminPanel() {
           <div class="stat-row"><span>Картинки</span><b>${esc(openai.image_model || "-")}</b></div>
           <div class="stat-row"><span>Кэш картинок</span><b>${formatAdminNumber(cache.generated_images?.files)} · ${cache.generated_images?.size_mb || 0} MB</b></div>
           <div class="stat-row"><span>Кэш озвучки</span><b>${formatAdminNumber(cache.word_audio?.files)} · ${cache.word_audio?.size_mb || 0} MB</b></div>
+        </div>
+
+        <div class="card">
+          <h2>Голос: телеметрия (7 дней)</h2>
+          <div class="stat-row"><span>Realtime подключений</span><b>${formatAdminNumber(voice.realtime_ok)}</b></div>
+          <div class="stat-row"><span>Фолбэков на гибрид</span><b>${formatAdminNumber(voice.realtime_fallback)}</b></div>
+          <div class="stat-row"><span>Доля фолбэков</span><b>${voice.fallback_rate || 0}%</b></div>
+          <div class="stat-row"><span>Обрывов</span><b>${formatAdminNumber(voice.realtime_drop)}</b></div>
         </div>
 
         <div class="card">

@@ -155,6 +155,7 @@ from webapp.routes_chat_voice import (
     api_realtime_token,
     api_realtime_log,
     api_chat_reset,
+    api_voice_telemetry,
 )
 # Word-payload слой (словари слова + URL-ы картинок) вынесен в
 # webapp/word_payloads.py (шаг 3d-1). Реэкспорт — то, что зовёт тело server.py
@@ -1808,6 +1809,7 @@ def create_app(
     app.router.add_post("/api/realtime/call",          api_realtime_call)
     app.router.add_post("/api/realtime/log",           api_realtime_log)
     app.router.add_post("/api/chat/reset",             api_chat_reset)
+    app.router.add_post("/api/voice/telemetry",        api_voice_telemetry)
 
     if bot is not None and dispatcher is not None and webhook_path:
         SimpleRequestHandler(

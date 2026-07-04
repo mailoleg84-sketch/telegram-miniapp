@@ -734,3 +734,28 @@ async def api_chat_reset(request: web.Request):
     await database.clear_conversation(user_id)
     await database.clear_voice_lesson_state(user_id)
     return web.json_response({"ok": True})
+
+
+_VOICE_TELEMETRY_EVENTS = {"realtime_ok", "realtime_fallback", "realtime_drop", "first_response"}
+
+
+async def api_voice_telemetry(request: web.Request):
+    """Лёгкий приём телеметрии голоса от клиента (fire-and-forget, строгая
+    валидация: whitelist событий и границы латентности). Не влияет на диалог."""
+    user_id = request["tg_user"]["id"]
+    body = await _safe_json(request)
+    event = str(body.get("event") or "")
+    if event not in _VOICE_TELEMETRY_EVENTS:
+        return web.json_response({"ok": True})
+    mode = str(body.get("mode") or "")[:20]
+    try:
+        latency = int(body.get("latency_ms") or 0)
+    except (TypeError, ValueError):
+        latency = 0
+    latency = max(0, min(latency, 120000))
+    detail = str(body.get("detail") or "")[:200]
+    try:
+        await database.add_voice_telemetry(user_id, event, mode, latency, detail)
+    except Exception:
+        log.exception("voice telemetry write failed")
+    return web.json_response({"ok": True})

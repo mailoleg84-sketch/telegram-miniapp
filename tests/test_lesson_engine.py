@@ -254,5 +254,18 @@ class LessonEngineTests(unittest.TestCase):
         self.assertIn("Устная практика", app)
 
 
+    def test_voice_telemetry_wired(self):
+        root = Path(__file__).resolve().parents[1]
+        database = (root / "database.py").read_text(encoding="utf-8")
+        server = (root / "webapp" / "server.py").read_text(encoding="utf-8")
+        routes = (root / "webapp" / "routes_chat_voice.py").read_text(encoding="utf-8")
+        app = (root / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("CREATE TABLE IF NOT EXISTS voice_telemetry", database)
+        self.assertIn("async def add_voice_telemetry", database)
+        self.assertIn("/api/voice/telemetry", server)
+        self.assertIn("async def api_voice_telemetry", routes)
+        self.assertIn("sendVoiceTelemetry(\"realtime_fallback\"", app)
+
+
 if __name__ == "__main__":
     unittest.main()
