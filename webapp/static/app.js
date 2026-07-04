@@ -4391,6 +4391,16 @@ async function renderParentReport() {
             `).join("")}
           </div>
         ` : ""}
+        ${(data.speaking && (data.speaking.completed_lessons || (data.speaking.mastered_phrases || []).length || (data.speaking.recent_mistakes || []).length)) ? `
+          <div class="card">
+            <h2>Устная практика (7 дней)</h2>
+            <div class="stat-row"><span>Голосовых уроков</span><b>${data.speaking.completed_lessons || 0}</b></div>
+            <div class="stat-row"><span>Дней с практикой</span><b>${data.speaking.active_days || 0}</b></div>
+            ${(data.speaking.topics || []).length ? `<div class="stat-row"><span>Темы</span><b>${data.speaking.topics.map(esc).join(", ")}</b></div>` : ""}
+            ${(data.speaking.mastered_phrases || []).length ? `<p class="hint">Уверенно говорит: ${data.speaking.mastered_phrases.map(esc).join("; ")}</p>` : ""}
+            ${(data.speaking.recent_mistakes || []).length ? `<p class="hint">Стоит потренировать: ${data.speaking.recent_mistakes.map(esc).join("; ")}</p>` : ""}
+          </div>
+        ` : ""}
       </div>`;
   } catch (e) {
     renderError(e.message);

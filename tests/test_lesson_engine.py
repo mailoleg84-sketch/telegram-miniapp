@@ -243,5 +243,16 @@ class LessonEngineTests(unittest.TestCase):
         self.assertEqual(_format_review_hint([], "dialogue", mistakes=["i like dog"]), "")
 
 
+    def test_parent_report_includes_speaking_practice(self):
+        root = Path(__file__).resolve().parents[1]
+        server = (root / "webapp" / "server.py").read_text(encoding="utf-8")
+        database = (root / "database.py").read_text(encoding="utf-8")
+        app = (root / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("get_voice_practice_report", database)
+        self.assertIn("get_voice_practice_report", server)
+        self.assertIn('"speaking": speaking', server)
+        self.assertIn("Устная практика", app)
+
+
 if __name__ == "__main__":
     unittest.main()

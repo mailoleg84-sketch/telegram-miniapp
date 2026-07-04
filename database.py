@@ -1821,6 +1821,65 @@ async def get_recent_completed_voice_lessons(
     )
 
 
+async def get_voice_practice_report(user_id: int, days: int = 7) -> dict:
+    """Сводка устной практики за последние ``days`` дней для родительского отчёта:
+    голосовые уроки, темы, уверенно освоенные фразы и что стоит потренировать."""
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        agg = await conn.fetchrow(
+            """
+            SELECT COUNT(*)::INT AS completed_lessons,
+                   COUNT(DISTINCT completed_at::date)::INT AS active_days,
+                   COALESCE(SUM(correction_count), 0)::INT AS total_corrections,
+                   MAX(completed_at) AS last_practice
+            FROM voice_lesson_sessions
+            WHERE user_id = $1 AND completed_at >= CURRENT_DATE - ($2::int - 1)
+            """,
+            user_id, int(days),
+        )
+        topic_rows = await conn.fetch(
+            """
+            SELECT DISTINCT topic_label FROM voice_lesson_sessions
+            WHERE user_id = $1 AND completed_at >= CURRENT_DATE - ($2::int - 1)
+              AND COALESCE(topic_label, '') <> ''
+            ORDER BY topic_label LIMIT 6
+            """,
+            user_id, int(days),
+        )
+        mastered_rows = await conn.fetch(
+            """
+            SELECT DISTINCT target_phrase FROM voice_lesson_sessions
+            WHERE user_id = $1 AND completed_at >= CURRENT_DATE - ($2::int - 1)
+              AND target_hits >= 2 AND COALESCE(target_phrase, '') <> ''
+            LIMIT 6
+            """,
+            user_id, int(days),
+        )
+        mistake_rows = await conn.fetch(
+            """
+            SELECT wrong_text FROM voice_mistakes
+            WHERE user_id = $1 AND created_at >= CURRENT_DATE - ($2::int - 1)
+            ORDER BY created_at DESC LIMIT 12
+            """,
+            user_id, int(days),
+        )
+    mistakes: list[str] = []
+    for row in mistake_rows:
+        wrong = str(row["wrong_text"] or "").strip()
+        if wrong and wrong not in mistakes:
+            mistakes.append(wrong)
+    last_practice = agg["last_practice"] if agg else None
+    return {
+        "completed_lessons": int(agg["completed_lessons"]) if agg else 0,
+        "active_days": int(agg["active_days"]) if agg else 0,
+        "total_corrections": int(agg["total_corrections"]) if agg else 0,
+        "last_practice": last_practice.isoformat() if last_practice else "",
+        "topics": [row["topic_label"] for row in topic_rows],
+        "mastered_phrases": [row["target_phrase"] for row in mastered_rows],
+        "recent_mistakes": mistakes[:5],
+    }
+
+
 async def add_ai_usage(
     user_id: int,
     model: str,

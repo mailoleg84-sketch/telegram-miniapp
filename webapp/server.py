@@ -983,12 +983,13 @@ async def api_parent_report(request: web.Request):
     user_id = request["tg_user"]["id"]
     user = await _current_user_or_404(request)
     # Независимые запросы (только по user_id) — параллельно, латентность ≈ макс, не сумма.
-    report, week, stats, dictionary_summary, problem_word_rows = await asyncio.gather(
+    report, week, stats, dictionary_summary, problem_word_rows, speaking = await asyncio.gather(
         database.get_parent_report(user_id),
         database.get_parent_report_week(user_id, 7),
         database.get_user_stats(user_id),
         database.get_dictionary_summary(user_id),
         database.get_problem_words(user_id, limit=6),
+        database.get_voice_practice_report(user_id, 7),
     )
     problem_words = [_problem_word_dict(row) for row in problem_word_rows]
     level = _level_for_user(user)
@@ -1029,6 +1030,7 @@ async def api_parent_report(request: web.Request):
             "review_words": int(dictionary_summary["review_words"] if dictionary_summary else 0),
         },
         "problem_words": problem_words,
+        "speaking": speaking,
         "recommendations": _parent_recommendations(report_payload, dictionary_summary, problem_words),
     })
 
