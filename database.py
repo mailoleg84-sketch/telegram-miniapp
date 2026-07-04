@@ -268,6 +268,9 @@ async def _ensure_schema(conn) -> None:
             UNIQUE (user_id, started_at)
         )
     """)
+    await conn.execute(
+        "ALTER TABLE voice_lesson_sessions ADD COLUMN IF NOT EXISTS target_hits INTEGER DEFAULT 0"
+    )
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS ai_usage (
             id             SERIAL PRIMARY KEY,
@@ -1725,14 +1728,16 @@ async def save_completed_voice_lesson(user_id: int, state: dict) -> None:
             target_phrase,
             target_words,
             correction_count,
-            last_language
+            last_language,
+            target_hits
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         ON CONFLICT (user_id, started_at)
         DO UPDATE SET
             completed_at = NOW(),
             correction_count = EXCLUDED.correction_count,
-            last_language = EXCLUDED.last_language
+            last_language = EXCLUDED.last_language,
+            target_hits = EXCLUDED.target_hits
     """,
     user_id,
     state["started_at"],
@@ -1744,6 +1749,26 @@ async def save_completed_voice_lesson(user_id: int, state: dict) -> None:
     list(state.get("target_words") or []),
     int(state.get("correction_count") or 0),
     state.get("last_language") or "unknown",
+    int(state.get("target_hits") or 0),
+    )
+
+
+async def get_recent_completed_voice_lessons(
+    user_id: int, limit: int = 3, exclude_topic: str = ""
+) -> list:
+    """Последние завершённые голосовые уроки ребёнка — для спирального повтора
+    освоенного и мягкого возврата к трудным темам в новом уроке."""
+    pool = await _get_pool()
+    return await pool.fetch(
+        """
+        SELECT topic, topic_label, target_phrase, target_words,
+               correction_count, target_hits, completed_at
+        FROM voice_lesson_sessions
+        WHERE user_id = $1 AND ($2 = '' OR topic <> $2)
+        ORDER BY completed_at DESC
+        LIMIT $3
+        """,
+        user_id, exclude_topic or "", int(limit),
     )
 
 

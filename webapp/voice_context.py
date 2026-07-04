@@ -130,6 +130,48 @@ def _voice_lesson_focus(messages: list[dict]) -> str:
     )
 
 
+_REVIEW_PHASES = {"welcome", "choose_topic", "mini_lesson"}
+
+
+def _format_review_hint(rows, phase: str) -> str:
+    """Компактная подсказка из прошлых уроков: что уже освоено (вернуть спирально)
+    и что давалось труднее (мягко навестить). Пусто, если данных нет или урок уже
+    в разгаре — подсказка нужна только в начале нового урока."""
+    if phase not in _REVIEW_PHASES or not rows:
+        return ""
+    mastered: list[str] = []
+    hard: list[str] = []
+    for row in rows:
+        phrase = str(row.get("target_phrase") or "").strip()
+        label = str(row.get("topic_label") or "").strip()
+        hits = int(row.get("target_hits") or 0)
+        corrections = int(row.get("correction_count") or 0)
+        if phrase and hits >= 2 and phrase not in mastered:
+            mastered.append(phrase)
+        if label and corrections >= 1 and hits < 2 and label not in hard:
+            hard.append(label)
+    parts: list[str] = []
+    if mastered:
+        parts.append("ранее ребёнок уверенно говорил: " + "; ".join(f'"{item}"' for item in mastered[:3]))
+    if hard:
+        parts.append("труднее давалась тема «" + hard[0] + "» — при случае мягко верни её")
+    return ". ".join(parts)
+
+
+async def _voice_review_focus(user_id: int, lesson_state: dict | None) -> str:
+    phase = str((lesson_state or {}).get("phase") or "welcome")
+    if phase not in _REVIEW_PHASES:
+        return ""
+    current_topic = str((lesson_state or {}).get("current_topic") or "")
+    try:
+        rows = await database.get_recent_completed_voice_lessons(
+            user_id, limit=3, exclude_topic=current_topic
+        )
+    except Exception:
+        return ""
+    return _format_review_hint(rows, phase)
+
+
 def _voice_prompt_context(user, messages: list[dict], lesson_state: dict | None = None) -> dict:
     topics = _choose_voice_topics(user, messages)
     lesson_focus = _voice_lesson_focus(messages)
@@ -173,6 +215,7 @@ def _voice_prompt_context(user, messages: list[dict], lesson_state: dict | None 
     }
     if lesson_state:
         context.update(lesson_prompt_context(lesson_state))
+    context["review_focus"] = str((lesson_state or {}).get("review_focus") or "")
     return context
 
 
@@ -188,13 +231,15 @@ async def _ensure_voice_lesson_state(user_id: int, user) -> dict:
     row = await database.get_voice_lesson_state(user_id)
     age_group = _normalized_age_group_for_user(user)
     if row and row["age_group"] == age_group:
-        return dict(row)
-    state = create_lesson_state(
-        age_group=age_group,
-        goal=user["goal"] if user else "",
-        seed=str(user_id),
-    )
-    await database.save_voice_lesson_state(user_id, state)
+        state = dict(row)
+    else:
+        state = create_lesson_state(
+            age_group=age_group,
+            goal=user["goal"] if user else "",
+            seed=str(user_id),
+        )
+        await database.save_voice_lesson_state(user_id, state)
+    state["review_focus"] = await _voice_review_focus(user_id, state)
     return state
 
 

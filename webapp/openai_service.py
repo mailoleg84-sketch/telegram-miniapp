@@ -852,6 +852,12 @@ def _runtime_instructions(
     target_words = context.get("target_words") or "пока не выбраны"
     support_mode = context.get("support_mode") or "обычный темп"
     lesson_state_instruction = context.get("lesson_state_instruction") or lesson_focus
+    review_focus = str(context.get("review_focus") or "")
+    review_line = (
+        "\nПрошлые уроки (иногда, не в каждом ходе): спирально возвращай ранее освоенное "
+        f"и мягко навести трудную тему — {review_focus}. Не сбивай текущую тему урока."
+        if review_focus else ""
+    )
     if mode == "voice" and _looks_like_legacy_voice_template(str(recent_assistant_messages)):
         recent_assistant_messages = "в истории есть старые шаблонные ответы; не копируй их стиль"
     conversation_plan = context.get("conversation_plan") or (
@@ -904,7 +910,7 @@ Keep the spoken turn to three short sentences maximum: one natural reaction, one
 Do not append a topic menu after answering or correcting the child.
 Target words are optional background vocabulary: weave in at most one and only if it fits this reply naturally. Never tack a stray vocabulary word onto the end of your turn.
 If the child's English is already fine, do not say "almost" or "better" — only correct an actual mistake.
-Teaching method each turn: prefer eliciting the answer before giving it; correct by recasting the child's idea in natural form, not by labeling it wrong; explain one point with one concrete example, not a definition; before advancing a phase, make your single final question a tiny understanding check.
+Teaching method each turn: prefer eliciting the answer before giving it; correct by recasting the child's idea in natural form, not by labeling it wrong; explain one point with one concrete example, not a definition; before advancing a phase, make your single final question a tiny understanding check.{review_line}
 Bad: "Какая у тебя favorite game?" Good: "Какая игра у тебя любимая? По-английски: My favorite game is..."."""
     voice_rules = (
         "Режим сейчас: ГОЛОС. Отвечай как живой человек в короткой живой беседе: 2-4 короткие фразы, "
@@ -1025,6 +1031,12 @@ def build_voice_realtime_instructions(
     target_words = context.get("target_words") or "not selected yet"
     support_mode = context.get("support_mode") or "normal"
     lesson_state_instruction = context.get("lesson_state_instruction") or lesson_focus
+    review_focus = str(context.get("review_focus") or "")
+    review_line = (
+        "\nPast lessons (occasionally, not every turn): spiral back earlier mastered phrases "
+        f"and gently revisit a past hard topic — {review_focus}. Never derail the current topic."
+        if review_focus else ""
+    )
 
     if age_group == "5_7":
         age_style = (
@@ -1084,6 +1096,7 @@ Stay grounded and human:
 - Keep one mini-scene for 2-4 turns; change topic only if the child asks or the lesson resets. Vary activities (tiny role-play, easy choice, guess a word, mini-story, daily-life question, gentle correction) and do not repeat animals/colors/story every time.
 - If the child is tired, silent, struggling, refuses to repeat, or answers with one word, make it easier inside the same topic and offer a simple choice — do not push repetition.
 - 5-7 years: at most one new English phrase per turn. On "давай играть" start a tiny game at once, do not ask which. On "историю" give a complete two-sentence mini-story plus one simple choice, never cut off mid-thought.
+{review_line}
 
 Format: no markdown, emoji, lists, or "Say:"/"Repeat:" commands. Child-safe topics only — nothing scary, adult, violent, or political.
 

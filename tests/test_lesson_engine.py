@@ -10,6 +10,7 @@ from webapp.lesson_engine import (
     public_lesson_state,
 )
 from webapp.openai_service import _runtime_instructions, build_voice_realtime_instructions
+from webapp.voice_context import _format_review_hint
 
 
 class LessonEngineTests(unittest.TestCase):
@@ -197,6 +198,35 @@ class LessonEngineTests(unittest.TestCase):
         self.assertIn("Never tell the child", prompt)
         self.assertIn("Authoritative lesson phase", realtime)
         self.assertIn("bridge it naturally", realtime)
+
+
+    def test_review_hint_surfaces_mastered_and_hard_topics(self):
+        rows = [
+            {"target_phrase": "I like cats.", "topic_label": "Животные", "target_hits": 3, "correction_count": 0},
+            {"target_phrase": "My favorite subject is English.", "topic_label": "Школа", "target_hits": 0, "correction_count": 2},
+        ]
+        hint = _format_review_hint(rows, "welcome")
+        self.assertIn("I like cats.", hint)
+        self.assertIn("Школа", hint)
+        # Посреди урока подсказка не появляется.
+        self.assertEqual(_format_review_hint(rows, "dialogue"), "")
+        # Нет данных — нет подсказки.
+        self.assertEqual(_format_review_hint([], "welcome"), "")
+
+    def test_review_focus_injected_into_voice_prompts_only_when_present(self):
+        base = {"mode": "voice", "age": 10, "age_group": "8_10", "level": "beginner"}
+        with_focus = {**base, "review_focus": 'ранее ребёнок уверенно говорил: "I like cats."'}
+
+        prompt = _runtime_instructions("Misha", "10 лет", with_focus, "hello")
+        realtime = build_voice_realtime_instructions("Misha", "10 лет", with_focus)
+        self.assertIn("Прошлые уроки", prompt)
+        self.assertIn("I like cats.", prompt)
+        self.assertIn("Past lessons", realtime)
+
+        prompt_no = _runtime_instructions("Misha", "10 лет", base, "hello")
+        realtime_no = build_voice_realtime_instructions("Misha", "10 лет", base)
+        self.assertNotIn("Прошлые уроки", prompt_no)
+        self.assertNotIn("Past lessons", realtime_no)
 
 
 if __name__ == "__main__":
