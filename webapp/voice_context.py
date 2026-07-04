@@ -20,6 +20,7 @@ from webapp.formatters import (
 from webapp.lesson_engine import (
     advance_lesson_state,
     create_lesson_state,
+    detect_common_error,
     lesson_prompt_context,
 )
 
@@ -133,11 +134,13 @@ def _voice_lesson_focus(messages: list[dict]) -> str:
 _REVIEW_PHASES = {"welcome", "choose_topic", "mini_lesson"}
 
 
-def _format_review_hint(rows, phase: str) -> str:
-    """Компактная подсказка из прошлых уроков: что уже освоено (вернуть спирально)
-    и что давалось труднее (мягко навестить). Пусто, если данных нет или урок уже
+def _format_review_hint(rows, phase: str, mistakes=()) -> str:
+    """Компактная подсказка из прошлых уроков: что уже освоено (вернуть спирально),
+    что давалось труднее и где ребёнок путался. Пусто, если данных нет или урок уже
     в разгаре — подсказка нужна только в начале нового урока."""
-    if phase not in _REVIEW_PHASES or not rows:
+    if phase not in _REVIEW_PHASES:
+        return ""
+    if not rows and not mistakes:
         return ""
     mastered: list[str] = []
     hard: list[str] = []
@@ -155,6 +158,11 @@ def _format_review_hint(rows, phase: str) -> str:
         parts.append("ранее ребёнок уверенно говорил: " + "; ".join(f'"{item}"' for item in mastered[:3]))
     if hard:
         parts.append("труднее давалась тема «" + hard[0] + "» — при случае мягко верни её")
+    if mistakes:
+        parts.append(
+            "мягко потренируй правильную форму того, где ребёнок путался: "
+            + "; ".join(f'"{item}"' for item in list(mistakes)[:2])
+        )
     return ". ".join(parts)
 
 
@@ -168,8 +176,17 @@ async def _voice_review_focus(user_id: int, lesson_state: dict | None) -> str:
             user_id, limit=3, exclude_topic=current_topic
         )
     except Exception:
-        return ""
-    return _format_review_hint(rows, phase)
+        rows = []
+    try:
+        mistake_rows = await database.get_recent_voice_mistakes(user_id, limit=10)
+    except Exception:
+        mistake_rows = []
+    mistakes: list[str] = []
+    for row in mistake_rows:
+        wrong = str(row.get("wrong_text") or "").strip()
+        if wrong and wrong not in mistakes:
+            mistakes.append(wrong)
+    return _format_review_hint(rows, phase, mistakes[:2])
 
 
 def _voice_prompt_context(user, messages: list[dict], lesson_state: dict | None = None) -> dict:
@@ -248,6 +265,15 @@ async def _advance_voice_lesson_state(user_id: int, user, role: str, text: str) 
     previous_phase = state.get("phase")
     state = advance_lesson_state(state, role, text)
     await database.save_voice_lesson_state(user_id, state)
+    if role == "user":
+        wrong = detect_common_error(text)
+        if wrong:
+            try:
+                await database.add_voice_mistake(
+                    user_id, state.get("age_group") or "8_10", state.get("current_topic") or "", wrong
+                )
+            except Exception:
+                pass
     if previous_phase != "wrapup" and state.get("phase") == "wrapup":
         await database.save_completed_voice_lesson(user_id, state)
     return state

@@ -272,6 +272,19 @@ async def _ensure_schema(conn) -> None:
         "ALTER TABLE voice_lesson_sessions ADD COLUMN IF NOT EXISTS target_hits INTEGER DEFAULT 0"
     )
     await conn.execute("""
+        CREATE TABLE IF NOT EXISTS voice_mistakes (
+            id          SERIAL PRIMARY KEY,
+            user_id     BIGINT NOT NULL,
+            created_at  TIMESTAMP DEFAULT NOW(),
+            age_group   TEXT DEFAULT '8_10',
+            topic       TEXT DEFAULT '',
+            wrong_text  TEXT NOT NULL
+        )
+    """)
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_voice_mistakes_user ON voice_mistakes (user_id, created_at DESC)"
+    )
+    await conn.execute("""
         CREATE TABLE IF NOT EXISTS ai_usage (
             id             SERIAL PRIMARY KEY,
             user_id        BIGINT NOT NULL,
@@ -655,6 +668,7 @@ async def reset_learning_results(user_id: int) -> None:
             await conn.execute("DELETE FROM training_attempts WHERE user_id = $1", user_id)
             await conn.execute("DELETE FROM voice_lesson_state WHERE user_id = $1", user_id)
             await conn.execute("DELETE FROM voice_lesson_sessions WHERE user_id = $1", user_id)
+            await conn.execute("DELETE FROM voice_mistakes WHERE user_id = $1", user_id)
 
 
 async def delete_user_account(user_id: int) -> None:
@@ -674,6 +688,7 @@ async def delete_user_account(user_id: int) -> None:
                 "training_attempts",
                 "voice_lesson_state",
                 "voice_lesson_sessions",
+                "voice_mistakes",
                 "conversations",
                 "ai_usage",
                 "users",
@@ -1750,6 +1765,40 @@ async def save_completed_voice_lesson(user_id: int, state: dict) -> None:
     int(state.get("correction_count") or 0),
     state.get("last_language") or "unknown",
     int(state.get("target_hits") or 0),
+    )
+
+
+async def add_voice_mistake(user_id: int, age_group: str, topic: str, wrong_text: str) -> None:
+    """Записывает конкретную ошибку ребёнка для адресной отработки в новом уроке.
+    Хранилище ограничено: держим только последние 20 ошибок на ученика."""
+    clean = " ".join(str(wrong_text or "").split())[:200]
+    if not clean:
+        return
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO voice_mistakes (user_id, age_group, topic, wrong_text) VALUES ($1, $2, $3, $4)",
+            user_id, age_group or "8_10", topic or "", clean,
+        )
+        await conn.execute(
+            """
+            DELETE FROM voice_mistakes
+            WHERE user_id = $1 AND id NOT IN (
+                SELECT id FROM voice_mistakes WHERE user_id = $1
+                ORDER BY created_at DESC LIMIT 20
+            )
+            """,
+            user_id,
+        )
+
+
+async def get_recent_voice_mistakes(user_id: int, limit: int = 10) -> list:
+    """Последние ошибки ребёнка (свежие первыми) — для мягкой отработки."""
+    pool = await _get_pool()
+    return await pool.fetch(
+        "SELECT wrong_text, topic, created_at FROM voice_mistakes "
+        "WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2",
+        user_id, int(limit),
     )
 
 

@@ -6,6 +6,7 @@ from webapp.lesson_engine import (
     TOPIC_PLANS,
     advance_lesson_state,
     create_lesson_state,
+    detect_common_error,
     lesson_prompt_context,
     public_lesson_state,
 )
@@ -227,6 +228,19 @@ class LessonEngineTests(unittest.TestCase):
         realtime_no = build_voice_realtime_instructions("Misha", "10 лет", base)
         self.assertNotIn("Прошлые уроки", prompt_no)
         self.assertNotIn("Past lessons", realtime_no)
+
+
+    def test_detect_common_error_returns_fragment(self):
+        self.assertEqual(detect_common_error("I like dog"), "i like dog")
+        self.assertEqual(detect_common_error("He have a cat"), "he have")
+        self.assertEqual(detect_common_error("Hello, my name is Sam"), "")
+
+    def test_review_hint_includes_mistakes_to_practice(self):
+        hint = _format_review_hint([], "welcome", mistakes=["i like dog", "he have"])
+        self.assertIn("потренируй правильную форму", hint)
+        self.assertIn("i like dog", hint)
+        # Ошибки показываются только на ранней фазе.
+        self.assertEqual(_format_review_hint([], "dialogue", mistakes=["i like dog"]), "")
 
 
 if __name__ == "__main__":

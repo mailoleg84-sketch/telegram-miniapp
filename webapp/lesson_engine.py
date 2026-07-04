@@ -79,6 +79,17 @@ def _normalized_text(text: str) -> str:
     return " ".join(value.split())
 
 
+def detect_common_error(text: str) -> str:
+    """Возвращает фрагмент реплики с типичной ошибкой (для адресной отработки)
+    или пустую строку. Те же паттерны, что и support_mode=correction."""
+    clean = _normalized_text(text)
+    for pattern in COMMON_ERROR_PATTERNS:
+        match = re.search(pattern, clean)
+        if match:
+            return match.group(0)
+    return ""
+
+
 def _contains_marker(text: str, markers: tuple[str, ...]) -> bool:
     return any(marker in text for marker in markers)
 
