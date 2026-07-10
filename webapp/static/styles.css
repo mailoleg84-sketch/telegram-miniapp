@@ -2858,6 +2858,40 @@ h1::after {
   box-shadow: none;
 }
 
+.word-card .word-explain {
+  box-shadow: none;
+}
+
+.word-confidence {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.word-confidence-btn {
+  min-height: 42px;
+  border: 1px solid rgba(139, 123, 255, 0.22);
+  border-radius: 12px;
+  background: rgba(139, 123, 255, 0.06);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 750;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.word-confidence-btn:active {
+  transform: scale(0.98);
+}
+
+.word-confidence-btn.selected {
+  border-color: var(--button);
+  background: var(--button);
+  color: #fff;
+}
+
 .dictionary-search-card {
   position: sticky;
   top: 8px;

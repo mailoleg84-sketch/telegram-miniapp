@@ -19,6 +19,7 @@ const state = {
   me: null,
   back: null,
   vocab: null,
+  vocabConfidence: {},
   quiz: null,
   answers: [],
   game: null,
@@ -685,12 +686,21 @@ function wordImageHtml(wordData, small = false) {
 }
 
 function wordStudyCard(wordData, options = {}) {
-  // Карточка намеренно простая: только слово, транскрипция, перевод и озвучка.
-  // Примеры, пояснения и «полезные фразы» убраны (решение владельца, v165) —
-  // меньше визуального шума и нет рисков показать пример без перевода.
   const badge = options.badge || "";
   const prompt = options.prompt || "";
   const showTranslation = options.showTranslation !== false;
+  const showLearningDetails = options.showLearningDetails === true;
+  const explanation = String(wordData?.explanation_ru || "").trim();
+  const exampleEn = String(wordData?.card_example || "").trim();
+  const exampleRu = String(wordData?.card_example_ru || "").trim();
+  const partOfSpeech = String(wordData?.part_of_speech || "").trim().replace(/_/g, " ");
+  const meaningBadge = String(wordData?.meaning_badge || "").trim();
+  const learningBadge = [partOfSpeech, meaningBadge].filter(Boolean).join(" · ");
+  const phrases = Array.isArray(wordData?.phrases)
+    ? wordData.phrases.filter(pair => Array.isArray(pair) && pair[0] && pair[1])
+    : [];
+  const confidenceKey = options.confidenceKey == null ? "" : String(options.confidenceKey);
+  const confidenceValue = confidenceKey ? state.vocabConfidence?.[confidenceKey] || "" : "";
   return `
     <div class="card word-card ${options.compact ? "compact" : ""}">
       <div class="word-card-top">
@@ -700,8 +710,46 @@ function wordStudyCard(wordData, options = {}) {
       <div class="word-main">${esc(wordData.word)}</div>
       ${wordData.transcription ? `<div class="word-transcription">${esc(wordData.transcription)}</div>` : ""}
       ${showTranslation && wordData.translation ? `<div class="word-translation">${esc(wordData.translation)}</div>` : ""}
+      ${showLearningDetails && learningBadge ? `<div class="word-pos-badge">${esc(learningBadge)}</div>` : ""}
+      ${showLearningDetails && explanation ? `<div class="word-explain">${esc(explanation)}</div>` : ""}
+      ${showLearningDetails && exampleEn ? `
+        <div class="word-sentence">
+          <div class="word-sentence-en">
+            <span>${esc(exampleEn)}</span>
+            ${pronunciationButtonHtml(exampleEn, true)}
+          </div>
+          ${exampleRu ? `<div class="word-sentence-ru">${esc(exampleRu)}</div>` : ""}
+        </div>` : ""}
+      ${showLearningDetails && phrases.length ? `
+        <div class="word-phrases">
+          <div class="word-phrases-title">Полезные фразы</div>
+          <ul>${phrases.map(pair => `<li><b>${esc(pair[0])}</b> — ${esc(pair[1])}</li>`).join("")}</ul>
+        </div>` : ""}
+      ${showLearningDetails && confidenceKey ? `
+        <div class="word-confidence" role="group" aria-label="Насколько хорошо знаешь слово ${esc(wordData.word)}">
+          <button type="button" class="word-confidence-btn ${confidenceValue === "unknown" ? "selected" : ""}" data-vocab-confidence-key="${esc(confidenceKey)}" data-vocab-confidence-value="unknown" aria-pressed="${confidenceValue === "unknown"}">Не знаю</button>
+          <button type="button" class="word-confidence-btn ${confidenceValue === "known" ? "selected" : ""}" data-vocab-confidence-key="${esc(confidenceKey)}" data-vocab-confidence-value="known" aria-pressed="${confidenceValue === "known"}">Знаю</button>
+        </div>` : ""}
       ${prompt ? `<p class="hint mt-12">${esc(prompt)}</p>` : ""}
     </div>`;
+}
+
+function bindVocabConfidenceButtons() {
+  document.querySelectorAll(".word-confidence-btn").forEach(button => {
+    button.onclick = () => {
+      const key = button.dataset.vocabConfidenceKey || "";
+      const value = button.dataset.vocabConfidenceValue || "";
+      if (!key || !value) return;
+      state.vocabConfidence[key] = value;
+      const group = button.closest(".word-confidence");
+      group?.querySelectorAll(".word-confidence-btn").forEach(candidate => {
+        const selected = candidate.dataset.vocabConfidenceValue === value;
+        candidate.classList.toggle("selected", selected);
+        candidate.setAttribute("aria-pressed", selected ? "true" : "false");
+      });
+      haptic(value === "known" ? "success" : "light");
+    };
+  });
 }
 
 function reviewWordRow(wordData) {
@@ -1526,16 +1574,22 @@ async function renderVocabWords(topic) {
     const data = await api("/api/vocab/start", "POST", topic ? { topic } : {});
     state.vocab = data;
     state.vocabTopic = topic;
+    state.vocabConfidence = {};
     app.innerHTML = `
       <div class="screen">
         ${screenHeader("Новые слова")}
         <p class="hint">Сначала посмотри карточки, потом пройди короткий тест.</p>
         ${data.words.map((w, index) => `
-          ${wordStudyCard(w, { badge: `Слово ${index + 1}` })}
+          ${wordStudyCard(w, {
+            badge: `Слово ${index + 1}`,
+            showLearningDetails: true,
+            confidenceKey: w.id || index + 1,
+          })}
         `).join("")}
         <button class="btn" id="startQuiz">Начать тест</button>
       </div>`;
     document.getElementById("startQuiz").onclick = () => { haptic(); renderVocabQuiz(); };
+    bindVocabConfidenceButtons();
     bindPronunciationButtons();
     queueWordAudioPreload(data.words.map(w => w.word));
   } catch (e) {

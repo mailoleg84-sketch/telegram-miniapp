@@ -111,19 +111,28 @@ class QuizImageContractTests(unittest.TestCase):
     def test_cards_never_use_photo_stock(self):
         self.assertNotIn("/vocabulary-photo", APP_JS)
 
-    def test_study_card_is_text_only(self):
-        # Карточка «Учим слова» (wordStudyCard) намеренно простая (v165): только слово,
-        # транскрипция, перевод и озвучка. Без картинок, без шаблонных объяснений
-        # simple_meaning/russian_hint, без бейджа-определения, без примеров, пояснений
-        # и блока «полезные фразы».
+    def test_study_card_is_text_only_and_uses_optional_learning_fields(self):
+        # Карточка «Учим слова» остаётся полностью текстовой: изображения и старые
+        # universal fallback-поля не рендерятся. Качественные поля показываются
+        # только при наличии: бейдж, конкретное объяснение, пример с переводом,
+        # полезные фразы и самооценка «Не знаю / Знаю».
         body = _func_body("wordStudyCard")
-        for marker in ("wordImageHtml", "word-image", "image_url", "simple_meaning",
-                       "russian_hint", "word-pos-badge", "word-sentence", "word-explain",
-                       "word-phrases", "explanation_ru"):
+        for marker in ("wordImageHtml", "word-image", "image_url", "simple_meaning", "russian_hint"):
             self.assertNotIn(marker, body, marker)
         for marker in ("word-main", "word-transcription", "word-translation",
-                       "pronunciationButtonHtml"):
+                       "pronunciationButtonHtml", "word-pos-badge", "word-sentence",
+                       "word-explain", "word-phrases", "explanation_ru", "card_example",
+                       "card_example_ru", "phrases", "Не знаю", "Знаю"):
             self.assertIn(marker, body, marker)
+        self.assertIn("showLearningDetails && explanation", body)
+        self.assertIn("showLearningDetails && exampleEn", body)
+        self.assertIn("showLearningDetails && phrases.length", body)
+
+    def test_vocab_screen_enables_details_and_binds_confidence_buttons(self):
+        body = _func_body("renderVocabWords")
+        self.assertIn("showLearningDetails: true", body)
+        self.assertIn("confidenceKey:", body)
+        self.assertIn("bindVocabConfidenceButtons()", body)
 
 
 if __name__ == "__main__":
